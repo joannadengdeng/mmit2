@@ -57,6 +57,14 @@ from mmit2.training.trainer import Trainer, TrainerConfig
 VQAV2_SINGLE_SAMPLE_INSTRUCTION = "Answer the question using a single word or phrase."
 
 
+def _preview_list(values: List[Any], limit: int = 8) -> List[Any]:
+    if len(values) <= limit:
+        return values
+    head = max(1, limit // 2)
+    tail = max(1, limit - head)
+    return [*values[:head], "...", *values[-tail:]]
+
+
 def _json_ready(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
@@ -137,12 +145,78 @@ def _load_eval_samples(
 
 
 def _sample_summary(sample: CanonicalSample) -> Dict[str, Any]:
+    pil_image = sample.metadata.get("_pil_image") if sample.metadata else None
+    image_info = None
+    if pil_image is not None:
+        image_info = {
+            "mode": getattr(pil_image, "mode", None),
+            "size": getattr(pil_image, "size", None),
+        }
     return {
         "id": sample.id,
         "image_path": sample.image_path,
         "first_question": sample.first_question,
         "first_answer": sample.first_answer,
+        "turns": [
+            {"role": turn.role, "content": turn.content}
+            for turn in sample.turns
+        ],
+        "raw_answers": list(sample.metadata.get("raw_answers", [])) if sample.metadata else [],
+        "image_info": image_info,
         "metadata": _json_ready(sample.metadata),
+    }
+
+
+def _sample_short_summary(sample: CanonicalSample) -> Dict[str, Any]:
+    return {
+        "id": sample.id,
+        "question": sample.first_question,
+        "answer": sample.first_answer,
+        "image_path": sample.image_path,
+    }
+
+
+def _dataset_overview(
+    train_samples: List[CanonicalSample],
+    eval_samples: List[CanonicalSample],
+) -> Dict[str, Any]:
+    return {
+        "train_count": len(train_samples),
+        "eval_count": len(eval_samples),
+        "train_preview": [_sample_short_summary(sample) for sample in train_samples[:3]],
+        "eval_preview": [_sample_short_summary(sample) for sample in eval_samples[:3]],
+    }
+
+
+def _processor_summary(processor: Any) -> Dict[str, Any]:
+    tokenizer = getattr(processor, "tokenizer", processor)
+    chat_template = getattr(tokenizer, "chat_template", None)
+    image_processor = getattr(processor, "image_processor", None)
+    return {
+        "processor_class": type(processor).__name__,
+        "tokenizer_class": type(tokenizer).__name__,
+        "image_processor_class": type(image_processor).__name__ if image_processor is not None else None,
+        "pad_token_id": getattr(tokenizer, "pad_token_id", None),
+        "bos_token_id": getattr(tokenizer, "bos_token_id", None),
+        "eos_token_id": getattr(tokenizer, "eos_token_id", None),
+        "chat_template_preview": chat_template[:500] if isinstance(chat_template, str) else None,
+    }
+
+
+def _model_summary(model: Any) -> Dict[str, Any]:
+    total_params = 0
+    trainable_params = 0
+    for param in model.parameters():
+        count = int(param.numel())
+        total_params += count
+        if param.requires_grad:
+            trainable_params += count
+    return {
+        "model_class": type(model).__name__,
+        "dtype": str(getattr(model, "dtype", None)),
+        "device": str(getattr(model, "device", None)),
+        "total_params": total_params,
+        "trainable_params": trainable_params,
     }
 
 
@@ -179,6 +253,9 @@ def _inspect_chat_template_sample(
     prompt_mask = tokenized["prompt_mask"]
     supervised_ids = input_ids[labels != -100]
     tokenizer = getattr(processor, "tokenizer", processor)
+    supervised_positions = (labels != -100).nonzero(as_tuple=False).flatten().tolist()
+    prompt_positions = prompt_mask.nonzero(as_tuple=False).flatten().tolist()
+    attention_mask = tokenized["attention_mask"]
 
     return {
         "sample_id": sample.id,
@@ -191,8 +268,10 @@ def _inspect_chat_template_sample(
         "supervised_token_count": int((labels != -100).sum().item()),
         "input_ids": input_ids.tolist(),
         "labels": labels.tolist(),
-        "attention_mask": tokenized["attention_mask"].tolist(),
+        "attention_mask": attention_mask.tolist(),
         "prompt_mask": prompt_mask.tolist(),
+        "supervised_positions": supervised_positions,
+        "prompt_positions": prompt_positions,
         "decoded_input": tokenizer.decode(input_ids, skip_special_tokens=False),
         "decoded_supervised_text": tokenizer.decode(
             supervised_ids,
@@ -356,6 +435,11 @@ def main() -> None:
     image_root = trainer_config.data_config.get("image_root", "")
     train_sample_count = int(trainer_config.data_config.get("max_samples", 0) or 0)
     eval_offset = args.eval_offset if args.eval_offset >= 0 else train_sample_count
+    eval_samples = _load_eval_samples(
+        trainer_config,
+        eval_count=args.eval_count,
+        eval_offset=eval_offset,
+    )
 
     _section("Training Config")
     pprint(_json_ready({
@@ -368,10 +452,16 @@ def main() -> None:
         "eval_offset": eval_offset,
     }))
 
+    _section("Dataset Overview")
+    pprint(_dataset_overview(samples, eval_samples))
+
     _section("One Raw Sample")
     pprint(_sample_summary(sample))
 
     processor = load_processor(cfg.model.model_path)
+    _section("Processor Summary")
+    pprint(_processor_summary(processor))
+
     preprocessor = ChatTemplatePreprocessor()
     preprocessor_debug = _inspect_chat_template_sample(
         preprocessor,
@@ -391,14 +481,23 @@ def main() -> None:
         "prompt_token_count": preprocessor_debug["prompt_token_count"],
         "supervised_token_count": preprocessor_debug["supervised_token_count"],
         "input_ids_preview": preprocessor_debug["input_ids"][:64],
+        "input_ids_tail": preprocessor_debug["input_ids"][-32:],
         "labels_preview": preprocessor_debug["labels"][:64],
+        "labels_tail": preprocessor_debug["labels"][-32:],
+        "attention_mask_preview": preprocessor_debug["attention_mask"][:64],
+        "prompt_mask_preview": preprocessor_debug["prompt_mask"][:64],
+        "supervised_positions_preview": _preview_list(preprocessor_debug["supervised_positions"], limit=12),
+        "prompt_positions_preview": _preview_list(preprocessor_debug["prompt_positions"], limit=12),
+        "decoded_input": preprocessor_debug["decoded_input"],
         "decoded_supervised_text": preprocessor_debug["decoded_supervised_text"],
     })
 
     report: Dict[str, Any] = {
         "config": _json_ready(trainer_dict),
         "method_config": _json_ready(method_config),
+        "dataset_overview": _dataset_overview(samples, eval_samples),
         "sample": _sample_summary(sample),
+        "processor": _processor_summary(processor),
         "preprocessor": _json_ready(preprocessor_debug),
     }
 
@@ -411,17 +510,13 @@ def main() -> None:
         print(f"Saved debug report to {report_path}")
         return
 
-    eval_samples = _load_eval_samples(
-        trainer_config,
-        eval_count=args.eval_count,
-        eval_offset=eval_offset,
-    )
     _section("Eval Sample Set")
     pprint({
         "count": len(eval_samples),
         "offset": eval_offset,
         "sample_ids": [sample.id for sample in eval_samples],
         "questions": [sample.first_question for sample in eval_samples],
+        "summaries": [_sample_short_summary(sample) for sample in eval_samples],
     })
 
     quantize_4bit = method_obj.requires_quantization(method_config)
@@ -430,6 +525,8 @@ def main() -> None:
         quantize_4bit=quantize_4bit,
         torch_dtype=torch.bfloat16,
     )
+    _section("Model Summary Before Training")
+    pprint(_model_summary(model))
     base_method = LocalMethod(model, processor)
     pretrain_eval = _evaluate_single_sample(
         base_method,
@@ -451,6 +548,7 @@ def main() -> None:
 
     report["eval_before_train"] = _json_ready(pretrain_eval)
     report["held_out_eval_before_train"] = _json_ready(eval_before_train)
+    report["model_before_train"] = _model_summary(model)
 
     del base_method
     del model
@@ -468,6 +566,8 @@ def main() -> None:
             checkpoint_path=final_checkpoint,
             ft_method=trainer_config.training_method,
         )
+        _section("Model Summary After Training")
+        pprint(_model_summary(tuned_method.model))
         posttrain_eval = _evaluate_single_sample(
             tuned_method,
             sample,
@@ -487,6 +587,7 @@ def main() -> None:
         report["eval_after_train"] = _json_ready(posttrain_eval)
         report["held_out_eval_after_train"] = _json_ready(eval_after_train)
         report["final_checkpoint"] = final_checkpoint
+        report["model_after_train"] = _model_summary(tuned_method.model)
         del tuned_method
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
