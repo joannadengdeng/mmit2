@@ -314,6 +314,22 @@ def main() -> None:
         "decoded_supervised_text": preprocessor_debug["decoded_supervised_text"],
     })
 
+    report: Dict[str, Any] = {
+        "config": _json_ready(trainer_dict),
+        "method_config": _json_ready(method_config),
+        "sample": _sample_summary(sample),
+        "preprocessor": _json_ready(preprocessor_debug),
+    }
+
+    if args.inspect_only:
+        os.makedirs(trainer_config.output_dir, exist_ok=True)
+        report_path = os.path.join(trainer_config.output_dir, "debug_report.json")
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        _section("Inspect-Only Complete")
+        print(f"Saved debug report to {report_path}")
+        return
+
     quantize_4bit = method_obj.requires_quantization(method_config)
     model = load_vlm(
         cfg.model.model_path,
@@ -331,38 +347,31 @@ def main() -> None:
     _section("Single-Sample Eval Before Training")
     pprint(pretrain_eval)
 
-    report: Dict[str, Any] = {
-        "config": _json_ready(trainer_dict),
-        "method_config": _json_ready(method_config),
-        "sample": _sample_summary(sample),
-        "preprocessor": _json_ready(preprocessor_debug),
-        "eval_before_train": _json_ready(pretrain_eval),
-    }
+    report["eval_before_train"] = _json_ready(pretrain_eval)
 
-    if not args.inspect_only:
-        _section("Training")
-        trainer = Trainer(cfg.model.model_path)
-        trainer.train(trainer_config)
+    _section("Training")
+    trainer = Trainer(cfg.model.model_path)
+    trainer.train(trainer_config)
 
-        final_checkpoint = os.path.join(trainer_config.output_dir, "final")
-        if os.path.isdir(final_checkpoint):
-            tuned_method = LocalMethod.from_checkpoint(
-                base_model_id=cfg.model.model_path,
-                checkpoint_path=final_checkpoint,
-                ft_method=trainer_config.training_method,
-            )
-            posttrain_eval = _evaluate_single_sample(
-                tuned_method,
-                sample,
-                image_root=image_root,
-                max_new_tokens=args.max_new_tokens,
-            )
-            _section("Single-Sample Eval After Training")
-            pprint(posttrain_eval)
-            report["eval_after_train"] = _json_ready(posttrain_eval)
-            report["final_checkpoint"] = final_checkpoint
-        else:
-            print(f"[WARN] Final checkpoint not found: {final_checkpoint}")
+    final_checkpoint = os.path.join(trainer_config.output_dir, "final")
+    if os.path.isdir(final_checkpoint):
+        tuned_method = LocalMethod.from_checkpoint(
+            base_model_id=cfg.model.model_path,
+            checkpoint_path=final_checkpoint,
+            ft_method=trainer_config.training_method,
+        )
+        posttrain_eval = _evaluate_single_sample(
+            tuned_method,
+            sample,
+            image_root=image_root,
+            max_new_tokens=args.max_new_tokens,
+        )
+        _section("Single-Sample Eval After Training")
+        pprint(posttrain_eval)
+        report["eval_after_train"] = _json_ready(posttrain_eval)
+        report["final_checkpoint"] = final_checkpoint
+    else:
+        print(f"[WARN] Final checkpoint not found: {final_checkpoint}")
 
     output_dir = Path(trainer_config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
