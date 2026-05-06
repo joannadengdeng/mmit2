@@ -98,6 +98,7 @@ def _load_samples(trainer_config: TrainerConfig) -> List[CanonicalSample]:
     data_cfg = dict(trainer_config.data_config)
     max_samples = int(data_cfg.pop("max_samples", 0) or 0)
     adapter_name = data_cfg.pop("adapter", "hf_datasets")
+    data_cfg.pop("image_root", None)
     if adapter_name != "hf_datasets":
         raise ValueError(f"Unsupported adapter '{adapter_name}'")
 
