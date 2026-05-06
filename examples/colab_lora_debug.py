@@ -9,8 +9,8 @@ This script prints:
   - the normalized training config
   - one raw training sample
   - the chat-template messages / rendered prompt / token stats
-  - one single-sample VQAv2-style eval result before training
-  - one single-sample eval result after training (unless --inspect-only)
+  - a small held-out eval set summary before training
+  - a small held-out eval set summary after training (unless --inspect-only)
 
 It also writes a JSON report to ``<output_dir>/debug_report.json``.
 """
@@ -94,21 +94,46 @@ def _build_trainer_config(trainer_dict: Dict[str, Any]) -> TrainerConfig:
     )
 
 
-def _load_samples(trainer_config: TrainerConfig) -> List[CanonicalSample]:
+def _build_adapter_kwargs(
+    trainer_config: TrainerConfig,
+    max_samples: int | None = None,
+) -> Dict[str, Any]:
     data_cfg = dict(trainer_config.data_config)
-    max_samples = int(data_cfg.pop("max_samples", 0) or 0)
     adapter_name = data_cfg.pop("adapter", "hf_datasets")
     data_cfg.pop("image_root", None)
     if adapter_name != "hf_datasets":
         raise ValueError(f"Unsupported adapter '{adapter_name}'")
 
     dataset_name = data_cfg.pop("data_path")
-    adapter = HFDatasetsAdapter(
-        dataset_name=dataset_name,
-        max_samples=max_samples if max_samples > 0 else None,
+    requested_max = int(data_cfg.pop("max_samples", 0) or 0)
+    resolved_max = max_samples if max_samples is not None else requested_max
+    return {
+        "dataset_name": dataset_name,
+        "max_samples": resolved_max if resolved_max and resolved_max > 0 else None,
         **data_cfg,
-    )
+    }
+
+
+def _load_samples(trainer_config: TrainerConfig) -> List[CanonicalSample]:
+    adapter = HFDatasetsAdapter(**_build_adapter_kwargs(trainer_config))
     return [sample for sample in adapter]
+
+
+def _load_eval_samples(
+    trainer_config: TrainerConfig,
+    eval_count: int,
+    eval_offset: int,
+) -> List[CanonicalSample]:
+    if eval_count <= 0:
+        return []
+    fetch_count = eval_offset + eval_count if eval_offset > 0 else eval_count
+    adapter = HFDatasetsAdapter(**_build_adapter_kwargs(trainer_config, max_samples=fetch_count))
+    samples = [sample for sample in adapter]
+    if eval_offset >= len(samples):
+        raise IndexError(
+            f"eval_offset {eval_offset} is out of range for {len(samples)} loaded samples",
+        )
+    return samples[eval_offset:eval_offset + eval_count]
 
 
 def _sample_summary(sample: CanonicalSample) -> Dict[str, Any]:
@@ -237,6 +262,7 @@ def _evaluate_single_sample(
         metrics=[metric_key],
     )
     return {
+        "sample_id": sample.id,
         "question": sample.first_question,
         "eval_prompt": eval_prompt,
         "ground_truths": ground_truths,
@@ -248,6 +274,44 @@ def _evaluate_single_sample(
     }
 
 
+def _summarize_eval_runs(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    metric_totals: Dict[str, float] = {}
+    metric_counts: Dict[str, int] = {}
+    for result in results:
+        for metric_key, value in result.get("scores", {}).items():
+            metric_totals[metric_key] = metric_totals.get(metric_key, 0.0) + float(value)
+            metric_counts[metric_key] = metric_counts.get(metric_key, 0) + 1
+
+    metric_averages = {
+        metric_key: metric_totals[metric_key] / metric_counts[metric_key]
+        for metric_key in metric_totals
+        if metric_counts[metric_key] > 0
+    }
+    return {
+        "count": len(results),
+        "metric_averages": metric_averages,
+        "results": results,
+    }
+
+
+def _evaluate_sample_batch(
+    method: LocalMethod,
+    samples: List[CanonicalSample],
+    image_root: str,
+    max_new_tokens: int,
+) -> Dict[str, Any]:
+    results = [
+        _evaluate_single_sample(
+            method,
+            sample,
+            image_root=image_root,
+            max_new_tokens=max_new_tokens,
+        )
+        for sample in samples
+    ]
+    return _summarize_eval_runs(results)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Colab LoRA debug runner")
     parser.add_argument(
@@ -257,6 +321,18 @@ def main() -> None:
     )
     parser.add_argument("--sample-index", type=int, default=0, help="Which sample to inspect")
     parser.add_argument("--max-new-tokens", type=int, default=16, help="Eval generation length")
+    parser.add_argument(
+        "--eval-count",
+        type=int,
+        default=10,
+        help="How many held-out samples to evaluate before/after training",
+    )
+    parser.add_argument(
+        "--eval-offset",
+        type=int,
+        default=-1,
+        help="Start eval from this sample offset; default uses training max_samples as the hold-out boundary",
+    )
     parser.add_argument(
         "--inspect-only",
         action="store_true",
@@ -278,6 +354,8 @@ def main() -> None:
     method_obj = build_training_method(trainer_config.training_method)
     method_config = {**method_obj.default_config(), **trainer_config.method_params}
     image_root = trainer_config.data_config.get("image_root", "")
+    train_sample_count = int(trainer_config.data_config.get("max_samples", 0) or 0)
+    eval_offset = args.eval_offset if args.eval_offset >= 0 else train_sample_count
 
     _section("Training Config")
     pprint(_json_ready({
@@ -285,6 +363,9 @@ def main() -> None:
         "training_config": trainer_dict,
         "effective_output_dir": trainer_config.output_dir,
         "method_config": method_config,
+        "train_sample_count": train_sample_count,
+        "eval_count": args.eval_count,
+        "eval_offset": eval_offset,
     }))
 
     _section("One Raw Sample")
@@ -330,6 +411,19 @@ def main() -> None:
         print(f"Saved debug report to {report_path}")
         return
 
+    eval_samples = _load_eval_samples(
+        trainer_config,
+        eval_count=args.eval_count,
+        eval_offset=eval_offset,
+    )
+    _section("Eval Sample Set")
+    pprint({
+        "count": len(eval_samples),
+        "offset": eval_offset,
+        "sample_ids": [sample.id for sample in eval_samples],
+        "questions": [sample.first_question for sample in eval_samples],
+    })
+
     quantize_4bit = method_obj.requires_quantization(method_config)
     model = load_vlm(
         cfg.model.model_path,
@@ -343,11 +437,25 @@ def main() -> None:
         image_root=image_root,
         max_new_tokens=args.max_new_tokens,
     )
+    eval_before_train = _evaluate_sample_batch(
+        base_method,
+        eval_samples,
+        image_root=image_root,
+        max_new_tokens=args.max_new_tokens,
+    )
 
     _section("Single-Sample Eval Before Training")
     pprint(pretrain_eval)
+    _section("Held-Out Eval Before Training")
+    pprint(eval_before_train)
 
     report["eval_before_train"] = _json_ready(pretrain_eval)
+    report["held_out_eval_before_train"] = _json_ready(eval_before_train)
+
+    del base_method
+    del model
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     _section("Training")
     trainer = Trainer(cfg.model.model_path)
@@ -366,10 +474,22 @@ def main() -> None:
             image_root=image_root,
             max_new_tokens=args.max_new_tokens,
         )
+        eval_after_train = _evaluate_sample_batch(
+            tuned_method,
+            eval_samples,
+            image_root=image_root,
+            max_new_tokens=args.max_new_tokens,
+        )
         _section("Single-Sample Eval After Training")
         pprint(posttrain_eval)
+        _section("Held-Out Eval After Training")
+        pprint(eval_after_train)
         report["eval_after_train"] = _json_ready(posttrain_eval)
+        report["held_out_eval_after_train"] = _json_ready(eval_after_train)
         report["final_checkpoint"] = final_checkpoint
+        del tuned_method
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     else:
         print(f"[WARN] Final checkpoint not found: {final_checkpoint}")
 
