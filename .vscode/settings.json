@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "/Users/dengqiuyu/Documents/New project/mmit2/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "/Users/dengqiuyu/Documents/New project/mmit2/src"
+  ],
+  "liveServer.settings.port": 5502
+}

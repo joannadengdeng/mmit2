@@ -1,0 +1,31 @@
+# Freeze Tuning: unfreeze explicit module prefixes and keep the rest frozen
+
+runtime:
+  mode: local
+
+model:
+  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+
+training:
+  ft_method: freeze
+  num_epochs: 3
+  per_device_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 1.0e-5
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  save_steps: 200
+  output_dir: "output/freeze_qwen2vl_3b"
+  params:
+    unfreeze_modules:
+      - "model.layers.0"
+      - "model.layers.1"
+      - "model.layers.2"
+      - "model.layers.3"
+
+data:
+  adapter: hf_datasets
+  data_path: "lmms-lab/VQAv2"
+  split: train
+  max_samples: 100

@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>mmit2 chat_template 讲义：tokenize() 与 collate()</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--mono:'SF Mono','Fira Code','Consolas',monospace;--sans:-apple-system,'Helvetica Neue',sans-serif}
+body{background:#fff;color:#000;font-family:var(--sans);font-size:9pt;line-height:1.52;padding:12px 24px 12px 220px;max-width:1220px;margin:0 auto}
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  body{padding:0;max-width:none;font-size:8.2pt;line-height:1.38}
+  .print-hint{display:none!important}
+  .sidebar{display:none!important}
+  body{padding:10px 12px}
+  .print-columns{column-count:2;column-gap:8mm}
+  .section{page-break-inside:auto;break-inside:auto;margin-bottom:12px}
+  .section-intro,.vis,.pytorch,.note,.deep,.graph{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid}
+  .subsection{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid-column}
+  pre.code{page-break-inside:auto;break-inside:auto}
+  table{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid-column;break-before:auto;break-after:auto}
+  tr,th,td{page-break-inside:avoid;break-inside:avoid}
+  th,td{padding:3px 4px;font-size:7pt;overflow-wrap:anywhere;word-break:break-word}
+  pre.code,.graph{font-size:7.1pt;line-height:1.32;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+  .vis-box{padding:4px 7px;font-size:7pt;min-width:44px}
+  .vis-label{font-size:6.4pt}
+  .grid-2{display:block!important}
+  .grid-2>*{display:block!important;width:100%!important}
+  p,li,td,th{orphans:2;widows:2}
+}
+.sidebar{position:fixed;left:0;top:0;width:205px;height:100vh;overflow-y:auto;background:#fafafa;border-right:1.5px solid #ddd;padding:10px 8px;font-size:7pt;z-index:100}
+.sidebar h3{font-size:7.5pt;margin:8px 0 3px;padding:0;border:none;color:#666;font-weight:600}
+.sidebar a{display:block;padding:2px 6px;margin:1px 0;color:#333;text-decoration:none;border-radius:3px;line-height:1.4;font-size:6.5pt}
+.sidebar a:hover{background:#e8e8e8}
+.sidebar .logo{font-size:9pt;font-weight:700;margin-bottom:6px;padding:4px 6px;border-bottom:1.5px solid #777}
+.sidebar .back-top{display:block;text-align:center;margin-top:8px;padding:4px;font-size:6.5pt;color:#888;border-top:1px solid #ddd}
+h1{font-size:13pt;font-weight:700;border-bottom:1.5px solid #666;padding-bottom:3px;margin-bottom:3px}
+.subtitle{font-size:8pt;color:#444;font-style:italic;margin-bottom:8px}
+h2{font-size:10.5pt;font-weight:700;margin:10px 0 5px;padding:3px 0;border-bottom:1px solid #777;color:#111}
+h3{font-size:9pt;font-weight:700;margin:6px 0 3px;border-bottom:1px solid #ccc;padding-bottom:1px;color:#222}
+p{margin:4px 0;font-size:8pt}
+ul,ol{margin:4px 0 4px 18px}
+li{margin:2px 0;font-size:8pt}
+pre.code{background:#fbfbfb;border:1px solid #bbb;border-radius:2px;padding:5px 8px;font-family:var(--mono);font-size:7.5pt;line-height:1.42;margin:4px 0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.code .kw{color:#a00050;font-weight:600}.code .fn{color:#0040a0;font-weight:600}.code .str{color:#006400}.code .cm{color:#666;font-style:italic}.code .num{color:#a04000}
+.vis{border:1px solid #bbb;border-radius:3px;padding:6px 10px;margin:4px 0;background:#fcfcfc}
+.vis .vis-title{font-weight:700;font-size:9pt;margin-bottom:4px;color:#a00000}
+.vis-row{display:flex;align-items:stretch;gap:5px;margin:2px 0;font-family:var(--mono);font-size:7.5pt;flex-wrap:wrap}
+.vis-box{border:1px solid #aaa;padding:4px 8px;border-radius:2px;background:#fff;text-align:center;min-width:58px;font-size:7pt}
+.vis-box.param{background:#fff0f0;border-color:#a00000;font-weight:700}
+.vis-box.result{background:#e8f0ff;border-color:#0040a0}
+.vis-box.input{background:#fff8e0;border-color:#806000}
+.vis-box.frozen{background:#f0f5f0;border-color:#006400;border-style:dashed}
+.vis-arrow{font-size:12pt;font-weight:700;color:#000;align-self:center}
+.vis-label{font-size:6.5pt;color:#666;font-style:italic}
+.pytorch{margin:3px 0;padding:5px 8px;background:#f8f9ff;border:1px solid #9eb2d9;border-radius:2px;font-size:7.5pt}
+.pytorch .pt-title{font-weight:700;color:#0040a0;font-size:8pt;margin-bottom:2px;font-family:var(--mono)}
+.note{background:#fffdf4;border-left:2px solid #b08d2f;padding:4px 8px;margin:4px 0;font-size:7.5pt}
+.note b{color:#806000}
+.deep{background:#f7fbff;border:1px solid #a8bfdc;border-radius:3px;padding:6px 10px;margin:6px 0;font-size:7.5pt}
+.deep b{color:#0040a0}
+.deep .deep-title{font-weight:700;font-size:8pt;color:#0040a0;margin-bottom:3px}
+table{width:100%;border-collapse:collapse;font-size:7pt;margin:4px 0}
+th,td{padding:3px 5px;border:1px solid #aaa;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+th{background:#f3f3f3;color:#111}
+.graph{font-family:var(--mono);font-size:7pt;line-height:1.22;white-space:pre-wrap;background:#fbfbfb;border:1px solid #bbb;padding:5px 8px;margin:4px 0;border-radius:2px;word-break:break-word;overflow-wrap:anywhere}
+.print-hint{background:#fffbe0;border:1.5px solid #806000;padding:6px 8px;margin:6px 0 10px;font-size:7.5pt;border-radius:2px}
+.section{margin-bottom:14px}
+.subsection{margin:0 0 6px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.small{font-size:7.2pt;color:#555}
+@media (max-width:900px){
+  body{padding:12px 16px;max-width:none}
+  .sidebar{display:none}
+  .grid-2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+<div class="logo">tokenize / collate</div>
+<h3>总览</h3>
+<a href="#goal">这份讲义要解决什么</a>
+<a href="#whole-flow">先看整体数据流</a>
+<a href="#sample">固定例子</a>
+<h3>tokenize</h3>
+<a href="#tokenize-mm">1. tokenize 的 mental model</a>
+<a href="#messages">2. messages / full_text / prompt_text</a>
+<a href="#full-inputs">3. full_inputs 是什么</a>
+<a href="#labels">4. labels 怎么构造</a>
+<a href="#tokenize-out">5. tokenize 的最终输出</a>
+<h3>collate</h3>
+<a href="#collate-mm">6. collate 的 mental model</a>
+<a href="#collate-padding">7. padding 真正在哪里出现</a>
+<a href="#collate-loop">8. 那个 for 循环到底在做什么</a>
+<a href="#collate-out">9. collate 的最终输出</a>
+<h3>对照</h3>
+<a href="#together">10. tokenize 和 collate 放回一起看</a>
+<a href="#mini-table">最小记忆表</a>
+<a href="#top" class="back-top">↑ 回到顶部</a>
+</nav>
+
+<span id="top"></span>
+<h1>mmit2 chat_template 讲义：tokenize() 与 collate()</h1>
+<div class="subtitle">把 <code>src/mmit2/training/preprocessors/chat_template.py</code> 里最关键的两步拆开讲：一条样本怎么变成训练张量，多条样本怎么 padding 后拼成 batch。</div>
+
+<div class="print-hint"><b>读法建议：</b>先把这份讲义当成“数据流讲义”而不是“源码讲义”。先记住 <b>sample → messages → full_text → input_ids → labels → batch</b> 这条骨架，再回头看代码，很多局部细节就会自动挂回去。</div>
+
+<main class="print-columns">
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="goal"></span>这份讲义要解决什么</h2>
+<p>如果直接从 <code>chat_template.py</code> 第一行往下读，很容易在 <code>apply_chat_template</code>、<code>input_ids</code>、<code>labels</code>、<code>prompt_mask</code>、<code>padding</code> 这些词之间来回跳。真正缺的通常不是某一行语法，而是这段代码的整体数据流。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">一句话高层目标</div>
+<p><b><code>tokenize()</code></b> 负责把一条图文样本变成训练张量；<b><code>collate()</code></b> 负责把很多条不同长度的张量补齐并拼成一个 batch。</p>
+</div>
+
+<div class="graph">原始样本
+  ↓
+messages（HF chat template 中间结构）
+  ↓
+full_text / prompt_text
+  ↓
+processor(...)
+  ↓
+input_ids / labels / attention_mask / prompt_mask
+  ↓
+多条样本一起进 collate()
+  ↓
+batch_ids / batch_labels / batch_mask / batch_prompt</div>
+
+<div class="note"><b>最重要的区分：</b><code>tokenize()</code> 是“单样本级别”的工作；<code>collate()</code> 是“多样本 batch 级别”的工作。padding 通常不是在 <code>tokenize()</code> 里出现，而是在 <code>collate()</code> 里出现。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="whole-flow"></span>先看整体数据流</h2>
+<p>先不要一行行看代码，先背这条主线。以后你哪怕忘了局部细节，也能靠这条骨架把逻辑再拼回来。</p>
+</div>
+
+<div class="vis">
+<div class="vis-title">先背骨架，再记局部</div>
+<div class="vis-row">
+  <div class="vis-box input">sample<br><span class="vis-label">图片 + 问题 + 答案</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box param">messages<br><span class="vis-label">HF 约定的中间结构</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box result">full_text<br><span class="vis-label">完整训练文本</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box result">input_ids / labels<br><span class="vis-label">单样本训练张量</span></div>
+</div>
+<div class="vis-row">
+  <div class="vis-box input">sample A</div>
+  <div class="vis-box input">sample B</div>
+  <div class="vis-box input">sample C</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box frozen">collate</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box result">batch_ids / batch_mask<br><span class="vis-label">padding 后的 batch</span></div>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="sample"></span>固定例子：整份讲义都用同一条样本</h2>
+<p>下面 <code>tokenize()</code> 的所有例子都围绕同一条数据。这样你不用一边换样本一边换概念。</p>
+</div>
+
+<pre class="code">sample.id = <span class="str">"ex-1"</span>
+sample.image_path = <span class="str">"cat.jpg"</span>
+sample.turns = [
+    Turn(role=<span class="str">"human"</span>, content=<span class="str">"What animal is this?"</span>),
+    Turn(role=<span class="str">"assistant"</span>, content=<span class="str">"cat"</span>),
+]</pre>
+
+<p>也就是：</p>
+<ul>
+  <li>图：猫图</li>
+  <li>问题：<code>What animal is this?</code></li>
+  <li>答案：<code>cat</code></li>
+</ul>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="tokenize-mm"></span>1. tokenize() 的 mental model</h2>
+<p><code>tokenize()</code> 不是在做 batch padding，也不是在做训练方法选择。它只做一件事：把单条样本变成训练器之后能直接用的张量包。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">一句话版</div>
+<p><b><code>tokenize()</code> = 把一条人类可读的图文问答，翻译成模型训练用的一包张量。</b></p>
+</div>
+
+<div class="grid-2">
+<div class="note"><b>它关心的问题：</b><br>
+• 这条样本的完整训练文本是什么？<br>
+• prompt 到哪里结束？<br>
+• 哪些 token 要参与 loss？<br>
+• 图片张量要怎么一起带出去？</div>
+
+<div class="note"><b>它不做的事：</b><br>
+• 不负责 batch padding<br>
+• 不负责 optimizer<br>
+• 不负责 LoRA / Freeze / L2T 的策略差异<br>
+• 不负责 checkpoint</div>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="messages"></span>2. messages / full_text / prompt_text</h2>
+<p>这一步是整个 <code>tokenize()</code> 的前半段：先把样本翻译成 Hugging Face chat template 看得懂的中间结构，再渲染成模型习惯的文本格式。</p>
+</div>
+
+<div class="subsection">
+<h3>2.1 messages 长什么样</h3>
+<pre class="code">messages = [
+    {
+        <span class="str">"role"</span>: <span class="str">"user"</span>,
+        <span class="str">"content"</span>: [
+            {<span class="str">"type"</span>: <span class="str">"image"</span>},
+            {<span class="str">"type"</span>: <span class="str">"text"</span>, <span class="str">"text"</span>: <span class="str">"What animal is this?"</span>},
+        ],
+    },
+    {
+        <span class="str">"role"</span>: <span class="str">"assistant"</span>,
+        <span class="str">"content"</span>: [
+            {<span class="str">"type"</span>: <span class="str">"text"</span>, <span class="str">"text"</span>: <span class="str">"cat"</span>},
+        ],
+    },
+]</pre>
+
+<div class="note"><b>Mental model：</b><code>messages</code> 不是模型最终吃的字符串，它只是 Hugging Face chat template 的中间表示。</div>
+</div>
+
+<div class="subsection">
+<h3>2.2 full_text 长什么样</h3>
+<pre class="code">full_text = processor.apply_chat_template(
+    messages,
+    tokenize=<span class="kw">False</span>,
+    add_generation_prompt=<span class="kw">False</span>,
+)</pre>
+
+<p>概念上你可以把它理解成：</p>
+<pre class="code">User: &lt;image&gt;
+What animal is this?
+Assistant: cat</pre>
+
+<p><b>重点：</b><code>full_text</code> 里已经包含答案 <code>cat</code>。</p>
+</div>
+
+<div class="subsection">
+<h3>2.3 prompt_text 长什么样</h3>
+<pre class="code">prompt_messages = [
+    {
+        <span class="str">"role"</span>: <span class="str">"user"</span>,
+        <span class="str">"content"</span>: [
+            {<span class="str">"type"</span>: <span class="str">"image"</span>},
+            {<span class="str">"type"</span>: <span class="str">"text"</span>, <span class="str">"text"</span>: <span class="str">"What animal is this?"</span>},
+        ],
+    },
+]</pre>
+
+<pre class="code">prompt_text = processor.apply_chat_template(
+    prompt_messages,
+    tokenize=<span class="kw">False</span>,
+    add_generation_prompt=<span class="kw">True</span>,
+)</pre>
+
+<p>概念上你可以把它理解成：</p>
+<pre class="code">User: &lt;image&gt;
+What animal is this?
+Assistant:</pre>
+
+<div class="deep">
+<div class="deep-title">这一步为什么重要</div>
+<p><code>full_text</code> 告诉模型“完整输入长什么样”；<code>prompt_text</code> 告诉我们“prompt 在 token 层面到哪里结束”。后面 <code>labels[:prompt_len] = -100</code> 的全部逻辑，都建立在这里。</p>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="full-inputs"></span>3. full_inputs 是什么</h2>
+<p>从这一步开始，数据正式离开“字符串世界”，进入“模型输入张量世界”。</p>
+</div>
+
+<pre class="code">full_inputs = processor(
+    text=full_text,
+    images=[image],
+    return_tensors=<span class="str">"pt"</span>,
+    truncation=<span class="kw">True</span>,
+    max_length=max_length,
+)</pre>
+
+<p>概念上可以得到：</p>
+<pre class="code">full_inputs = {
+    <span class="str">"input_ids"</span>: tensor([[<span class="num">101</span>, <span class="num">102</span>, <span class="num">103</span>, <span class="num">104</span>, <span class="num">105</span>, <span class="num">106</span>, <span class="num">107</span>]]),
+    <span class="str">"attention_mask"</span>: tensor([[<span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>]]),
+    <span class="str">"pixel_values"</span>: tensor(...),
+}</pre>
+
+<div class="note"><b>这里最容易误会的一点：</b>即使你只传了一条样本，Hugging Face 通常也会按 batch 形式返回，所以 <code>input_ids</code> 的形状更像 <code>[1, seq_len]</code>，不是直接 <code>[seq_len]</code>。</div>
+
+<div class="subsection">
+<h3>3.1 为什么后面要 <code>squeeze(0)</code></h3>
+<pre class="code">input_ids = full_inputs[<span class="str">"input_ids"</span>].squeeze(<span class="num">0</span>)
+attention_mask = full_inputs.get(<span class="str">"attention_mask"</span>, torch.ones_like(input_ids))
+if attention_mask.dim() &gt; <span class="num">1</span>:
+    attention_mask = attention_mask.squeeze(<span class="num">0</span>)</pre>
+
+<p>做完之后，概念上会变成：</p>
+<pre class="code">input_ids = tensor([<span class="num">101</span>, <span class="num">102</span>, <span class="num">103</span>, <span class="num">104</span>, <span class="num">105</span>, <span class="num">106</span>, <span class="num">107</span>])
+attention_mask = tensor([<span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>])</pre>
+
+<div class="deep">
+<div class="deep-title">这三句的 mental model</div>
+<p>它们是在把 Hugging Face 返回的“单样本 batch 形式输入”，整理成“当前这条样本的一维 token 序列”，这样后面改 <code>labels</code> 和构造 <code>prompt_mask</code> 才直观。</p>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="labels"></span>4. labels 怎么构造</h2>
+<p>这是 <code>tokenize()</code> 里最关键的训练语义：什么位置参与 loss，什么位置不参与。</p>
+</div>
+
+<pre class="code">labels = input_ids.clone()
+prompt_len = <span class="num">0</span>
+if prompt_text:
+    prompt_inputs = processor(
+        text=prompt_text,
+        images=[image],
+        return_tensors=<span class="str">"pt"</span>,
+        truncation=<span class="kw">True</span>,
+        max_length=max_length,
+    )
+    prompt_len = min(prompt_inputs[<span class="str">"input_ids"</span>].shape[<span class="num">1</span>], input_ids.size(<span class="num">0</span>))
+    labels[:prompt_len] = IGNORE_INDEX</pre>
+
+<p>假设这里算出来：</p>
+<pre class="code">prompt_len = <span class="num">5</span></pre>
+
+<p>那么：</p>
+<pre class="code">初始 labels = [101, 102, 103, 104, 105, 106, 107]
+修改后 labels = [-100, -100, -100, -100, -100, 106, 107]</pre>
+
+<div class="note"><b>一句话理解：</b>前 5 个 token 属于 prompt，不参与 loss；最后 2 个 token 属于答案 <code>cat</code>，参与 loss。</div>
+
+<div class="subsection">
+<h3>4.1 prompt_mask 怎么来</h3>
+<pre class="code">prompt_mask = torch.zeros_like(input_ids, dtype=torch.bool)
+if prompt_len:
+    prompt_mask[:prompt_len] = True
+prompt_mask &amp;= attention_mask.bool()</pre>
+
+<p>结果概念上是：</p>
+<pre class="code">prompt_mask = tensor([True, True, True, True, True, False, False])</pre>
+
+<p class="small">它主要是给 <code>L2T</code> 用的，不是普通 LoRA / Freeze 的核心监督目标。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="tokenize-out"></span>5. tokenize() 的最终输出</h2>
+<p>到这里，单条样本级别的工作就完成了。</p>
+</div>
+
+<pre class="code">{
+    <span class="str">"input_ids"</span>: tensor([<span class="num">101</span>, <span class="num">102</span>, <span class="num">103</span>, <span class="num">104</span>, <span class="num">105</span>, <span class="num">106</span>, <span class="num">107</span>]),
+    <span class="str">"labels"</span>: tensor([<span class="op">-</span><span class="num">100</span>, <span class="op">-</span><span class="num">100</span>, <span class="op">-</span><span class="num">100</span>, <span class="op">-</span><span class="num">100</span>, <span class="op">-</span><span class="num">100</span>, <span class="num">106</span>, <span class="num">107</span>]),
+    <span class="str">"attention_mask"</span>: tensor([<span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>]),
+    <span class="str">"prompt_mask"</span>: tensor([True, True, True, True, True, False, False]),
+    <span class="str">"pixel_values"</span>: tensor(...),
+}</pre>
+
+<div class="deep">
+<div class="deep-title">这里要有的直觉</div>
+<p><code>tokenize()</code> 的最终目标不是“得到漂亮的文本”，而是得到一包训练器马上就能消费的张量：输入是什么、监督目标是什么、哪些位置有效、哪些位置属于 prompt。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="collate-mm"></span>6. collate() 的 mental model</h2>
+<p>现在从单条样本切换到多条样本。<code>collate()</code> 就是把很多条不同长度的样本，对齐成一个矩阵 batch。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">一句话版</div>
+<p><b><code>collate()</code> = 先找最长序列，再把短序列补齐，然后把所有单样本张量叠成 batch 张量。</b></p>
+</div>
+
+<div class="note"><b>关键提醒：</b>padding 真正出现的地方通常是这里，不是在 <code>tokenize()</code> 里。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="collate-padding"></span>7. padding 真正在哪里出现</h2>
+<p>为了讲清楚 padding，我们现在准备两条已经 tokenized 的样本。</p>
+</div>
+
+<div class="subsection">
+<h3>样本 A（前面的猫图样本）</h3>
+<pre class="code">input_ids_A      = [101, 102, 103, 104, 105, 106, 107]
+attention_mask_A = [1,   1,   1,   1,   1,   1,   1]
+labels_A         = [-100, -100, -100, -100, -100, 106, 107]
+prompt_mask_A    = [T, T, T, T, T, F, F]</pre>
+</div>
+
+<div class="subsection">
+<h3>样本 B（更短的一条狗图样本）</h3>
+<pre class="code">input_ids_B      = [201, 202, 203, 204, 205]
+attention_mask_B = [1,   1,   1,   1,   1]
+labels_B         = [-100, -100, -100, 204, 205]
+prompt_mask_B    = [T, T, T, F, F]</pre>
+</div>
+
+<p>长度分别是：</p>
+<ul>
+  <li>样本 A：7</li>
+  <li>样本 B：5</li>
+</ul>
+
+<pre class="code">max_len = <span class="num">7</span>
+batch_size = <span class="num">2</span></pre>
+
+<div class="note"><b>padding 的本质：</b>样本 B 太短，必须补到 7，才能和样本 A 一起排成一个矩阵。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="collate-loop"></span>8. 那个 for 循环到底在做什么</h2>
+<p>现在看 <code>collate()</code> 最核心的那一段。它其实是在往几张“空白表格”里抄数据。</p>
+</div>
+
+<pre class="code">batch_ids = torch.zeros(batch_size, max_len, dtype=torch.long)
+batch_labels = torch.full((batch_size, max_len), IGNORE_INDEX, dtype=torch.long)
+batch_mask = torch.zeros(batch_size, max_len, dtype=torch.long)
+batch_prompt = torch.zeros(batch_size, max_len, dtype=torch.bool)</pre>
+
+<p>先把这四个初始化理解成：</p>
+<ul>
+  <li><code>batch_ids</code>：默认补 0</li>
+  <li><code>batch_labels</code>：默认补 <code>-100</code></li>
+  <li><code>batch_mask</code>：默认补 0</li>
+  <li><code>batch_prompt</code>：默认补 <code>False</code></li>
+</ul>
+
+<pre class="code">for i, sample in enumerate(samples):
+    seq_len = sample["input_ids"].size(0)
+    batch_ids[i, :seq_len] = sample["input_ids"]
+    batch_labels[i, :seq_len] = sample["labels"]
+    batch_mask[i, :seq_len] = sample["attention_mask"]
+    batch_prompt[i, :seq_len] = sample["prompt_mask"]</pre>
+
+<div class="deep">
+<div class="deep-title">这段循环的 mental model</div>
+<p>不是“复杂 tensor 魔法”，而是很朴素的“把每条样本抄到对应那一行的前半段；剩下没抄到的尾巴，就保留默认值，当作 padding”。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="collate-out"></span>9. collate() 的最终输出</h2>
+<p>执行完那个循环后，这四张表概念上会长成下面这样。</p>
+</div>
+
+<div class="subsection">
+<h3>batch_ids</h3>
+<pre class="code">[
+    [101, 102, 103, 104, 105, 106, 107],
+    [201, 202, 203, 204, 205,   0,   0],
+]</pre>
+</div>
+
+<div class="subsection">
+<h3>batch_mask</h3>
+<pre class="code">[
+    [1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 0, 0],
+]</pre>
+</div>
+
+<div class="subsection">
+<h3>batch_labels</h3>
+<pre class="code">[
+    [-100, -100, -100, -100, -100, 106, 107],
+    [-100, -100, -100,  204,  205, -100, -100],
+]</pre>
+</div>
+
+<div class="subsection">
+<h3>batch_prompt</h3>
+<pre class="code">[
+    [T, T, T, T, T, F, F],
+    [T, T, T, F, F, F, F],
+]</pre>
+</div>
+
+<div class="note"><b>现在一定要分清这三件事：</b><br>
+• <code>input_ids</code> 里的 <code>0</code> 通常表示 padding token<br>
+• <code>attention_mask</code> 里的 <code>0</code> 表示这个位置不是有效输入<br>
+• <code>labels</code> 里的 <code>-100</code> 表示这个位置不参与 loss</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="together"></span>10. tokenize 和 collate 放回一起看</h2>
+<p>现在把这两个函数重新放回一条完整数据流里。</p>
+</div>
+
+<table>
+  <tr><th>阶段</th><th>处理对象</th><th>重点产物</th><th>要解决的问题</th></tr>
+  <tr>
+    <td><code>tokenize()</code></td>
+    <td>单条样本</td>
+    <td><code>input_ids</code>、<code>labels</code>、<code>attention_mask</code>、<code>prompt_mask</code></td>
+    <td>这条样本怎么变成训练张量？prompt 到哪里结束？哪些 token 算 loss？</td>
+  </tr>
+  <tr>
+    <td><code>collate()</code></td>
+    <td>多条样本</td>
+    <td><code>batch_ids</code>、<code>batch_labels</code>、<code>batch_mask</code>、<code>batch_prompt</code></td>
+    <td>不同长度的样本怎么 padding 并拼成一个 batch？</td>
+  </tr>
+</table>
+
+<div class="graph">一条样本:
+sample
+  → messages
+  → full_text / prompt_text
+  → input_ids / labels / prompt_mask
+
+很多条样本:
+[sample1, sample2, sample3]
+  → [tokenized1, tokenized2, tokenized3]
+  → collate()
+  → batch_ids / batch_labels / batch_mask / batch_prompt</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="mini-table"></span>最小记忆表</h2>
+<p>最后把最容易混的四样东西压成一张小表。</p>
+</div>
+
+<table>
+  <tr><th>名字</th><th>它回答的问题</th><th>例子</th></tr>
+  <tr>
+    <td><code>input_ids</code></td>
+    <td>模型真正看到的 token 序列是什么？</td>
+    <td><code>[101, 102, 103, ...]</code></td>
+  </tr>
+  <tr>
+    <td><code>attention_mask</code></td>
+    <td>哪些位置是有效输入，哪些位置是 padding？</td>
+    <td><code>[1, 1, 1, 1, 1, 0, 0]</code></td>
+  </tr>
+  <tr>
+    <td><code>labels</code></td>
+    <td>哪些位置参与 loss？</td>
+    <td><code>[-100, -100, -100, 204, 205, -100, -100]</code></td>
+  </tr>
+  <tr>
+    <td><code>prompt_mask</code></td>
+    <td>哪些位置属于 prompt？</td>
+    <td><code>[T, T, T, F, F, F, F]</code></td>
+  </tr>
+</table>
+
+<div class="deep">
+<div class="deep-title">最后再压一句</div>
+<p><b><code>tokenize()</code> 负责“把一条样本翻译成训练张量”；<code>collate()</code> 负责“把很多条训练张量补齐并排成 batch”。</b></p>
+</div>
+</section>
+
+</main>
+</body>
+</html>
