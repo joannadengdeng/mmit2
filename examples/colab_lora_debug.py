@@ -103,9 +103,12 @@ def _load_samples(trainer_config: TrainerConfig) -> List[CanonicalSample]:
         raise ValueError(f"Unsupported adapter '{adapter_name}'")
 
     dataset_name = data_cfg.pop("data_path")
-    adapter = HFDatasetsAdapter(dataset_name=dataset_name, **data_cfg)
-    samples = list(adapter)
-    return samples[:max_samples] if max_samples > 0 else samples
+    adapter = HFDatasetsAdapter(
+        dataset_name=dataset_name,
+        max_samples=max_samples if max_samples > 0 else None,
+        **data_cfg,
+    )
+    return [sample for sample in adapter]
 
 
 def _sample_summary(sample: CanonicalSample) -> Dict[str, Any]:
