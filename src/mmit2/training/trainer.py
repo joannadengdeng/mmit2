@@ -91,6 +91,7 @@ class Trainer:
         data_cfg = dict(config.data_config)
         adapter_name = data_cfg.pop("adapter", "hf_datasets")
         max_samples = int(data_cfg.pop("max_samples", 0) or 0)
+        data_cfg.pop("image_root", None)
         if adapter_name != "hf_datasets":
             raise ValueError(
                 f"Unsupported data adapter '{adapter_name}'. Only 'hf_datasets' is supported."
@@ -102,10 +103,11 @@ class Trainer:
             elif "dataset" in data_cfg:
                 data_cfg["dataset_name"] = data_cfg.pop("dataset")
 
-        adapter = HFDatasetsAdapter(**data_cfg)
+        adapter = HFDatasetsAdapter(
+            max_samples=max_samples if max_samples > 0 else None,
+            **data_cfg,
+        )
         samples = list(adapter)
-        if max_samples > 0:
-            samples = samples[:max_samples]
         return samples
 
     def _preprocess_dataset(self, samples, config: TrainerConfig):
