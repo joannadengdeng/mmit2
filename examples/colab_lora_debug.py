@@ -177,9 +177,23 @@ def _apply_colab_runtime(cfg: Any, trainer_config: TrainerConfig) -> None:
         return
 
     colab_cfg = cfg.runtime.colab
+    drive_root = os.path.join(colab_cfg.drive_mount_point, "MyDrive")
     if colab_cfg.mount_drive and colab_drive is not None:
-        print(f"[mmit2] Mounting Google Drive at {colab_cfg.drive_mount_point}")
-        colab_drive.mount(colab_cfg.drive_mount_point)
+        if os.path.isdir(drive_root):
+            print(f"[mmit2] Google Drive already mounted at {colab_cfg.drive_mount_point}")
+        else:
+            print(f"[mmit2] Mounting Google Drive at {colab_cfg.drive_mount_point}")
+            try:
+                colab_drive.mount(colab_cfg.drive_mount_point)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Google Drive auto-mount failed. In Colab, run:\n"
+                    "from google.colab import drive\n"
+                    f"drive.mount('{colab_cfg.drive_mount_point}')\n"
+                    "in a Python cell first, then rerun this script. "
+                    "If you do not want Drive output, set mount_drive=false and output_to_drive=false "
+                    "in the config."
+                ) from exc
 
     if colab_cfg.output_to_drive:
         trainer_config.output_dir = os.path.join(
