@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+from platform import python_version
 from pathlib import Path
 from pprint import pprint
 from typing import Any, Dict, List
@@ -185,6 +186,21 @@ def _dataset_overview(
         "eval_count": len(eval_samples),
         "train_preview": [_sample_short_summary(sample) for sample in train_samples[:3]],
         "eval_preview": [_sample_short_summary(sample) for sample in eval_samples[:3]],
+    }
+
+
+def _runtime_summary() -> Dict[str, Any]:
+    device_names = []
+    if torch.cuda.is_available():
+        for idx in range(torch.cuda.device_count()):
+            device_names.append(torch.cuda.get_device_name(idx))
+    return {
+        "python_version": python_version(),
+        "torch_version": torch.__version__,
+        "torch_cuda_version": torch.version.cuda,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_device_count": torch.cuda.device_count(),
+        "cuda_device_names": device_names,
     }
 
 
@@ -440,6 +456,22 @@ def main() -> None:
         eval_count=args.eval_count,
         eval_offset=eval_offset,
     )
+    runtime_summary = _runtime_summary()
+
+    _section("Runtime Summary")
+    pprint(runtime_summary)
+
+    if not args.inspect_only and not runtime_summary["cuda_available"]:
+        raise RuntimeError(
+            "CUDA is not available in this Python environment, so the model would run on CPU and "
+            "be extremely slow. In Colab this usually means the GPU build of torch is not active. "
+            "Restart the runtime, then reinstall without replacing Colab's torch. Recommended steps:\n"
+            "1. Runtime -> Restart runtime\n"
+            "2. Clone the repo again\n"
+            "3. Run: pip install -q transformers peft accelerate datasets pyyaml pillow bitsandbytes\n"
+            "4. Run: pip install -q -e . --no-deps\n"
+            "5. Verify with: import torch; print(torch.__version__, torch.cuda.is_available(), torch.version.cuda)"
+        )
 
     _section("Training Config")
     pprint(_json_ready({
