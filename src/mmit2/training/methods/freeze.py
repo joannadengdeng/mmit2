@@ -65,6 +65,12 @@ def _matches_prefix(param_name: str, prefix: str) -> bool:
     return param_name == prefix or param_name.startswith(prefix + ".")
 
 
+def _restore_trainable_flags(model: nn.Module, trained_names: list[str]) -> None:
+    trained = set(trained_names)
+    for name, param in model.named_parameters():
+        param.requires_grad = _can_update(param) and name in trained
+
+
 class FreezeTuningMethod(TrainingMethod):
     """Freeze Tuning: unfreeze the requested module prefixes and keep the rest frozen."""
 
@@ -145,6 +151,13 @@ class FreezeTuningMethod(TrainingMethod):
             map_location="cpu", weights_only=True,
         )
         model.load_state_dict(state, strict=False)
+        meta_path = os.path.join(path, "mmit_meta.json")
+        if os.path.exists(meta_path):
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+            trained_names = meta.get("trained_param_names", [])
+            if trained_names:
+                _restore_trainable_flags(model, trained_names)
         model.eval()
 
         adapter_name = os.path.basename(path)
