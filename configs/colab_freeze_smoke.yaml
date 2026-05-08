@@ -27,7 +27,7 @@ training:
   output_dir: "output/freeze_colab_smoke"
   params:
     unfreeze_modules:
-      - "model.layers.0"
+      - "model.language_model.layers.0"
 
 data:
   adapter: hf_datasets

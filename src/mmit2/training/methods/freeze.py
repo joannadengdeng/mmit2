@@ -21,7 +21,15 @@ def _can_update(param: nn.Parameter) -> bool:
 
 def _find_transformer_layers(model: nn.Module) -> tuple[str, list[nn.Module]]:
     """Find the transformer layer container path and the layer list."""
-    for attr in ("model.layers", "transformer.h", "gpt_neox.layers"):
+    for attr in (
+        "model.language_model.layers",
+        "language_model.layers",
+        "model.visual.blocks",
+        "visual.blocks",
+        "model.layers",
+        "transformer.h",
+        "gpt_neox.layers",
+    ):
         obj = model
         try:
             for part in attr.split("."):

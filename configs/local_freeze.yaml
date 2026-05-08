@@ -19,10 +19,10 @@ training:
   output_dir: "output/freeze_qwen2vl_3b"
   params:
     unfreeze_modules:
-      - "model.layers.0"
-      - "model.layers.1"
-      - "model.layers.2"
-      - "model.layers.3"
+      - "model.language_model.layers.0"
+      - "model.language_model.layers.1"
+      - "model.language_model.layers.2"
+      - "model.language_model.layers.3"
 
 data:
   adapter: hf_datasets
