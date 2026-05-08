@@ -38,6 +38,7 @@ import traceback
 
 import yaml
 
+from mmit2.config.training_config import config_to_trainer_dict, load_config
 from mmit2.training.trainer import Trainer, TrainerConfig, _emit
 
 
@@ -75,7 +76,14 @@ def main():
 
     if args.config:
         with open(args.config, "r") as f:
-            config = yaml.safe_load(f) or {}
+            raw_config = yaml.safe_load(f) or {}
+        # Support both:
+        # 1) the normalized trainer dict schema (training_method / method_params)
+        # 2) the higher-level YAML schema used by repo configs (training.ft_method / training.params)
+        if "training_method" in raw_config or "method_params" in raw_config:
+            config = raw_config
+        else:
+            config = config_to_trainer_dict(load_config(args.config))
     elif args.config_json:
         config = json.loads(args.config_json)
     else:
