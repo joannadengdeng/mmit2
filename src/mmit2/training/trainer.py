@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from mmit2.data.adapters.hf_datasets import HFDatasetsAdapter
 from mmit2.modeling import load_processor, load_vlm
@@ -50,6 +50,84 @@ def _to_device(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
         else:
             out[key] = value
     return out
+
+
+def _shape_str(value: Any) -> str:
+    if isinstance(value, torch.Tensor):
+        return "x".join(str(dim) for dim in value.shape)
+    if isinstance(value, list) and value and isinstance(value[0], torch.Tensor):
+        first = value[0]
+        return f"list[{len(value)}]:" + "x".join(str(dim) for dim in first.shape)
+    return type(value).__name__
+
+
+def _describe_batch(batch: Dict[str, Any]) -> str:
+    parts = [
+        f"input_ids={_shape_str(batch['input_ids'])}",
+        f"labels={_shape_str(batch['labels'])}",
+        f"attention_mask={_shape_str(batch['attention_mask'])}",
+    ]
+    for key in ("pixel_values", "image_grid_thw", "image_sizes"):
+        if key in batch:
+            parts.append(f"{key}={_shape_str(batch[key])}")
+    return "First batch shapes: " + ", ".join(parts)
+
+
+class _TokenizedMapDataset(Dataset):
+    """Map-style dataset that tokenizes one sample at access time."""
+
+    def __init__(self, adapter, preprocessor, processor, image_root: str, logger) -> None:
+        self._adapter = adapter
+        self._preprocessor = preprocessor
+        self._processor = processor
+        self._image_root = image_root
+        self._logger = logger
+
+    def __len__(self) -> int:
+        return len(self._adapter)
+
+    def __getitem__(self, idx: int):
+        sample = self._adapter[idx]
+        try:
+            return self._preprocessor.tokenize(
+                sample,
+                self._processor,
+                image_root=self._image_root,
+                max_length=2048,
+            )
+        except Exception as exc:
+            self._logger(sample.id, exc)
+            return None
+
+
+class _TokenizedIterableDataset(IterableDataset):
+    """Streaming dataset that tokenizes samples as they are iterated."""
+
+    def __init__(self, adapter, preprocessor, processor, image_root: str, logger) -> None:
+        self._adapter = adapter
+        self._preprocessor = preprocessor
+        self._processor = processor
+        self._image_root = image_root
+        self._logger = logger
+
+    def __iter__(self):
+        for sample in self._adapter:
+            try:
+                yield self._preprocessor.tokenize(
+                    sample,
+                    self._processor,
+                    image_root=self._image_root,
+                    max_length=2048,
+                )
+            except Exception as exc:
+                self._logger(sample.id, exc)
+
+
+def _safe_collate(preprocessor: ChatTemplatePreprocessor, samples) -> Dict[str, Any]:
+    valid = [sample for sample in samples if sample is not None]
+    if not valid:
+        return {}
+    return preprocessor.collate(valid)
 
 
 @dataclass
@@ -103,32 +181,33 @@ class Trainer:
             elif "dataset" in data_cfg:
                 data_cfg["dataset_name"] = data_cfg.pop("dataset")
 
-        adapter = HFDatasetsAdapter(
+        return HFDatasetsAdapter(
             max_samples=max_samples if max_samples > 0 else None,
             **data_cfg,
         )
-        samples = list(adapter)
-        return samples
 
-    def _preprocess_dataset(self, samples, config: TrainerConfig):
+    def _build_tokenized_dataset(self, adapter, config: TrainerConfig):
         preprocessor = ChatTemplatePreprocessor()
-        processed = []
         image_root = config.data_config.get("image_root", "")
-        max_length = 2048
-
-        for sample in samples:
-            try:
-                tokenized = preprocessor.tokenize(
-                    sample,
-                    self._processor,
-                    image_root=image_root,
-                    max_length=max_length,
-                )
-                processed.append(tokenized)
-            except Exception as exc:
-                _emit("log", {"message": f"Skipping sample {sample.id}: {exc}", "level": "WARNING"})
-
-        return processed, preprocessor
+        logger = lambda sample_id, exc: _emit(
+            "log",
+            {"message": f"Skipping sample {sample_id}: {exc}", "level": "WARNING"},
+        )
+        if getattr(adapter, "streaming", False):
+            return _TokenizedIterableDataset(
+                adapter,
+                preprocessor,
+                self._processor,
+                image_root,
+                logger,
+            ), preprocessor
+        return _TokenizedMapDataset(
+            adapter,
+            preprocessor,
+            self._processor,
+            image_root,
+            logger,
+        ), preprocessor
 
     def train(self, config: TrainerConfig) -> None:
         _emit("status", {"status": "loading"})
@@ -140,14 +219,29 @@ class Trainer:
             self._load_model(method_obj, method_config)
 
         _emit("log", {"message": "Loading dataset...", "level": "INFO"})
-        samples = self._build_dataset(config)
-        _emit("log", {"message": f"{len(samples)} samples", "level": "INFO"})
+        adapter = self._build_dataset(config)
+        dataset_len = len(adapter)
+        if dataset_len < 0:
+            raise ValueError(
+                "Could not determine dataset length for training. "
+                "Please provide a dataset/split with a known size or set max_samples."
+            )
+        _emit("log", {"message": f"{dataset_len} samples", "level": "INFO"})
+        _emit(
+            "log",
+            {
+                "message": (
+                    "Dataset resolved to "
+                    f"{adapter.dataset_name} split={adapter.split} "
+                    f"streaming={adapter.streaming} max_samples={adapter.max_samples or 'full'}"
+                ),
+                "level": "INFO",
+            },
+        )
 
         _emit("log", {"message": "Preprocessing...", "level": "INFO"})
-        processed, preprocessor = self._preprocess_dataset(samples, config)
-        _emit("log", {"message": f"{len(processed)} samples tokenized", "level": "INFO"})
-        if not processed:
-            raise ValueError("No samples after preprocessing")
+        tokenized_dataset, preprocessor = self._build_tokenized_dataset(adapter, config)
+        _emit("log", {"message": f"{dataset_len} samples scheduled for lazy tokenization", "level": "INFO"})
 
         self._model, info_str = method_obj.prepare_model(
             self._model, self._processor, method_config,
@@ -160,16 +254,32 @@ class Trainer:
         optimizer = AdamW(param_groups, weight_decay=config.weight_decay)
 
         loader = DataLoader(
-            processed,
+            tokenized_dataset,
             batch_size=config.per_device_batch_size,
-            shuffle=True,
-            collate_fn=preprocessor.collate,
+            shuffle=not getattr(adapter, "streaming", False),
+            collate_fn=lambda samples: _safe_collate(preprocessor, samples),
             drop_last=True,
         )
-        steps_per_epoch = max(1, len(loader) // config.gradient_accumulation_steps)
+        batches_per_epoch = max(1, dataset_len // config.per_device_batch_size)
+        steps_per_epoch = max(1, batches_per_epoch // config.gradient_accumulation_steps)
         total_steps = steps_per_epoch * config.num_epochs
         warmup_steps = int(total_steps * config.warmup_ratio)
         scheduler = _cosine_schedule(optimizer, warmup_steps, total_steps)
+        effective_batch_size = config.per_device_batch_size * config.gradient_accumulation_steps
+        _emit(
+            "log",
+            {
+                "message": (
+                    "Training plan: "
+                    f"effective_batch_size={effective_batch_size}, "
+                    f"batches_per_epoch~{batches_per_epoch}, "
+                    f"optimizer_steps_per_epoch~{steps_per_epoch}, "
+                    f"total_steps~{total_steps}, warmup_steps={warmup_steps}, "
+                    f"output_dir={config.output_dir}"
+                ),
+                "level": "INFO",
+            },
+        )
 
         _emit("status", {"status": "training"})
         self._model.train()
@@ -177,9 +287,15 @@ class Trainer:
         global_step = 0
         total_loss = 0.0
         start_time = time.time()
+        logged_first_batch = False
 
         for epoch in range(config.num_epochs):
             for step, batch in enumerate(loader):
+                if not batch:
+                    continue
+                if not logged_first_batch:
+                    _emit("log", {"message": _describe_batch(batch), "level": "INFO"})
+                    logged_first_batch = True
                 batch = _to_device(batch, device)
                 batch["labels"] = method_obj.preprocess_labels(
                     batch["input_ids"], batch["labels"], batch_meta=batch,

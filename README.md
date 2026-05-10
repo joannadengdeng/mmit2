@@ -30,8 +30,10 @@ Useful entry points:
 - Training CLI: `python -m mmit2.training --config configs/local_qlora.yaml`
 - Debug CLI: `python -m mmit2.debug --config configs/colab_lora_debug.yaml`
 - Smoke CLI: `python -m mmit2.smoke --suite quick`
+- Full train+eval CLI: `python -m mmit2.fullrun --config configs/colab_lora_full_eval.yaml`
 - Colab debug wrapper: `examples/colab_lora_debug.py`
 - Smoke matrix wrapper: `examples/colab_smoke_matrix.py`
+- Colab full-run wrapper: `examples/colab_lora_fullrun.py`
 - Chat-template teaching note: `examples/chat_template_tokenize_collate_guide.html`
 
 Install:

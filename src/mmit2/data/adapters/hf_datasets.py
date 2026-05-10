@@ -37,6 +37,7 @@ class HFDatasetsAdapter(DatasetAdapter):
         self.max_samples = max_samples
         self.streaming = streaming
         self.load_images = load_images
+        self._num_examples: Optional[int] = None
 
         spec = get_dataset_spec(dataset_name)
         prefer_streaming = spec.prefer_streaming if spec is not None else False
@@ -85,8 +86,15 @@ class HFDatasetsAdapter(DatasetAdapter):
         trust_remote_code: bool,
     ):
         splits_to_try = [split]
+        split_sizes: Dict[str, int] = {}
         try:
             ds_info = datasets_mod.load_dataset_builder(*load_pos).info
+            if ds_info.splits:
+                split_sizes = {
+                    name: int(split_info.num_examples)
+                    for name, split_info in ds_info.splits.items()
+                    if split_info.num_examples is not None
+                }
             available = list(ds_info.splits.keys()) if ds_info.splits else []
             if available:
                 if split in available:
@@ -108,6 +116,7 @@ class HFDatasetsAdapter(DatasetAdapter):
                 try:
                     dataset = datasets_mod.load_dataset(*load_pos, **kwargs)
                     self.split = try_split
+                    self._num_examples = split_sizes.get(try_split)
                     return dataset
                 except Exception as exc:
                     if first_err is None:
@@ -123,6 +132,7 @@ class HFDatasetsAdapter(DatasetAdapter):
                         dataset = datasets_mod.load_dataset(*load_pos, **kwargs)
                         self.streaming = True
                         self.split = try_split
+                        self._num_examples = split_sizes.get(try_split)
                         return dataset
                     except Exception:
                         pass
@@ -143,7 +153,13 @@ class HFDatasetsAdapter(DatasetAdapter):
 
     def __len__(self) -> int:
         if self.streaming:
-            return self.max_samples if self.max_samples is not None else -1
+            if self.max_samples is not None:
+                if self._num_examples is not None:
+                    return min(self.max_samples, self._num_examples)
+                return self.max_samples
+            if self._num_examples is not None:
+                return self._num_examples
+            return -1
         return len(self._hf_dataset)
 
     def __iter__(self) -> Iterator[CanonicalSample]:
