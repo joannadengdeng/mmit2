@@ -1,7 +1,7 @@
-# Colab: full LoRA training on the complete train split, followed by full eval.
+# Colab: full LoRA training on a complete train split, followed by full eval.
 #
 # This is intentionally much heavier than the smoke/debug configs:
-# - trains on the full training split (no max_samples cap)
+# - trains on the full TextVQA train split (no max_samples cap)
 # - evaluates entire eval splits / benchmark datasets
 #
 # Usage:
@@ -39,7 +39,7 @@ training:
 
 data:
   adapter: hf_datasets
-  data_path: "lmms-lab/VQAv2"
+  data_path: "lmms-lab/textvqa"
   split: train
 
 eval:

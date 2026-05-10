@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+from importlib import metadata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional
@@ -111,6 +112,64 @@ def _load_raw_config(config_path: str) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def _parse_version_tuple(version_text: str) -> tuple[int, ...]:
+    parts = []
+    for chunk in version_text.split("."):
+        digits = "".join(ch for ch in chunk if ch.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def _ensure_compatible_torchao() -> None:
+    try:
+        version_text = metadata.version("torchao")
+    except metadata.PackageNotFoundError:
+        return
+
+    if _parse_version_tuple(version_text) >= (0, 16, 0):
+        return
+
+    print(
+        "[mmit2] Removing incompatible torchao "
+        f"{version_text} (PEFT LoRA requires >=0.16.0 if torchao is installed)"
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pip", "uninstall", "-y", "torchao"],
+        check=False,
+    )
+    print()
+
+
+def _maybe_mount_drive(colab_cfg) -> bool:
+    drive_root = os.path.join(colab_cfg.drive_mount_point, "MyDrive")
+    if not colab_cfg.mount_drive:
+        return os.path.isdir(drive_root)
+
+    if os.path.isdir(drive_root):
+        print(f"[mmit2] Google Drive already mounted at {colab_cfg.drive_mount_point}")
+        return True
+
+    try:
+        if colab_drive is None:
+            raise ImportError
+        print(f"[mmit2] Mounting Google Drive at {colab_cfg.drive_mount_point}")
+        colab_drive.mount(colab_cfg.drive_mount_point)
+    except ImportError:
+        print("[mmit2] WARNING: Not running inside Colab; skipping Drive mount.")
+    except Exception as exc:
+        print(
+            "[mmit2] WARNING: Drive mount failed. If you want Drive output, run this "
+            "first in a notebook cell:\n"
+            "from google.colab import drive\n"
+            f"drive.mount('{colab_cfg.drive_mount_point}')\n"
+            f"Underlying error: {exc}"
+        )
+
+    return os.path.isdir(drive_root)
+
+
 def _prepare_runtime(cfg) -> None:
     runtime_mode = cfg.runtime.mode
     if runtime_mode == "local":
@@ -129,30 +188,25 @@ def _prepare_runtime(cfg) -> None:
             )
         print()
 
-    if colab_cfg.mount_drive:
-        drive_root = os.path.join(colab_cfg.drive_mount_point, "MyDrive")
-        try:
-            if colab_drive is None:
-                raise ImportError
-            if os.path.isdir(drive_root):
-                print(f"[mmit2] Google Drive already mounted at {colab_cfg.drive_mount_point}")
-            else:
-                print(f"[mmit2] Mounting Google Drive at {colab_cfg.drive_mount_point}")
-                colab_drive.mount(colab_cfg.drive_mount_point)
-        except ImportError:
-            print("[mmit2] WARNING: Not running inside Colab; skipping Drive mount.")
-        except Exception as exc:
-            print(f"[mmit2] WARNING: Drive mount failed: {exc}")
+    _ensure_compatible_torchao()
+
+    drive_available = _maybe_mount_drive(colab_cfg)
 
     if colab_cfg.output_to_drive:
-        drive_output = os.path.join(
-            colab_cfg.drive_mount_point,
-            "MyDrive",
-            "mmit2_output",
-            cfg.training.output_dir,
-        )
-        print(f"[mmit2] Output redirected to Drive: {drive_output}")
-        cfg.training.output_dir = drive_output
+        if drive_available:
+            drive_output = os.path.join(
+                colab_cfg.drive_mount_point,
+                "MyDrive",
+                "mmit2_output",
+                cfg.training.output_dir,
+            )
+            print(f"[mmit2] Output redirected to Drive: {drive_output}")
+            cfg.training.output_dir = drive_output
+        else:
+            print(
+                "[mmit2] WARNING: Drive output requested, but Google Drive is not mounted. "
+                f"Keeping local output at: {cfg.training.output_dir}"
+            )
 
 
 def _build_trainer_config(cfg):

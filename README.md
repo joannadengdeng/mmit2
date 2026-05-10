@@ -64,3 +64,4 @@ Compatibility note:
 
 - `examples/colab_lora_debug.py` and `examples/colab_smoke_matrix.py` are still kept for Colab notebooks, teaching notes, and existing test flows.
 - New work should prefer the package-level commands above so users do not have to treat `examples/` as the main interface.
+- The full-train Colab configs currently use `lmms-lab/textvqa` for training because `lmms-lab/VQAv2` does not expose a `train` split.

@@ -1,8 +1,9 @@
-# Colab: full LoRA training on the complete train split.
+# Colab: full LoRA training on a complete train split.
 #
 # This is the "real" training config, not a smoke/debug config:
 # - no max_samples cap
 # - output goes to Drive/MyDrive/mmit2_output/...
+# - uses TextVQA because lmms-lab/VQAv2 does not currently expose a train split
 #
 # Usage:
 #   python -m mmit2.trainrun --config configs/colab_lora_full_train.yaml
@@ -39,5 +40,5 @@ training:
 
 data:
   adapter: hf_datasets
-  data_path: "lmms-lab/VQAv2"
+  data_path: "lmms-lab/textvqa"
   split: train

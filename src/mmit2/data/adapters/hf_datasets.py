@@ -87,6 +87,7 @@ class HFDatasetsAdapter(DatasetAdapter):
     ):
         splits_to_try = [split]
         split_sizes: Dict[str, int] = {}
+        available: List[str] = []
         try:
             ds_info = datasets_mod.load_dataset_builder(*load_pos).info
             if ds_info.splits:
@@ -96,18 +97,14 @@ class HFDatasetsAdapter(DatasetAdapter):
                     if split_info.num_examples is not None
                 }
             available = list(ds_info.splits.keys()) if ds_info.splits else []
-            if available:
-                if split in available:
-                    splits_to_try = [split]
-                else:
-                    splits_to_try = available
-                    self.split = splits_to_try[0]
         except Exception:
             pass
 
-        for fallback in ("train", "validation", "test"):
-            if fallback not in splits_to_try:
-                splits_to_try.append(fallback)
+        if available and split not in available:
+            raise ValueError(
+                f"Requested split '{split}' is not available for dataset '{self.dataset_name}'. "
+                f"Available splits: {available}"
+            )
 
         first_err = None
         for try_split in splits_to_try:
@@ -137,7 +134,15 @@ class HFDatasetsAdapter(DatasetAdapter):
                     except Exception:
                         pass
 
-        raise first_err  # type: ignore[misc]
+        if first_err is not None:
+            raise RuntimeError(
+                f"Failed to load dataset '{self.dataset_name}' split '{split}' "
+                f"(streaming={streaming})."
+            ) from first_err
+        raise RuntimeError(
+            f"Failed to load dataset '{self.dataset_name}' split '{split}' "
+            f"(streaming={streaming})."
+        )
 
     def _disable_eager_image_decode(self, datasets_mod) -> None:
         try:
