@@ -24,6 +24,8 @@ class Method(ABC):
         **kwargs,
     ) -> "Method":
         """Load a HuggingFace model locally for inference."""
+        from mmit2.eval.methods.local_method import LocalMethod
+
         return LocalMethod.from_checkpoint(base_model_id=model_path, **kwargs)
 
     @abstractmethod
@@ -56,6 +58,3 @@ class Method(ABC):
         temperature: float = 0.0,
     ) -> str:
         """Generate a response string from preprocessed inputs."""
-
-
-from mmit2.eval.methods.local_method import LocalMethod
