@@ -113,6 +113,9 @@ Notes:
 - Each training run creates an experiment directory with a saved `summary.json`, checkpoint path, config snapshot, and train summary.
 - The trainer emits a small amount of runtime information by design, including dataset resolution, estimated training plan, and the first batch tensor shapes.
 - There is no separate `fullrun` command in the initial release. Training the full dataset is just a normal training run with `data.max_samples` omitted or set to `0`.
+- JarvisLabs helper scripts are available in `scripts/`:
+  - `./scripts/jarvislabs_lora_100.sh` for a 100-sample smoke run
+  - `./scripts/jarvislabs_lora_full.sh` for a full-split LoRA run
 
 ## Evaluation
 
