@@ -16,6 +16,8 @@ set -euo pipefail
 # Common overrides:
 #   MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct MAX_SAMPLES=100 ./scripts/jarvislabs_lora_100.sh
 #   EXPERIMENT_NAME=my_lora_smoke NUM_EPOCHS=2 ./scripts/jarvislabs_lora_100.sh
+#   ./scripts/jarvislabs_lora_100.sh --hf-token-file /root/.hf_token
+#   ./scripts/jarvislabs_lora_100.sh --hf-token hf_xxx
 #   DRY_RUN=1 ./scripts/jarvislabs_lora_100.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
@@ -44,6 +46,45 @@ DEFAULT_EXPERIMENT_NAME="jarvislabs_lora_100_$(date +%Y%m%d_%H%M%S)"
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-$DEFAULT_EXPERIMENT_NAME}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 DRY_RUN="${DRY_RUN:-0}"
+HF_TOKEN_VALUE="${HF_TOKEN:-}"
+HF_TOKEN_FILE="${HF_TOKEN_FILE:-}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --hf-token)
+      if [[ $# -lt 2 ]]; then
+        echo "[mmit2] --hf-token requires a value" >&2
+        exit 1
+      fi
+      HF_TOKEN_VALUE="$2"
+      shift 2
+      ;;
+    --hf-token-file)
+      if [[ $# -lt 2 ]]; then
+        echo "[mmit2] --hf-token-file requires a path" >&2
+        exit 1
+      fi
+      HF_TOKEN_FILE="$2"
+      shift 2
+      ;;
+    *)
+      echo "[mmit2] Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$HF_TOKEN_VALUE" && -n "$HF_TOKEN_FILE" ]]; then
+  if [[ ! -f "$HF_TOKEN_FILE" ]]; then
+    echo "[mmit2] HF token file not found: $HF_TOKEN_FILE" >&2
+    exit 1
+  fi
+  HF_TOKEN_VALUE="$(tr -d '\r\n' < "$HF_TOKEN_FILE")"
+fi
+
+if [[ -n "$HF_TOKEN_VALUE" ]]; then
+  export HF_TOKEN="$HF_TOKEN_VALUE"
+fi
 
 export MODEL_PATH
 export DATASET_NAME
@@ -113,6 +154,11 @@ PY
 )"
 
 if [[ "$DRY_RUN" == "1" ]]; then
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    echo "[mmit2] HF token: enabled"
+  else
+    echo "[mmit2] HF token: not set"
+  fi
   printf '%s\n' "$CONFIG_JSON" | "$PYTHON_BIN" -m json.tool
   exit 0
 fi
@@ -140,6 +186,9 @@ echo "[mmit2] Model: $MODEL_PATH"
 echo "[mmit2] Dataset: $DATASET_NAME ($TRAIN_SPLIT)"
 echo "[mmit2] Samples: $MAX_SAMPLES"
 echo "[mmit2] Experiment: $EXPERIMENT_NAME"
+if [[ -n "${HF_TOKEN:-}" ]]; then
+  echo "[mmit2] HF token: enabled"
+fi
 echo
 
 python -m mmit2.training --config-json "$CONFIG_JSON"
