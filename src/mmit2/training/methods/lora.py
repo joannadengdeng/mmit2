@@ -11,8 +11,7 @@ import os
 import torch
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 
-from mmit2.training.modeling import load_processor, load_vlm
-from mmit2.training.methods.base import TrainingMethod
+from mmit2.training.methods.base import TrainingMethod, load_processor, load_vlm
 from mmit2.training.losses.ce_loss import CrossEntropyLoss
 
 IGNORE_INDEX = -100

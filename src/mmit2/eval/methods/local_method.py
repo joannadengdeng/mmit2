@@ -22,7 +22,7 @@ from PIL import Image
 
 from mmit2.data.types import CanonicalSample
 from mmit2.eval.methods.base import Method
-from mmit2.training.modeling import load_processor, load_vlm
+from mmit2.training.methods.base import load_processor, load_vlm
 from mmit2.training.registry import build_training_method
 
 

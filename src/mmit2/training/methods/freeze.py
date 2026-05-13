@@ -8,9 +8,8 @@ import torch
 import torch.nn as nn
 
 from mmit2.config.model_layouts import get_model_layout, list_model_layouts
-from mmit2.training.modeling import load_processor, load_vlm
 from mmit2.training.losses.ce_loss import CrossEntropyLoss
-from mmit2.training.methods.base import TrainingMethod
+from mmit2.training.methods.base import TrainingMethod, load_processor, load_vlm
 
 _ce_loss = CrossEntropyLoss()
 _GRAD_DTYPES = (torch.float32, torch.float16, torch.bfloat16)

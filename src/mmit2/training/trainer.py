@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from mmit2.data.adapters.hf_datasets import HFDatasetsAdapter
-from mmit2.training.modeling import load_processor, load_vlm
+from mmit2.training.methods.base import load_processor, load_vlm
 from mmit2.training.registry import build_training_method
 from mmit2.training.preprocessors.chat_template import ChatTemplatePreprocessor
 
