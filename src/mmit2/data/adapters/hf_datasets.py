@@ -44,7 +44,9 @@ class HFDatasetsAdapter(DatasetAdapter):
         config_arg = config_name or ""
         load_pos = (dataset_name, config_arg) if config_arg else (dataset_name,)
 
-        if not streaming and (prefer_streaming or (max_samples is not None and max_samples <= 50)):
+        # For initial-release smoke runs, loading a fixed subset should not force
+        # downloading the full dataset shards before sampling.
+        if not streaming and (prefer_streaming or max_samples is not None):
             streaming = True
             self.streaming = True
 
