@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>mmit2 整包讲义（LoRA 第一版）</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--mono:'SF Mono','Fira Code','Consolas',monospace;--sans:-apple-system,'Helvetica Neue',sans-serif}
+body{background:#fff;color:#000;font-family:var(--sans);font-size:9pt;line-height:1.52;padding:12px 24px 12px 220px;max-width:1220px;margin:0 auto}
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  body{padding:0;max-width:none;font-size:8.2pt;line-height:1.38}
+  .print-hint{display:none!important}
+  .sidebar{display:none!important}
+  body{padding:10px 12px}
+  .print-columns{column-count:2;column-gap:8mm}
+  .section{page-break-inside:auto;break-inside:auto;margin-bottom:12px}
+  .section-intro,.vis,.pytorch,.note,.deep,.graph,.callout{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid}
+  .subsection{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid-column}
+  pre.code,table{page-break-inside:auto;break-inside:auto}
+  tr,th,td{page-break-inside:avoid;break-inside:avoid}
+  th,td{padding:3px 4px;font-size:7pt;overflow-wrap:anywhere;word-break:break-word}
+  pre.code,.graph{font-size:7.05pt;line-height:1.3;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+  .vis-box{padding:4px 7px;font-size:7pt;min-width:44px}
+  .vis-label{font-size:6.4pt}
+  .grid-2,.grid-3{display:block!important}
+  .grid-2>*,.grid-3>*{display:block!important;width:100%!important}
+  p,li,td,th{orphans:2;widows:2}
+}
+.sidebar{position:fixed;left:0;top:0;width:205px;height:100vh;overflow-y:auto;background:#fafafa;border-right:1.5px solid #ddd;padding:10px 8px;font-size:7pt;z-index:100}
+.sidebar h3{font-size:7.5pt;margin:8px 0 3px;padding:0;border:none;color:#666;font-weight:600}
+.sidebar a{display:block;padding:2px 6px;margin:1px 0;color:#333;text-decoration:none;border-radius:3px;line-height:1.4;font-size:6.5pt}
+.sidebar a:hover{background:#e8e8e8}
+.sidebar .logo{font-size:9pt;font-weight:700;margin-bottom:6px;padding:4px 6px;border-bottom:1.5px solid #777}
+.sidebar .back-top{display:block;text-align:center;margin-top:8px;padding:4px;font-size:6.5pt;color:#888;border-top:1px solid #ddd}
+h1{font-size:13pt;font-weight:700;border-bottom:1.5px solid #666;padding-bottom:3px;margin-bottom:3px}
+.subtitle{font-size:8pt;color:#444;font-style:italic;margin-bottom:8px}
+h2{font-size:10.5pt;font-weight:700;margin:10px 0 5px;padding:3px 0;border-bottom:1px solid #777;color:#111}
+h3{font-size:9pt;font-weight:700;margin:6px 0 3px;border-bottom:1px solid #ccc;padding-bottom:1px;color:#222}
+p{margin:4px 0;font-size:8pt}
+ul,ol{margin:4px 0 4px 18px}
+li{margin:2px 0;font-size:8pt}
+code{font-family:var(--mono);font-size:0.96em}
+pre.code{background:#fbfbfb;border:1px solid #bbb;border-radius:2px;padding:5px 8px;font-family:var(--mono);font-size:7.5pt;line-height:1.42;margin:4px 0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.code .kw{color:#a00050;font-weight:600}.code .fn{color:#0040a0;font-weight:600}.code .str{color:#006400}.code .cm{color:#666;font-style:italic}.code .num{color:#a04000}
+.vis{border:1px solid #bbb;border-radius:3px;padding:6px 10px;margin:4px 0;background:#fcfcfc}
+.vis .vis-title{font-weight:700;font-size:9pt;margin-bottom:4px;color:#a00000}
+.vis-row{display:flex;align-items:stretch;gap:5px;margin:2px 0;font-family:var(--mono);font-size:7.5pt;flex-wrap:wrap}
+.vis-box{border:1px solid #aaa;padding:4px 8px;border-radius:2px;background:#fff;text-align:center;min-width:58px;font-size:7pt}
+.vis-box.param{background:#fff0f0;border-color:#a00000;font-weight:700}
+.vis-box.result{background:#e8f0ff;border-color:#0040a0}
+.vis-box.input{background:#fff8e0;border-color:#806000}
+.vis-box.frozen{background:#f0f5f0;border-color:#006400;border-style:dashed}
+.vis-arrow{font-size:12pt;font-weight:700;color:#000;align-self:center}
+.vis-label{font-size:6.5pt;color:#666;font-style:italic}
+.pytorch{margin:3px 0;padding:5px 8px;background:#f8f9ff;border:1px solid #9eb2d9;border-radius:2px;font-size:7.5pt}
+.pytorch .pt-title{font-weight:700;color:#0040a0;font-size:8pt;margin-bottom:2px;font-family:var(--mono)}
+.note{background:#fffdf4;border-left:2px solid #b08d2f;padding:4px 8px;margin:4px 0;font-size:7.5pt}
+.note b{color:#806000}
+.deep{background:#f7fbff;border:1px solid #a8bfdc;border-radius:3px;padding:6px 10px;margin:6px 0;font-size:7.5pt}
+.deep b{color:#0040a0}
+.deep .deep-title{font-weight:700;font-size:8pt;color:#0040a0;margin-bottom:3px}
+.callout{background:#f8fcf7;border:1px solid #9bc08c;border-radius:3px;padding:6px 10px;margin:6px 0;font-size:7.5pt}
+.callout .callout-title{font-weight:700;font-size:8pt;color:#2f6d1b;margin-bottom:3px}
+table{width:100%;border-collapse:collapse;font-size:7pt;margin:4px 0}
+th,td{padding:3px 5px;border:1px solid #aaa;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+th{background:#f3f3f3;color:#111}
+.graph{font-family:var(--mono);font-size:7pt;line-height:1.22;white-space:pre-wrap;background:#fbfbfb;border:1px solid #bbb;padding:5px 8px;margin:4px 0;border-radius:2px;word-break:break-word;overflow-wrap:anywhere}
+.print-hint{background:#fffbe0;border:1.5px solid #806000;padding:6px 8px;margin:6px 0 10px;font-size:7.5pt;border-radius:2px}
+.section{margin-bottom:14px}
+.subsection{margin:0 0 6px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.small{font-size:7.2pt;color:#555}
+.path{font-family:var(--mono);font-size:7.2pt;color:#444}
+@media (max-width:900px){
+  body{padding:12px 16px;max-width:none}
+  .sidebar{display:none}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+<div class="logo">mmit2 LoRA 讲义</div>
+<h3>总览</h3>
+<a href="#goal">这份讲义要解决什么</a>
+<a href="#mental-model">先立整包 mental model</a>
+<a href="#anchor-run">先看一条成功 run</a>
+<a href="#map">代码地图</a>
+<h3>基础补全</h3>
+<a href="#sample-foundation">1. CanonicalSample 是什么</a>
+<a href="#hf-foundation">2. Hugging Face processor / model</a>
+<a href="#pytorch-foundation">3. PyTorch 训练骨架</a>
+<a href="#lora-foundation">4. LoRA 究竟改了什么</a>
+<h3>主链</h3>
+<a href="#pipeline">5. 从 YAML 到 report 的主链</a>
+<a href="#config-layer">6. 配置层</a>
+<a href="#data-layer">7. 数据层</a>
+<a href="#preprocess-layer">8. 预处理层</a>
+<a href="#trainer-layer">9. Trainer 层</a>
+<a href="#method-layer">10. TrainingMethod / LoRA 层</a>
+<a href="#eval-layer">11. 评测层</a>
+<a href="#results-layer">12. 结果层</a>
+<a href="#contracts-layer">12A. 每层的输入/输出 contract</a>
+<a href="#trainer-deep-dive">12B. Trainer.train() 逐步 walkthrough</a>
+<a href="#debug-script-layer">12C. debug 脚本为什么能打印这些</a>
+<a href="#sample-journey">12D. 一条样本完整旅程</a>
+<h3>样例输出</h3>
+<a href="#runtime-output">13. Runtime / Config 输出</a>
+<a href="#sample-output">14. 单条样本如何展开</a>
+<a href="#token-output">15. Tokenization 输出怎么读</a>
+<a href="#train-output">16. 训练日志怎么读</a>
+<a href="#eval-output">17. 训练前后 eval 怎么读</a>
+<a href="#takeaways">18. 这次 run 说明了什么</a>
+<a href="#reading-order">19. 继续读代码的顺序</a>
+<a href="#top" class="back-top">↑ 回到顶部</a>
+</nav>
+
+<span id="top"></span>
+<h1>mmit2 整包讲义（LoRA 第一版）</h1>
+<div class="subtitle">从整包 mental model 开始，围绕 LoRA 这一条主链，把 <code>config → data → preprocess → train → eval → report</code> 串成一份可以打印、可以回看、也能拿来继续写第二版的讲义。</div>
+
+<div class="print-hint"><b>读法建议：</b>这份讲义不是“从一个函数的第 1 行读到最后 1 行”，而是先建立整包的脑内地图，再把真实样例输出挂回去。真正要先记住的是骨架：<b>一条 CanonicalSample 如何沿着 LoRA 路线变成训练张量、梯度更新和评测结果。</b></div>
+
+<main class="print-columns">
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="goal"></span>这份讲义要解决什么</h2>
+<p>如果直接打开 <code>src/mmit2/training/trainer.py</code> 或 <code>src/mmit2/training/preprocessors/chat_template.py</code>，我们很容易把注意力卡在局部细节里，比如 <code>prompt_mask</code>、<code>target_modules</code>、<code>device_map="auto"</code>、<code>apply_chat_template()</code>。局部当然重要，但在整包层面，真正先要建立的是：<b>这个库把什么样的输入，沿着什么样的路径，变成什么样的训练与评测行为。</b></p>
+</div>
+
+<div class="deep">
+<div class="deep-title">一句话高层目标</div>
+<p><b>mmit2</b> 可以先看成一个“把多模态问答样本送进 Hugging Face VLM，再用某种 fine-tuning 方法训练，并把结果重新拿回来做本地评测”的流水线。我们这版只盯其中一条：<b>LoRA 路线</b>。</p>
+</div>
+
+<div class="note"><b>这份第一版为什么只讲 LoRA：</b>LoRA 是最适合拿来立整包 mental model 的入口。它保留了完整训练主链，但方法本身又足够集中，不会一上来把注意力分散到量化、稀疏、干预或特殊 masking 上。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="mental-model"></span>先立整包 mental model</h2>
+<p>先别急着看具体文件。先把整包想成六个盒子。后面每份源码，都只是这六个盒子里某一个盒子的实现。</p>
+</div>
+
+<div class="vis">
+<div class="vis-title">mmit2（LoRA 版）最重要的一张图</div>
+<div class="vis-row">
+  <div class="vis-box input">Config<br><span class="vis-label">YAML / CLI</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box input">Data Adapter<br><span class="vis-label">HF dataset → CanonicalSample</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box input">Preprocessor<br><span class="vis-label">chat template → tensors</span></div>
+</div>
+<div class="vis-row">
+  <div class="vis-box param">Trainer<br><span class="vis-label">orchestrates the run</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box param">LoRAMethod<br><span class="vis-label">inject adapters + loss recipe</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box result">Eval / Report<br><span class="vis-label">generate, score, save</span></div>
+</div>
+</div>
+
+<div class="graph">YAML config
+  ↓
+load_config() / config_to_trainer_dict()
+  ↓
+python -m mmit2.training
+  ↓
+Trainer.train()
+  ↓
+HFDatasetsAdapter → CanonicalSample
+  ↓
+ChatTemplatePreprocessor.tokenize() / collate()
+  ↓
+LoRAMethod.prepare_model()
+  ↓
+forward / loss / backward / optimizer.step()
+  ↓
+save_checkpoint()
+  ↓
+LocalMethod.from_checkpoint()
+  ↓
+generate() / score() / save result</div>
+
+<div class="callout">
+<div class="callout-title">这份讲义的中心句</div>
+<p><b>真正要反复回想的是：</b>“同一条样本会被重写很多次。”它先是 HF dataset 的一行，再是 <code>CanonicalSample</code>，再是 <code>messages</code>，再是 <code>full_text</code>，再是 <code>input_ids / labels</code>，再是 batch，最后才进入梯度更新。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="anchor-run"></span>先看一条成功 run</h2>
+<p>这份讲义不只讲概念，我们会一直围绕一条真实跑通的 Colab smoke run。这样后面提到每个中间值，都不是抽象占位符，而是你已经亲眼见过的输出。</p>
+</div>
+
+<table>
+<tr><th>项目</th><th>本次 anchor run 的值</th><th>为什么它重要</th></tr>
+<tr><td>模型</td><td><code>Qwen/Qwen2.5-VL-3B-Instruct</code></td><td>真实多模态 Hugging Face VLM</td></tr>
+<tr><td>方法</td><td><code>lora</code></td><td>整份讲义的训练方法焦点</td></tr>
+<tr><td>训练集</td><td><code>lmms-lab/VQAv2</code> train split 前 30 条</td><td>足够小，方便 smoke test 与打印</td></tr>
+<tr><td>held-out eval</td><td>同一 split 后 10 条</td><td>不是正式验证集，只是跑通链路</td></tr>
+<tr><td>LoRA 参数</td><td><code>r=8, alpha=16, dropout=0.05</code></td><td>后面会直接对应到 <code>lora.py</code></td></tr>
+<tr><td>target_modules</td><td><code>["q_proj", "v_proj"]</code></td><td>说明哪些线性层被挂上 LoRA adapter</td></tr>
+<tr><td>训练步数</td><td>7 steps</td><td>说明这次重点是路径验证，不是追求涨点</td></tr>
+<tr><td>held-out exact match</td><td>训练前 0.8，训练后 0.8</td><td>很正常；base model 已强，7 步不一定涨点</td></tr>
+</table>
+
+<div class="note"><b>先把这句话记住：</b>这次 run 的意义不是“30 条数据就该明显提分”，而是“LoRA 这条完整代码链已经从头到尾跑通”。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="map"></span>代码地图</h2>
+<p>下面这些文件，就是 LoRA 第一版整包讲义最值得反复看的地图。后面的章节会按它们的职责来讲，而不是按目录顺序平铺。</p>
+</div>
+
+<table>
+<tr><th>文件</th><th>职责</th><th>你读它时应该问什么</th></tr>
+<tr><td><code>src/mmit2/config/training_config.py</code></td><td>读 YAML、校验、补方法默认值</td><td>配置是怎么变成规范 dict 的？</td></tr>
+<tr><td><code>src/mmit2/training/__main__.py</code></td><td>CLI 入口</td><td>命令行是怎么接进 Trainer 的？</td></tr>
+<tr><td><code>src/mmit2/training/trainer.py</code></td><td>整条训练 run 的 orchestration</td><td>谁负责数据、模型、优化器、循环？</td></tr>
+<tr><td><code>src/mmit2/data/adapters/hf_datasets.py</code></td><td>HF dataset → CanonicalSample</td><td>原始 row 是怎么标准化的？</td></tr>
+<tr><td><code>src/mmit2/data/types.py</code></td><td>核心数据结构</td><td>样本的统一边界长什么样？</td></tr>
+<tr><td><code>src/mmit2/training/preprocessors/chat_template.py</code></td><td>单样本 tokenization + batch collate</td><td>文本、图像、labels 是怎么生成的？</td></tr>
+<tr><td><code>src/mmit2/training/methods/base.py</code></td><td>训练方法抽象</td><td>“方法”到底接管了哪些责任？</td></tr>
+<tr><td><code>src/mmit2/training/methods/lora.py</code></td><td>LoRA 的具体实现</td><td>adapter 注入、保存、推理恢复怎么做？</td></tr>
+<tr><td><code>src/mmit2/modeling.py</code></td><td>HF processor / model 加载</td><td>模型为什么有时 4bit、有时 bf16？</td></tr>
+<tr><td><code>src/mmit2/eval/methods/local_method.py</code></td><td>本地推理评测</td><td>训练后的模型如何重新拿来 generate？</td></tr>
+<tr><td><code>src/mmit2/results.py</code></td><td>结构化保存预测与聚合指标</td><td>结果怎样落盘、怎样汇总？</td></tr>
+<tr><td><code>examples/colab_lora_debug.py</code></td><td>教学用 debug / smoke harness</td><td>我们这次样例输出从哪里来的？</td></tr>
+</table>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="sample-foundation"></span>1. CanonicalSample 是什么</h2>
+<p>整包 mental model 里，第一个真正需要站稳的概念不是 tokenizer，也不是 optimizer，而是 <code>CanonicalSample</code>。因为它是“这个库内部约定的统一样本边界”。</p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">src/mmit2/data/types.py（核心结构）</div>
+<pre class="code">Turn:
+    role: <span class="str">"human"</span> | <span class="str">"assistant"</span>
+    content: str
+
+CanonicalSample:
+    id: str
+    image_path: str
+    turns: list[Turn]
+    metadata: dict</pre>
+</div>
+
+<div class="deep">
+<div class="deep-title">为什么这个结构这么关键</div>
+<p>因为从这一层开始，后面的代码不再关心 “VQAv2 原始列名是不是叫 <code>question</code> / <code>answers</code> / <code>image</code>”。后面只关心：我手里有没有一条统一样本，它有问题轮次、回答轮次、图片位置，以及附加 metadata。</p>
+</div>
+
+<table>
+<tr><th>字段</th><th>在 LoRA 路线里的用途</th></tr>
+<tr><td><code>id</code></td><td>调试、日志、报错定位、评测输出</td></tr>
+<tr><td><code>image_path</code></td><td>用于训练预处理和推理时取图；HF 内存图像也会通过 metadata 带过去</td></tr>
+<tr><td><code>turns</code></td><td>构造成 Hugging Face chat template 的 <code>messages</code></td></tr>
+<tr><td><code>metadata</code></td><td>放原始答案、PIL image 等不想丢掉但也不想提升为主字段的信息</td></tr>
+</table>
+
+<div class="note"><b>Mental model：</b><code>CanonicalSample</code> 就是整包内部的“标准语言”。适配器负责把各个数据集翻译成它；预处理、训练、评测都依赖它。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="hf-foundation"></span>2. Hugging Face processor / model 需要补哪些基础</h2>
+<p>这份代码大量依赖 Hugging Face 的多模态接口。这里先补齐几个最容易卡住的概念。</p>
+</div>
+
+<div class="grid-2">
+<div class="pytorch">
+<div class="pt-title">AutoProcessor</div>
+<p>它不是单纯 tokenizer。对多模态模型来说，它通常同时负责：</p>
+<ul>
+  <li>chat template 渲染</li>
+  <li>文本 tokenization</li>
+  <li>图片预处理</li>
+  <li>把文本张量和图像张量打包到一起</li>
+</ul>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">AutoModelForImageTextToText</div>
+<p>这是 Hugging Face 上的一类“图文输入，文本输出”的模型接口。对我们来说，它最重要的行为是：</p>
+<ul>
+  <li><code>forward(..., labels=...)</code> 可以直接返回 language modeling loss</li>
+  <li><code>generate(...)</code> 可以直接做推理生成</li>
+</ul>
+</div>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">apply_chat_template() 在这条链里扮演什么角色</div>
+<p>它接收的是一种结构化的 <code>messages</code>，输出的是“该模型家族习惯的文本格式”。对于 Qwen2.5-VL，这个格式包含类似 <code>&lt;|im_start|&gt;</code>、<code>&lt;|vision_start|&gt;</code>、<code>&lt;|image_pad|&gt;</code> 这样的特殊 token。</p>
+</div>
+
+<div class="note"><b>一个很重要的细节：</b><code>messages</code> 并不是最终训练文本。它是“模型模板渲染前”的结构；<code>full_text</code> / <code>prompt_text</code> 才是渲染后的文本。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="pytorch-foundation"></span>3. PyTorch 训练骨架需要补哪些基础</h2>
+<p>后面读 <code>trainer.py</code> 时，如果这些词没有先站稳，就很容易觉得代码在“神秘地自动完成训练”。</p>
+</div>
+
+<table>
+<tr><th>概念</th><th>这份代码里它是什么意思</th></tr>
+<tr><td><code>input_ids</code></td><td>文本 token 的整数序列；在多模态模型里，图像也会对应到一串视觉占位 token</td></tr>
+<tr><td><code>attention_mask</code></td><td>哪些位置是真实 token，哪些只是 padding</td></tr>
+<tr><td><code>labels</code></td><td>监督目标；被设成 <code>-100</code> 的位置不会参与 cross-entropy</td></tr>
+<tr><td><code>forward</code></td><td>模型前向计算，得到 logits，很多 HF 模型还能顺手返回 loss</td></tr>
+<tr><td><code>loss.backward()</code></td><td>沿计算图回传梯度，写到可训练参数的 <code>.grad</code></td></tr>
+<tr><td><code>optimizer.step()</code></td><td>用当前梯度更新参数</td></tr>
+<tr><td><code>gradient_accumulation_steps</code></td><td>每积累多次小 batch，再做一次真正参数更新</td></tr>
+</table>
+
+<div class="graph">single sample tensors
+  ↓
+DataLoader + collate
+  ↓
+batch on GPU
+  ↓
+model(**forward_batch)
+  ↓
+loss
+  ↓
+loss.backward()
+  ↓
+if enough micro-batches:
+    clip_grad_norm_
+    optimizer.step()
+    scheduler.step()
+    optimizer.zero_grad()</div>
+
+<div class="note"><b>后面看到 <code>labels[:prompt_len] = -100</code> 时不要慌：</b>它的意思不是“前面的 token 被删掉了”，而是“这些 token 仍然作为上下文输入模型，但不拿来算监督损失”。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="lora-foundation"></span>4. LoRA 究竟改了什么</h2>
+<p>LoRA 不是“只更新模型里的一些现有大矩阵”，而是“在指定线性层旁边挂上一个很小的可训练低秩更新”。这件事对我们理解 <code>lora.py</code>、训练参数比例，以及为什么训练后还要 merge / unload，都很关键。</p>
+</div>
+
+<div class="vis">
+<div class="vis-title">LoRA 的最简 mental model</div>
+<div class="vis-row">
+  <div class="vis-box frozen">原始权重 W<br><span class="vis-label">冻结</span></div>
+  <div class="vis-arrow">+</div>
+  <div class="vis-box param">A · B<br><span class="vis-label">低秩可训练更新</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box result">W + ΔW</div>
+</div>
+</div>
+
+<div class="grid-2">
+<div class="deep">
+<div class="deep-title">LoRA 在这里的好处</div>
+<ul>
+  <li>训练参数量很小</li>
+  <li>训练内存压力更可控</li>
+  <li>很适合作为“整包训练流程演示”的第一版</li>
+</ul>
+</div>
+
+<div class="deep">
+<div class="deep-title">这次真实 run 的 LoRA 核心数字</div>
+<p><code>Trainable: 1,843,200 / 3,756,466,176 (0.05%)</code></p>
+<p>这就是 LoRA 最值得记住的一行：<b>训练只动了 0.05% 的参数。</b></p>
+</div>
+</div>
+
+<div class="note"><b>为什么 <code>target_modules</code> 很重要：</b>LoRA 不是自动对“整个模型”生效，而是只对配置里列出的模块生效。这次是 <code>q_proj</code> 和 <code>v_proj</code>。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="pipeline"></span>5. 从 YAML 到 report 的主链</h2>
+<p>现在我们把补充概念收起来，正式回到整包主链。下面这段骨架，基本就是这份代码最值得反复记的“系统路径图”。</p>
+</div>
+
+<pre class="code">configs/colab_lora_smoke.yaml
+    ↓
+load_config(path)
+    ↓
+config_to_trainer_dict(cfg)
+    ↓
+python -m mmit2.training --config ...
+    ↓
+training.__main__.py
+    ↓
+Trainer(model_path).train(train_config)
+    ↓
+1) _load_model()
+2) _build_dataset()
+3) _preprocess_dataset()
+4) build_training_method("lora")
+5) method.prepare_model()
+6) DataLoader + train loop
+7) method.save_checkpoint()
+    ↓
+LocalMethod.from_checkpoint(...)
+    ↓
+generate() + score() + save results</pre>
+
+<div class="callout">
+<div class="callout-title">之后你读任何一个函数，都先问它属于这七步里的哪一步</div>
+<p>一旦先把函数挂回这条主链里，很多细节就不再像散点。比如 <code>prompt_mask</code> 明显属于“预处理层”；<code>target_modules</code> 明显属于“方法层”；<code>exact_match</code> 明显属于“评测层”。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="config-layer"></span>6. 配置层：YAML 是怎么变成 Trainer 输入的</h2>
+<p>配置层负责回答两个问题：用户写的 YAML 是否合法？如果合法，如何变成训练器真正吃的字典结构？</p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">src/mmit2/config/training_config.py 的职责</div>
+<ul>
+  <li>把 YAML 解析成 dataclass：<code>TrainingConfig</code></li>
+  <li>校验必要字段：模型路径、数据路径、runtime mode、训练方法名</li>
+  <li>为方法补默认值：例如 LoRA 的 <code>lora_r</code>、<code>lora_alpha</code></li>
+  <li>把 dataclass 再转成 <code>training.__main__.py</code> 期待的 dict</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>6.1 为什么 LoRA 校验里会强制要求 <code>target_modules</code></h3>
+<p>在 <code>training_config.py</code> 里，LoRA 家族方法会被单独检查：如果 <code>target_modules</code> 为空，就直接报错。这个设计很适合教学，因为它避免了“方法自己偷偷猜目标模块”的隐式行为。</p>
+</div>
+
+<div class="subsection">
+<h3>6.2 这次 smoke config 长什么样</h3>
+<pre class="code">runtime:
+  mode: colab
+
+model:
+  model_path: <span class="str">"Qwen/Qwen2.5-VL-3B-Instruct"</span>
+
+training:
+  ft_method: lora
+  num_epochs: <span class="num">1</span>
+  per_device_batch_size: <span class="num">1</span>
+  gradient_accumulation_steps: <span class="num">4</span>
+  learning_rate: <span class="num">2.0e-4</span>
+  params:
+    lora_r: <span class="num">8</span>
+    lora_alpha: <span class="num">16</span>
+    lora_dropout: <span class="num">0.05</span>
+    target_modules: [<span class="str">"q_proj"</span>, <span class="str">"v_proj"</span>]
+
+data:
+  adapter: hf_datasets
+  data_path: <span class="str">"lmms-lab/VQAv2"</span>
+  split: train
+  max_samples: <span class="num">30</span></pre>
+</div>
+
+<div class="note"><b>Mental model：</b>配置层做的是“把外部世界的自由文本输入，收束成内部系统能放心消费的结构化参数”。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="data-layer"></span>7. 数据层：HF dataset 如何变成 CanonicalSample</h2>
+<p>LoRA 训练真正开始前，数据层已经做了很多关键翻译工作。这里最值得盯的文件是 <code>src/mmit2/data/adapters/hf_datasets.py</code>。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">数据层的一句话任务</div>
+<p><b>把 Hugging Face 上每个数据集自己的列名与格式差异，收束成统一的 <code>CanonicalSample</code> 序列。</b></p>
+</div>
+
+<table>
+<tr><th>行为</th><th>代码里怎么做</th><th>为什么重要</th></tr>
+<tr><td>选择 split</td><td>尝试请求 split，必要时 fallback</td><td>不同 HF 数据集不总是严格一致</td></tr>
+<tr><td>决定 streaming</td><td>小样本或 spec 偏好时改成 streaming</td><td>Colab 调试更轻</td></tr>
+<tr><td>限制样本数</td><td><code>max_samples</code> 可直接传给 adapter</td><td>适合 smoke test</td></tr>
+<tr><td>解析 row</td><td>依赖数据集 spec / column mapping</td><td>下游不用再关心原始列名差异</td></tr>
+</table>
+
+<div class="subsection">
+<h3>7.1 这次真实样本告诉了我们什么</h3>
+<pre class="code">{<span class="str">'first_answer'</span>: <span class="str">'down'</span>,
+ <span class="str">'first_question'</span>: <span class="str">'Where is he looking?'</span>,
+ <span class="str">'id'</span>: <span class="str">'262148000'</span>,
+ <span class="str">'image_info'</span>: {<span class="str">'mode'</span>: <span class="str">'RGB'</span>, <span class="str">'size'</span>: (<span class="num">640</span>, <span class="num">512</span>)},
+ <span class="str">'image_path'</span>: <span class="str">'&lt;in_memory&gt;'</span>,
+ <span class="str">'raw_answers'</span>: [<span class="str">'down'</span>],
+ <span class="str">'turns'</span>: [
+   {<span class="str">'content'</span>: <span class="str">'Where is he looking?'</span>, <span class="str">'role'</span>: <span class="str">'human'</span>},
+   {<span class="str">'content'</span>: <span class="str">'down'</span>, <span class="str">'role'</span>: <span class="str">'assistant'</span>}
+ ]}</pre>
+
+<p>这里最值得注意的是 <code>image_path = "&lt;in_memory&gt;"</code>。这说明这次不是从本地路径重新开图，而是 HF dataset 已经把图像对象作为内存中的 PIL image 带给我们，随后被放进 metadata。</p>
+</div>
+
+<div class="note"><b>读数据层时最该抓住的点：</b>训练层以后，基本就不再关心 “它来自哪个数据集”。数据层已经把外部差异吃掉了。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="preprocess-layer"></span>8. 预处理层：一条样本如何变成训练张量</h2>
+<p>这是整份代码里最有“教学中间值”的一层。因为这一层直接把人类可读样本，翻译成模型训练真正使用的 <code>input_ids</code>、<code>labels</code>、<code>attention_mask</code> 和图像张量。</p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">src/mmit2/training/preprocessors/chat_template.py 的主线</div>
+<pre class="code">sample
+  ↓
+_load_image()
+  ↓
+_build_messages()
+  ↓
+processor.apply_chat_template(messages)
+  ↓
+full_text / prompt_text
+  ↓
+processor(text=..., images=..., return_tensors="pt")
+  ↓
+input_ids / attention_mask / pixel_values
+  ↓
+labels = input_ids.clone()
+labels[:prompt_len] = -100</pre>
+</div>
+
+<div class="subsection">
+<h3>8.1 为什么这里要分 <code>full_text</code> 和 <code>prompt_text</code></h3>
+<p>这是整条预处理逻辑最关键的设计之一。</p>
+<ul>
+  <li><code>full_text</code> 包含完整训练对话，里面有答案。</li>
+  <li><code>prompt_text</code> 只包含“问题加上等待回答的位置”，里面没有答案。</li>
+</ul>
+<p>有了这两份文本，就能推断出：哪些 token 只是上下文，哪些 token 才是需要监督的 assistant answer。</p>
+</div>
+
+<div class="subsection">
+<h3>8.2 为什么 <code>labels[:prompt_len] = -100</code> 这么重要</h3>
+<p>这一步不是删掉 prompt，而是说：<b>prompt 仍然作为输入喂给模型，但不拿来计算 loss。</b> 真正参与监督的只有 assistant answer 对应的 token。</p>
+</div>
+
+<div class="subsection">
+<h3>8.3 collate 在这里做什么</h3>
+<p><code>tokenize()</code> 是单样本工作；<code>collate()</code> 是多样本工作。它把不同长度的序列补齐，再拼成 batch。也就是：</p>
+<ul>
+  <li><code>batch_ids</code></li>
+  <li><code>batch_labels</code></li>
+  <li><code>batch_mask</code></li>
+  <li><code>batch_prompt</code></li>
+</ul>
+<p>如果图像张量形状兼容，它也会把 <code>pixel_values</code> 叠起来。</p>
+</div>
+
+<div class="note"><b>最短 mental model：</b><code>chat_template.py</code> 就是在做“训练输入的翻译层”。上游是统一样本，下游是统一张量。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="trainer-layer"></span>9. Trainer 层：谁在真正 orchestrate 整条 run</h2>
+<p><code>src/mmit2/training/trainer.py</code> 不是某个训练方法本身，它更像一个总调度器。它负责决定在什么顺序里做哪些大步骤。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">Trainer 的职责边界</div>
+<ul>
+  <li>加载 model 和 processor</li>
+  <li>加载并预处理数据</li>
+  <li>实例化训练方法（例如 LoRA）</li>
+  <li>构建 optimizer、scheduler、DataLoader</li>
+  <li>执行训练循环</li>
+  <li>触发 checkpoint 保存</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>9.1 训练循环最值得看的骨架</h3>
+<pre class="code">for epoch in range(num_epochs):
+    for step, batch in enumerate(loader):
+        batch = _to_device(batch, device)
+        batch["labels"] = method.preprocess_labels(...)
+        forward_batch = {...}  <span class="cm"># prompt_mask 不传给 model.forward</span>
+        outputs = model(**forward_batch)
+        loss, metrics = method.compute_loss(model, batch, outputs)
+        loss = loss / gradient_accumulation_steps
+        loss.backward()
+
+        if should_step:
+            clip_grad_norm_(...)
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()</pre>
+</div>
+
+<div class="subsection">
+<h3>9.2 为什么这里还要有 <code>preprocess_labels()</code> 钩子</h3>
+<p>因为不是所有训练方法都对 labels 的要求一样。LoRA 默认直接用预处理层给出的 labels；像 L2T 这种方法可能还要进一步修改 masking。Trainer 把这个扩展点留给了方法层。</p>
+</div>
+
+<div class="subsection">
+<h3>9.3 为什么说 Trainer 是“编排层”，不是“算法层”</h3>
+<p>它关心的是流程顺序，而不是 LoRA 数学细节。LoRA 的“该挂哪些 adapter、哪些参数可训练、如何保存和恢复”都在方法层，不在 Trainer 里。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="method-layer"></span>10. TrainingMethod / LoRA 层：方法真正接管了什么</h2>
+<p>如果 Trainer 是总调度器，那么 <code>TrainingMethod</code> 就是“可替换算法插槽”。整包通过这个抽象，把 LoRA、QLoRA、DoRA、Freeze、L2T 放在同一个接口下。</p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">src/mmit2/training/methods/base.py（方法接口）</div>
+<ul>
+  <li><code>default_config()</code></li>
+  <li><code>requires_quantization()</code></li>
+  <li><code>prepare_model()</code></li>
+  <li><code>preprocess_labels()</code></li>
+  <li><code>compute_loss()</code></li>
+  <li><code>get_trainable_params()</code></li>
+  <li><code>save_checkpoint()</code></li>
+  <li><code>load_for_inference()</code></li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>10.1 LoRA 在 <code>lora.py</code> 里真正做的事</h3>
+<ul>
+  <li>读取 <code>lora_r</code>、<code>lora_alpha</code>、<code>lora_dropout</code>、<code>target_modules</code></li>
+  <li>构造 <code>peft.LoraConfig</code></li>
+  <li>调用 <code>get_peft_model()</code> 把 adapter 注入到基础模型</li>
+  <li>统计可训练参数量并返回信息字符串</li>
+  <li>训练后用 <code>save_pretrained()</code> 保存 adapter</li>
+  <li>推理时用 <code>PeftModel.from_pretrained()</code> 恢复，并尝试 <code>merge_and_unload()</code></li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>10.2 这份代码里 LoRA 的 loss 是怎么来的</h3>
+<p><code>LoRAMethod.compute_loss()</code> 走的是统一的 <code>CrossEntropyLoss</code> helper。若 Hugging Face 模型已经在 <code>outputs.loss</code> 里给出 loss，就直接用；否则自己对 <code>shift_logits</code> 和 <code>shift_labels</code> 做 causal LM cross entropy。</p>
+</div>
+
+<div class="subsection">
+<h3>10.3 为什么训练时显示 0.05% 可训练参数</h3>
+<p>因为绝大多数基础模型参数被冻结了，真正会被 optimizer 更新的，只有新挂上的 LoRA adapter 权重。这个数字是理解 LoRA 价值最直接的一行输出。</p>
+</div>
+
+<div class="note"><b>方法层的核心边界：</b>Trainer 决定“训练要不要开始”；LoRA 方法决定“这个模型以什么方式变成可训练模型”。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="eval-layer"></span>11. 评测层：训练后的模型怎样重新拿回来做本地推理</h2>
+<p>LoRA 路线训练完之后，并不是直接拿训练中的 Python 对象就算完事。评测层要回答的是：<b>如果我只有 checkpoint 路径，怎样把模型恢复出来并再次 generate？</b></p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">src/mmit2/eval/methods/local_method.py 的主线</div>
+<pre class="code">LocalMethod.from_checkpoint(...)
+    ↓
+如果给了 checkpoint_path:
+    读 mmit_meta.json 确定 ft_method
+    build_training_method(ft_method)
+    method.load_for_inference(...)
+否则:
+    直接加载 base model
+
+prepare_input(sample)
+    ↓
+messages → apply_chat_template(..., add_generation_prompt=True)
+    ↓
+processor(..., return_tensors="pt")
+    ↓
+model.generate(...)
+    ↓
+decode 新生成的 token</pre>
+</div>
+
+<div class="subsection">
+<h3>11.1 训练预处理和评测预处理的差别</h3>
+<p>训练时我们构造的是“问题 + 标准答案”的监督样本；评测时构造的是“问题 + 等待模型回答”的生成 prompt。所以训练看 <code>full_text</code> / <code>labels</code>，评测看的是 <code>add_generation_prompt=True</code>。</p>
+</div>
+
+<div class="subsection">
+<h3>11.2 为什么本次 sample output 里训练前就有 0.8</h3>
+<p>因为 base model 本来就不弱。我们选的 10 条 held-out 样本也很小，而且是 smoke-test holdout，不是正式 benchmark。它更多是在回答“评测链有没有跑通”，不是在给模型能力下结论。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="results-layer"></span>12. 结果层：哪些是库内正式结果，哪些是教学调试输出</h2>
+<p>这里需要区分两类“结果保存”。</p>
+</div>
+
+<table>
+<tr><th>来源</th><th>文件</th><th>用途</th></tr>
+<tr><td>库内正式评测记录</td><td><code>summary.json</code> / <code>eval_summary.json</code> / prediction JSONL</td><td>保存实验参数、聚合指标和预测结果</td></tr>
+<tr><td>本次教学 / Colab debug 产物</td><td><code>examples/colab_lora_debug.py</code> 生成的 <code>debug_report.json</code></td><td>保存中间值、训练前后样例预测和 smoke-test 报告</td></tr>
+</table>
+
+<div class="note"><b>也就是说：</b>整包正式结果现在主要落在 experiment 目录里的 <code>summary.json</code>、<code>eval_summary.json</code> 和 prediction JSONL；<code>debug_report.json</code> 是为了让我们把中间值看清楚、写讲义更方便的教学型产物。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="contracts-layer"></span>12A. 每一层到底收什么、产出什么</h2>
+<p>你说得对，前一版里“层与层之间是怎么接上的”还不够细。这里我们专门把每一层的 contract 摆平。这样之后看源码时，就不会只看到函数名，而是会知道：<b>这个函数在系统里到底负责接收什么、产出什么、保证什么。</b></p>
+</div>
+
+<table>
+<tr><th>层</th><th>主要入口</th><th>输入</th><th>输出</th><th>最核心的保证</th></tr>
+<tr><td>配置层</td><td><code>load_config()</code><br><code>config_to_trainer_dict()</code></td><td>YAML 文本</td><td>规范化后的 config dataclass / dict</td><td>方法名合法、必填字段齐、LoRA 有非空 <code>target_modules</code></td></tr>
+<tr><td>数据层</td><td><code>HFDatasetsAdapter.__iter__()</code></td><td>HF dataset row</td><td><code>CanonicalSample</code></td><td>数据集差异被吃掉；下游只看统一样本</td></tr>
+<tr><td>预处理层</td><td><code>ChatTemplatePreprocessor.tokenize()</code></td><td><code>CanonicalSample</code> + processor</td><td>单样本张量 dict</td><td>prompt 与 supervision 边界被清楚编码进 <code>labels</code></td></tr>
+<tr><td>batch 层</td><td><code>ChatTemplatePreprocessor.collate()</code></td><td>多个单样本张量 dict</td><td>batch 张量 dict</td><td>长度补齐、mask 对齐、图像张量尽量 stack</td></tr>
+<tr><td>方法层</td><td><code>LoRAMethod.prepare_model()</code></td><td>HF base model + method config</td><td>带 LoRA adapter 的可训练模型</td><td>只让指定 adapter 参数参与训练</td></tr>
+<tr><td>训练层</td><td><code>Trainer.train()</code></td><td>model + processed dataset + method</td><td>训练后 checkpoint</td><td>完成 forward / loss / backward / step / save</td></tr>
+<tr><td>评测层</td><td><code>LocalMethod.prepare_input()</code><br><code>generate()</code></td><td><code>EvalSample</code> 或 checkpoint</td><td>prediction string</td><td>把训练后的模型重新变成可推理对象</td></tr>
+<tr><td>结果层</td><td><code>summary.json</code> / <code>eval_summary.json</code> / <code>debug_report.json</code></td><td>预测与中间值</td><td>JSON 持久化结果</td><td>结果可回放、可讲解、可排错</td></tr>
+</table>
+
+<div class="subsection">
+<h3>为什么这一张 contract 表很重要</h3>
+<p>因为它帮我们避免一种常见混乱：把“谁负责什么”搞丢。比如：</p>
+<ul>
+  <li>如果你在 Trainer 里找 <code>messages</code>，大概率会迷路，因为那是预处理层的边界对象。</li>
+  <li>如果你在 <code>lora.py</code> 里找 DataLoader，也会迷路，因为 batch 是 Trainer 的事，不是方法层的事。</li>
+  <li>如果你在 adapter 里找 loss，也会迷路，因为数据层的责任是“翻译样本”，不是“训练模型”。</li>
+</ul>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="trainer-deep-dive"></span>12B. <code>Trainer.train()</code> 逐步 walkthrough</h2>
+<p>前一版已经讲了 Trainer 的职责边界，但如果目标是“拿这份讲义去带人读源码”，那还需要再往下一层：按实际执行顺序，把 <code>train()</code> 真的拆开。</p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">把 <code>Trainer.train()</code> 先压缩成九步</div>
+<pre class="code">1. build_training_method(...)
+2. _load_model(...)
+3. _build_dataset(...)
+4. _preprocess_dataset(...)
+5. method.prepare_model(...)
+6. method.get_trainable_params(...)
+7. DataLoader(..., collate_fn=preprocessor.collate)
+8. for batch in loader: forward / loss / backward / step
+9. method.save_checkpoint(...)</pre>
+</div>
+
+<div class="subsection">
+<h3>12B.1 第一步：<code>build_training_method()</code></h3>
+<p>Trainer 先根据名字从 registry 实例化方法对象。这个对象是后续整个训练 run 的“算法侧代理人”。在 LoRA 路径上，它之后会负责：</p>
+<ul>
+  <li>方法默认配置</li>
+  <li>模型 adapter 注入</li>
+  <li>loss 计算接口</li>
+  <li>可训练参数分组</li>
+  <li>checkpoint 保存 / 恢复</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>12B.2 第二步：<code>_load_model()</code></h3>
+<p>这一层调用的是 <code>modeling.py</code> 里的两个 helper：</p>
+<ul>
+  <li><code>load_processor(model_path)</code></li>
+  <li><code>load_vlm(model_path, quantize_4bit=..., torch_dtype=torch.bfloat16)</code></li>
+</ul>
+<p>这里最值得记住的，不是加载细节本身，而是一个设计点：<b>是否量化，不是 Trainer 自己决定，而是方法层通过 <code>requires_quantization()</code> 反向告诉 Trainer。</b> 这就是为什么同一条训练主链可以容纳 LoRA 和 QLoRA。</p>
+</div>
+
+<div class="subsection">
+<h3>12B.3 第三步：<code>_build_dataset()</code></h3>
+<p>Trainer 会把 config 里的 <code>data_config</code> 交给 <code>HFDatasetsAdapter</code>。这里有几个这次调试里很重要的细节：</p>
+<ul>
+  <li><code>adapter</code> 现在只支持 <code>hf_datasets</code></li>
+  <li><code>data_path</code> 会被翻成 <code>dataset_name</code></li>
+  <li><code>image_root</code> 会被剥掉，不再错误地传给 adapter</li>
+  <li><code>max_samples</code> 直接传给 adapter，而不是先全量读再切片</li>
+</ul>
+<p>这也解释了我们之前为什么会专门修 <code>image_root</code> 相关的 bug：那是“配置层字段”和“adapter 构造参数”之间 contract 没对齐。</p>
+</div>
+
+<div class="subsection">
+<h3>12B.4 第四步：<code>_preprocess_dataset()</code></h3>
+<p>这一步对每条样本做的事情其实很单纯：调用 <code>preprocessor.tokenize(sample, processor, ...)</code>。但它非常关键，因为从这一步之后，Trainer 手里拿到的就不再是语义层面的问答样本，而是张量层面的训练样本。</p>
+
+<table>
+<tr><th>这一步之前</th><th>这一步之后</th></tr>
+<tr><td><code>CanonicalSample(id, image_path, turns, metadata)</code></td><td><code>{"input_ids": ..., "labels": ..., "attention_mask": ..., "prompt_mask": ..., "pixel_values": ...}</code></td></tr>
+</table>
+</div>
+
+<div class="subsection">
+<h3>12B.5 第五步：<code>method.prepare_model()</code></h3>
+<p>这是 LoRA 真正开始“动手”的地方。Trainer 把 base model 交给方法层，LoRA 则把 adapter 挂上去，并返回一段信息字符串：</p>
+<pre class="code">LoRA: r=8, alpha=16, dropout=0.05
+Target modules: ['q_proj', 'v_proj']
+Trainable: 1,843,200 / 3,756,466,176 (0.05%)</pre>
+<p>从这里开始，<code>self._model</code> 已经不是“纯 base model”，而是“包了一层 PEFT LoRA adapter 的可训练模型”。</p>
+</div>
+
+<div class="subsection">
+<h3>12B.6 第六步：optimizer 与 param groups</h3>
+<p><code>method.get_trainable_params(model)</code> 返回的是参数分组，而不是单纯的参数列表。这给方法层留下了以后做差异学习率、不同模块不同 weight decay 的空间。LoRA 当前实现里，返回的是一个只有一组的简单列表，但接口本身是按扩展性设计的。</p>
+</div>
+
+<div class="subsection">
+<h3>12B.7 第七步：DataLoader 为什么这样配</h3>
+<pre class="code">loader = DataLoader(
+    processed,
+    batch_size=config.per_device_batch_size,
+    shuffle=True,
+    collate_fn=preprocessor.collate,
+    drop_last=True,
+)</pre>
+<p>这里有三个值得特别讲的参数：</p>
+<ul>
+  <li><code>collate_fn=preprocessor.collate</code>：说明 batch 的组装逻辑是预处理层提供的。</li>
+  <li><code>shuffle=True</code>：训练样本打乱。</li>
+  <li><code>drop_last=True</code>：最后不足一个完整 batch 的部分丢掉，这会影响总步数计算。</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>12B.8 第八步：为什么要先把 batch 过滤成 <code>forward_batch</code></h3>
+<pre class="code">forward_batch = {
+    key: value for key, value in batch.items()
+    if key not in _NON_FORWARD_BATCH_KEYS
+}</pre>
+<p>这里最典型被过滤掉的是 <code>prompt_mask</code>。原因很简单：<b>它对训练逻辑有意义，但对 Hugging Face 模型的 <code>forward()</code> 没有直接参数意义。</b> 所以它应该保留在 batch metadata 里，供方法层或调试层使用，但不应该盲目传进模型。</p>
+</div>
+
+<div class="subsection">
+<h3>12B.9 第九步：loss、梯度累积和真正的 optimizer step</h3>
+<pre class="code">outputs = self._model(**forward_batch)
+loss, metrics = method_obj.compute_loss(self._model, batch, outputs)
+loss = loss / config.gradient_accumulation_steps
+loss.backward()</pre>
+<p>这里必须单独强调一个点：<code>backward()</code> 并不等于“已经更新参数”。参数更新只有在后面的条件满足时才发生：</p>
+<pre class="code">if (step + 1) % gradient_accumulation_steps == 0:
+    clip_grad_norm_(...)
+    optimizer.step()
+    scheduler.step()
+    optimizer.zero_grad()</pre>
+<p>也就是说，每个 micro-batch 先把梯度累起来，等凑够 4 个，再做 1 次真正更新。这就是为什么我们这次 30 个样本最后只有 7 个 optimizer steps。</p>
+</div>
+
+<div class="subsection">
+<h3>12B.10 训练结束时到底保存了什么</h3>
+<p>Trainer 在循环里会按 <code>save_steps</code> 保存中间 checkpoint；结束时一定会保存一个 <code>final</code> 目录。真正怎么保存，交给方法层决定。LoRA 的保存逻辑是：</p>
+<ul>
+  <li><code>model.save_pretrained(path)</code></li>
+  <li><code>processor.save_pretrained(path)</code></li>
+  <li>额外写一份 <code>mmit_meta.json</code>，标记 <code>ft_method = "lora"</code></li>
+</ul>
+<p>这就是为什么评测层之后可以只靠 checkpoint 路径恢复模型：方法名和 base model 信息已经一起落盘了。</p>
+</div>
+
+<div class="callout">
+<div class="callout-title">如果只允许记住 Trainer 的一句话</div>
+<p><b>Trainer 不决定“LoRA 是什么”，它决定“LoRA 这次训练 run 按什么顺序发生”。</b></p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="debug-script-layer"></span>12C. <code>colab_lora_debug.py</code> 为什么能打印出这些中间值</h2>
+<p>前一版用了很多 sample output，但没有交代“这些输出是谁打印的、为什么能拿到这些对象”。这次我们把它也补齐，因为它本身就是整包很好的教学 harness。</p>
+</div>
+
+<div class="pytorch">
+<div class="pt-title">debug 脚本不是另起炉灶，而是对正式主链的再组织</div>
+<pre class="code">load_config(...)
+  ↓
+_build_trainer_config(...)
+  ↓
+_load_samples(...)
+  ↓
+load_processor(...)
+  ↓
+_inspect_chat_template_sample(...)
+  ↓
+如果 inspect-only:
+    保存 debug_report.json 并结束
+否则:
+    load_vlm(...)
+    训练前 eval
+    Trainer.train(...)
+    LocalMethod.from_checkpoint(...)
+    训练后 eval</pre>
+</div>
+
+<div class="subsection">
+<h3>12C.1 它为什么能打印 <code>Runtime Summary</code></h3>
+<p>因为脚本里单独写了一个 <code>_runtime_summary()</code> helper，直接收集：</p>
+<ul>
+  <li>Python 版本</li>
+  <li>torch 版本</li>
+  <li>CUDA 版本</li>
+  <li><code>torch.cuda.is_available()</code></li>
+  <li>GPU 名称列表</li>
+</ul>
+<p>这正是我们之前排查 Colab CPU torch 问题时最需要的检查点。</p>
+</div>
+
+<div class="subsection">
+<h3>12C.2 它为什么能打印 <code>messages</code> / <code>full_text</code> / <code>prompt_text</code></h3>
+<p>因为脚本没有只调用 <code>preprocessor.tokenize()</code> 然后看输出，而是把 <code>chat_template.py</code> 里中间会用到的 helper 也重新显式拿出来了：</p>
+<ul>
+  <li><code>_build_messages()</code></li>
+  <li><code>_build_prompt_messages()</code></li>
+  <li><code>processor.apply_chat_template(...)</code></li>
+</ul>
+<p>这样它就不只是“拿到最终张量”，而是能把“张量之前的语义中间值”也展示出来。这正是写讲义非常需要的一层。</p>
+</div>
+
+<div class="subsection">
+<h3>12C.3 它为什么能知道哪些位置被监督</h3>
+<p>在 <code>_inspect_chat_template_sample()</code> 里，脚本显式计算了：</p>
+<ul>
+  <li><code>supervised_positions = (labels != -100).nonzero(...)</code></li>
+  <li><code>prompt_positions = prompt_mask.nonzero(...)</code></li>
+</ul>
+<p>所以它能不仅打印“有多少监督 token”，还能准确打印“监督发生在哪几个位置”。这就是为什么我们能看到 <code>[440, 441, 442]</code> 这样的输出。</p>
+</div>
+
+<div class="subsection">
+<h3>12C.4 它为什么要区分 <code>inspect-only</code> 和完整 smoke run</h3>
+<p>因为这两种模式的教学目的不一样：</p>
+<ul>
+  <li><code>--inspect-only</code>：只看中间值，不加载 3B 模型，不训练，速度快，适合先理解样本流。</li>
+  <li>完整 smoke run：真的训练 30 条，评测 10 条，验证整条 LoRA 路线。</li>
+</ul>
+<p>这次我们之所以能先把系统讲清楚，再去跑训练，很大程度上就是因为这个模式分离做得对。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="sample-journey"></span>12D. 一条样本的完整旅程：从训练到评测</h2>
+<p>这里我们把同一条样本沿着系统真正走一遍。这个 section 的目标不是重复前面的定义，而是让“对象怎么变形”这件事变得非常具体。</p>
+</div>
+
+<div class="graph">HF row
+  ↓
+HFDatasetSpec.parse_row()
+  ↓
+CanonicalSample(
+  id='262148000',
+  image_path='&lt;in_memory&gt;',
+  turns=[human:'Where is he looking?', assistant:'down'],
+  metadata={'raw_answers':['down'], '_pil_image': ...}
+)
+  ↓
+_build_messages()
+  ↓
+messages = [user(image + text), assistant(text)]
+  ↓
+apply_chat_template()
+  ↓
+full_text / prompt_text
+  ↓
+processor(text=..., images=...)
+  ↓
+input_ids / attention_mask / pixel_values
+  ↓
+labels = input_ids.clone(); labels[:prompt_len] = -100
+  ↓
+collate()
+  ↓
+batch dict on GPU
+  ↓
+model(**forward_batch)
+  ↓
+loss
+  ↓
+checkpoint
+  ↓
+EvalSample(question + single-word instruction)
+  ↓
+LocalMethod.prepare_eval_input()
+  ↓
+generate() → prediction='down'</div>
+
+<div class="subsection">
+<h3>12D.1 训练视角下，这条样本经历了哪些“身份变化”</h3>
+<table>
+<tr><th>阶段</th><th>对象长什么样</th><th>最重要的新增信息</th></tr>
+<tr><td>原始数据行</td><td>HF dataset row</td><td>仍保留数据集原生列名和图片字段格式</td></tr>
+<tr><td>统一样本</td><td><code>CanonicalSample</code></td><td>问题轮次、答案轮次和图像位置被标准化</td></tr>
+<tr><td>模板中间值</td><td><code>messages</code></td><td>变成 Hugging Face chat template 约定结构</td></tr>
+<tr><td>训练文本</td><td><code>full_text</code> / <code>prompt_text</code></td><td>模型特定的模板字符串被渲染出来</td></tr>
+<tr><td>训练张量</td><td><code>input_ids</code> / <code>labels</code> / <code>pixel_values</code></td><td>监督边界被编码进张量</td></tr>
+<tr><td>batch 张量</td><td><code>[B, T]</code> 和图像 batch</td><td>可被模型直接 forward</td></tr>
+</table>
+</div>
+
+<div class="subsection">
+<h3>12D.2 评测视角下，这条样本为什么又会被“重写一次”</h3>
+<p>训练时，这条样本长这样：</p>
+<pre class="code">human: Where is he looking?
+assistant: down</pre>
+<p>但评测时，我们不会把答案一起喂给模型。debug 脚本会把它改写成一个 <code>EvalSample</code>，问题也会追加一行 instruction：</p>
+<pre class="code">Where is he looking?
+Answer the question using a single word or phrase.</pre>
+<p>然后再由 <code>LocalMethod.prepare_eval_input()</code> 把它重新包装成“只有 user 的 prompt”，交给生成模型输出答案。这也是为什么训练视角和评测视角虽然都使用 processor，但输入 contract 不同。</p>
+</div>
+
+<div class="subsection">
+<h3>12D.3 为什么这一条样本最后只有 3 个监督 token</h3>
+<p>这里把前面的几个点合在一起看，就会更清楚：</p>
+<ul>
+  <li>答案文本本身很短：<code>down</code></li>
+  <li>监督目标不是整条对话，而是 assistant 回答尾部</li>
+  <li>Qwen2.5-VL 的 tokenizer / template 会把答案尾部连同结束标记一起编码</li>
+</ul>
+<p>所以最后我们看到的是：</p>
+<pre class="code">prompt_token_count = 440
+supervised_token_count = 3
+decoded_supervised_text = 'down&lt;|im_end|&gt;\n'</pre>
+<p>这正是 causal LM 训练里非常常见的一种现象：<b>上下文很长，但真正被监督的位置只是一小段尾部 token。</b></p>
+</div>
+
+<div class="callout">
+<div class="callout-title">如果你要拿这份讲义带别人读代码，这一节最值得反复讲</div>
+<p>因为很多人卡住，并不是卡在某个 API，而是卡在“为什么同一条数据在系统里看起来总是不一样”。这一节正好是在把这些“身份变化”讲清楚。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="runtime-output"></span>13. Runtime / Config 输出怎么读</h2>
+<p>下面开始回到真实 sample output。先看最上面的运行环境与配置。这两段的价值是：它们告诉我们“这次 run 处于什么硬件、什么配置、什么目标下”。</p>
+</div>
+
+<div class="subsection">
+<h3>13.1 Runtime Summary</h3>
+<pre class="code">{<span class="str">'cuda_available'</span>: <span class="kw">True</span>,
+ <span class="str">'cuda_device_count'</span>: <span class="num">1</span>,
+ <span class="str">'cuda_device_names'</span>: [<span class="str">'NVIDIA A100-SXM4-80GB'</span>],
+ <span class="str">'python_version'</span>: <span class="str">'3.12.13'</span>,
+ <span class="str">'torch_cuda_version'</span>: <span class="str">'12.8'</span>,
+ <span class="str">'torch_version'</span>: <span class="str">'2.10.0+cu128'</span>}</pre>
+
+<p>这段最重要的一行其实就是 <code>cuda_available: True</code>。前面的 debug 里，我们就靠它确认“现在不是 CPU 慢跑 3B 模型，而是确实在 A100 上”。</p>
+</div>
+
+<div class="subsection">
+<h3>13.2 Training Config</h3>
+<pre class="code">{<span class="str">'config_path'</span>: <span class="str">'configs/colab_lora_smoke.yaml'</span>,
+ <span class="str">'effective_output_dir'</span>: <span class="str">'/content/drive/MyDrive/mmit2_output/output/lora_colab_smoke'</span>,
+ <span class="str">'eval_count'</span>: <span class="num">10</span>,
+ <span class="str">'eval_offset'</span>: <span class="num">30</span>,
+ <span class="str">'method_config'</span>: {
+   <span class="str">'lora_alpha'</span>: <span class="num">16</span>,
+   <span class="str">'lora_dropout'</span>: <span class="num">0.05</span>,
+   <span class="str">'lora_r'</span>: <span class="num">8</span>,
+   <span class="str">'target_modules'</span>: [<span class="str">'q_proj'</span>, <span class="str">'v_proj'</span>]
+ },
+ <span class="str">'train_sample_count'</span>: <span class="num">30</span>}</pre>
+
+<p>这里最值得讲义里反复点出来的，是三个数字：</p>
+<ul>
+  <li><code>train_sample_count = 30</code></li>
+  <li><code>eval_offset = 30</code></li>
+  <li><code>eval_count = 10</code></li>
+</ul>
+<p>也就是：这次 smoke test 的 held-out eval，不是正式 validation split，而是“从同一 train split 里，拿训练样本后面的 10 条做路径验证”。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="sample-output"></span>14. 单条样本如何展开</h2>
+<p>这是整份输出里最适合讲 mental model 的部分，因为它让我们看到“同一条样本在系统里如何被重写”。</p>
+</div>
+
+<div class="subsection">
+<h3>14.1 Dataset Overview</h3>
+<pre class="code">{<span class="str">'train_preview'</span>: [
+   {<span class="str">'answer'</span>: <span class="str">'down'</span>, <span class="str">'id'</span>: <span class="str">'262148000'</span>, <span class="str">'question'</span>: <span class="str">'Where is he looking?'</span>},
+   {<span class="str">'answer'</span>: <span class="str">'watching'</span>, <span class="str">'id'</span>: <span class="str">'262148001'</span>, <span class="str">'question'</span>: <span class="str">'What are the people in the background doing?'</span>},
+   {<span class="str">'answer'</span>: <span class="str">'picnic table'</span>, <span class="str">'id'</span>: <span class="str">'262148002'</span>, <span class="str">'question'</span>: <span class="str">'What is he on top of?'</span>}
+ ],
+ <span class="str">'eval_preview'</span>: [
+   {<span class="str">'answer'</span>: <span class="str">'yes'</span>, <span class="str">'id'</span>: <span class="str">'262162012'</span>, <span class="str">'question'</span>: <span class="str">'Is the bed white?'</span>},
+   {<span class="str">'answer'</span>: <span class="str">'no'</span>, <span class="str">'id'</span>: <span class="str">'262162013'</span>, <span class="str">'question'</span>: <span class="str">'Could this be a hotel room?'</span>}
+ ]}</pre>
+
+<p>这一步其实在帮助我们建立“任务分布感”。训练样本和 held-out 样本看上去都是简单 VQA，但后者集中在房间、床、座位等问题上，所以我们后面看到预测里的 <code>yes/no</code> 和数字答案就不奇怪。</p>
+</div>
+
+<div class="subsection">
+<h3>14.2 One Raw Sample</h3>
+<pre class="code">{<span class="str">'first_answer'</span>: <span class="str">'down'</span>,
+ <span class="str">'first_question'</span>: <span class="str">'Where is he looking?'</span>,
+ <span class="str">'id'</span>: <span class="str">'262148000'</span>,
+ <span class="str">'image_info'</span>: {<span class="str">'mode'</span>: <span class="str">'RGB'</span>, <span class="str">'size'</span>: (<span class="num">640</span>, <span class="num">512</span>)},
+ <span class="str">'image_path'</span>: <span class="str">'&lt;in_memory&gt;'</span>,
+ <span class="str">'raw_answers'</span>: [<span class="str">'down'</span>],
+ <span class="str">'turns'</span>: [
+   {<span class="str">'content'</span>: <span class="str">'Where is he looking?'</span>, <span class="str">'role'</span>: <span class="str">'human'</span>},
+   {<span class="str">'content'</span>: <span class="str">'down'</span>, <span class="str">'role'</span>: <span class="str">'assistant'</span>}
+ ]}</pre>
+
+<div class="callout">
+<div class="callout-title">讲义里最值得反复用的一个“边界对象”</div>
+<p>这一条 raw sample 是整份讲义最好的 anchor。后面无论讲 <code>messages</code>、<code>full_text</code>、<code>labels</code> 还是 eval prompt，我们都可以回到它：<b>一张图 + 一个问题 + 一个标准答案</b>。</p>
+</div>
+</div>
+
+<div class="subsection">
+<h3>14.3 Processor Summary</h3>
+<pre class="code">{<span class="str">'processor_class'</span>: <span class="str">'Qwen2_5_VLProcessor'</span>,
+ <span class="str">'tokenizer_class'</span>: <span class="str">'Qwen2Tokenizer'</span>,
+ <span class="str">'image_processor_class'</span>: <span class="str">'Qwen2VLImageProcessorFast'</span>,
+ <span class="str">'pad_token_id'</span>: <span class="num">151643</span>,
+ <span class="str">'eos_token_id'</span>: <span class="num">151645</span>}</pre>
+
+<p>这段的重点不是记住 token id 数字，而是建立一个意识：<b>processor 在这里并不只是 tokenizer，而是文本模板、文本 tokenization 和图像预处理的统一入口。</b></p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="token-output"></span>15. Tokenization 输出怎么读</h2>
+<p>这是整份 sample output 里最有“教学中间值”的部分。因为它清楚地展示了：<code>CanonicalSample → messages → rendered text → token ids → supervision mask</code> 的完整路径。</p>
+</div>
+
+<div class="subsection">
+<h3>15.1 messages 与 prompt_messages</h3>
+<pre class="code"><span class="str">'messages'</span>: [
+  {<span class="str">'role'</span>: <span class="str">'user'</span>, <span class="str">'content'</span>: [{<span class="str">'type'</span>: <span class="str">'image'</span>}, {<span class="str">'text'</span>: <span class="str">'Where is he looking?'</span>, <span class="str">'type'</span>: <span class="str">'text'</span>}]},
+  {<span class="str">'role'</span>: <span class="str">'assistant'</span>, <span class="str">'content'</span>: [{<span class="str">'text'</span>: <span class="str">'down'</span>, <span class="str">'type'</span>: <span class="str">'text'</span>}]}
+]
+
+<span class="str">'prompt_messages'</span>: [
+  {<span class="str">'role'</span>: <span class="str">'user'</span>, <span class="str">'content'</span>: [{<span class="str">'type'</span>: <span class="str">'image'</span>}, {<span class="str">'text'</span>: <span class="str">'Where is he looking?'</span>, <span class="str">'type'</span>: <span class="str">'text'</span>}]}
+]</pre>
+
+<p><code>messages</code> 包含完整监督对话；<code>prompt_messages</code> 停在 assistant 回答前。这正是后面监督 masking 的来源。</p>
+</div>
+
+<div class="subsection">
+<h3>15.2 full_text 与 prompt_text</h3>
+<pre class="code"><span class="str">'full_text'</span>:
+&lt;|im_start|&gt;system
+You are a helpful assistant.&lt;|im_end|&gt;
+&lt;|im_start|&gt;user
+&lt;|vision_start|&gt;&lt;|image_pad|&gt;&lt;|vision_end|&gt;Where is he looking?&lt;|im_end|&gt;
+&lt;|im_start|&gt;assistant
+down&lt;|im_end|&gt;
+
+<span class="str">'prompt_text'</span>:
+&lt;|im_start|&gt;system
+You are a helpful assistant.&lt;|im_end|&gt;
+&lt;|im_start|&gt;user
+&lt;|vision_start|&gt;&lt;|image_pad|&gt;&lt;|vision_end|&gt;Where is he looking?&lt;|im_end|&gt;
+&lt;|im_start|&gt;assistant</pre>
+
+<p>这里有两个非常值得讲义里点出来的现象：</p>
+<ul>
+  <li><code>messages</code> 里没有显式 system，但模型模板自动补了 <code>You are a helpful assistant.</code></li>
+  <li><code>prompt_text</code> 正好停在 assistant 开始前，所以它可以用来界定监督边界。</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>15.3 为什么 <code>decoded_input</code> 里有一大串 <code>&lt;|image_pad|&gt;</code></h3>
+<p>在 <code>full_text</code> 里我们看到的视觉占位像是一个简单的 <code>&lt;|image_pad|&gt;</code>；但真正经过 processor 以后，图像会被展开为更长的视觉 token 序列。所以 <code>decoded_input</code> 看起来会像下面这样：</p>
+<pre class="code">&lt;|im_start|&gt;user
+&lt;|vision_start|&gt;&lt;|image_pad|&gt;&lt;|image_pad|&gt;&lt;|image_pad|&gt; ... &lt;|image_pad|&gt;&lt;|vision_end|&gt;Where is he looking?&lt;|im_end|&gt;</pre>
+<p>这就是为什么本次样本的总长度会很长，即使答案本身只有一个词。</p>
+</div>
+
+<div class="subsection">
+<h3>15.3A <code>processor(...)</code> 之后，实际上拿到了哪些 key</h3>
+<p>这一点前一版写得不够细。<code>ChatTemplatePreprocessor.tokenize()</code> 里真正从 processor 拿回来的，并不只是文本 token。对多模态模型来说，常见返回项包括：</p>
+<table>
+<tr><th>key</th><th>来源</th><th>作用</th></tr>
+<tr><td><code>input_ids</code></td><td>文本与视觉占位 tokenization</td><td>模型主输入；形状通常是 <code>[1, T]</code></td></tr>
+<tr><td><code>attention_mask</code></td><td>processor 自动构造</td><td>标记哪些位置有效，哪些是 padding</td></tr>
+<tr><td><code>pixel_values</code></td><td>图像预处理</td><td>真正送进视觉编码器的图像张量</td></tr>
+<tr><td><code>image_sizes</code></td><td>部分模型会提供</td><td>帮助模型理解原始图像尺度</td></tr>
+<tr><td><code>image_grid_thw</code></td><td>Qwen2.5-VL 这类模型常见</td><td>描述视觉 token 网格结构</td></tr>
+</table>
+<p>也就是说，<code>decoded_input</code> 只是我们为了教学把文本侧 decode 回来看；但训练时真正 forward 进去的是一整包多模态输入，而不只是字符串 token。</p>
+</div>
+
+<div class="subsection">
+<h3>15.4 这三个数字最重要</h3>
+<pre class="code"><span class="str">'input_length'</span>: <span class="num">443</span>
+<span class="str">'prompt_token_count'</span>: <span class="num">440</span>
+<span class="str">'supervised_token_count'</span>: <span class="num">3</span>
+<span class="str">'supervised_positions_preview'</span>: [<span class="num">440</span>, <span class="num">441</span>, <span class="num">442</span>]</pre>
+
+<p>这是整份讲义里最适合用来解释 supervision 的数字：</p>
+<ul>
+  <li>总长度 443，不短，因为视觉 token 占了很多位。</li>
+  <li>前 440 个 token 属于 prompt，不参与 loss。</li>
+  <li>真正参与监督的只有最后 3 个 token，对应 <code>down&lt;|im_end|&gt;</code>。</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>15.5 labels_tail 最值得怎么讲</h3>
+<pre class="code"><span class="str">'labels_tail'</span>: [
+  -100, -100, -100, ...,
+  -100,
+  2923,
+  151645,
+  198
+]</pre>
+
+<p>这里最直观地证明了：<b>大多数位置都被 mask 成了 <code>-100</code>，只有答案尾部几个 token 被保留下来作为监督目标。</b></p>
+</div>
+
+<div class="subsection">
+<h3>15.6 这一步和 causal LM loss 是怎么接上的</h3>
+<p>到这里为止，我们已经知道哪些位置是监督目标了。但要真正算 loss，还要再过一层：<b>causal language modeling 的“shift”规则。</b></p>
+<pre class="code">shift_logits = logits[..., :-1, :]
+shift_labels = labels[..., 1:]
+loss = cross_entropy(
+    shift_logits.view(-1, vocab_size),
+    shift_labels.view(-1),
+    ignore_index=-100,
+)</pre>
+<p>它的意思是：</p>
+<ul>
+  <li>位置 <code>t</code> 的 logits，要去预测位置 <code>t+1</code> 的 label。</li>
+  <li>所以即便我们把 <code>labels = input_ids.clone()</code>，也不是在让模型“抄答案”，而是在让模型用前面的 token 去预测后面的 token。</li>
+  <li>被标成 <code>-100</code> 的位置在 cross-entropy 里会被忽略，所以 prompt 不参与训练损失。</li>
+</ul>
+<p>把这一步和前面的 <code>supervised_positions = [440, 441, 442]</code> 放在一起看，就很容易理解：模型真正被要求学的，是“在看完前面的上下文后，如何继续生成 <code>down&lt;|im_end|&gt;</code> 这一小段尾部 token”。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="train-output"></span>16. 训练日志怎么读</h2>
+<p>训练日志最容易让人误读的地方有两个：一是把它当“效果评估”，二是忽略它其实已经把主链跑通的证据全给出来了。我们这里按“系统行为”来读，不按“好不好看”来读。</p>
+</div>
+
+<div class="subsection">
+<h3>16.1 Model Summary Before Training</h3>
+<pre class="code">{<span class="str">'device'</span>: <span class="str">'cuda:0'</span>,
+ <span class="str">'dtype'</span>: <span class="str">'torch.bfloat16'</span>,
+ <span class="str">'model_class'</span>: <span class="str">'Qwen2_5_VLForConditionalGeneration'</span>,
+ <span class="str">'total_params'</span>: <span class="num">3754622976</span>,
+ <span class="str">'trainable_params'</span>: <span class="num">3754622976</span>}</pre>
+
+<p>这里最关键的是设备和 dtype 正常。至于这里的 <code>trainable_params</code>，更适合和 LoRA 注入后的日志配合看，而不要单独把它当最终结论。</p>
+</div>
+
+<div class="subsection">
+<h3>16.2 LoRA 注入日志</h3>
+<pre class="code">LoRA: r=8, alpha=16, dropout=0.05
+Target modules: ['q_proj', 'v_proj']
+Trainable: 1,843,200 / 3,756,466,176 (0.05%)</pre>
+
+<p>这是整次训练里最值得划线的三行。它告诉我们：</p>
+<ul>
+  <li>LoRA adapter 确实已经成功挂上去了</li>
+  <li>挂的位置正是配置中指定的 <code>q_proj</code> / <code>v_proj</code></li>
+  <li>真正参与训练的参数量只占 0.05%</li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>16.2A loss 在 LoRA 路线里是谁算的</h3>
+<p>这也是一个前一版只提到但没有讲透的点。LoRA 路线里，<code>compute_loss()</code> 最终走的是统一的 <code>CrossEntropyLoss</code> helper：</p>
+<ul>
+  <li>如果 Hugging Face 模型 forward 后直接给了 <code>outputs.loss</code>，就直接用。</li>
+  <li>如果没有，就自己从 <code>outputs.logits</code> 和 <code>batch["labels"]</code> 重新算一遍 causal cross-entropy。</li>
+</ul>
+<p>这个设计很好地把“LoRA 是什么”和“loss 怎么算”解耦开了：LoRA 负责 adapter 注入，loss helper 负责语言建模监督。</p>
+</div>
+
+<div class="subsection">
+<h3>16.3 7 个优化步</h3>
+<table>
+<tr><th>step</th><th>loss</th><th>avg_loss</th><th>lr</th></tr>
+<tr><td>1</td><td>2.130442</td><td>2.130442</td><td>1.900968867902419e-4</td></tr>
+<tr><td>2</td><td>3.852398</td><td>2.991420</td><td>1.6234898018587337e-4</td></tr>
+<tr><td>3</td><td>3.533835</td><td>3.172225</td><td>1.2225209339563145e-4</td></tr>
+<tr><td>4</td><td>1.968796</td><td>2.871367</td><td>7.774790660436858e-5</td></tr>
+<tr><td>5</td><td>4.762311</td><td>3.249556</td><td>3.7651019814126654e-5</td></tr>
+<tr><td>6</td><td>2.108441</td><td>3.059370</td><td>9.903113209758096e-6</td></tr>
+<tr><td>7</td><td>1.217231</td><td>2.796208</td><td>0.0</td></tr>
+</table>
+
+<p>这张表更适合拿来讲“训练循环确实活着”，而不是讲“loss 漂不漂亮”。在 30 条样本、1 epoch、4 步梯度累积的 smoke test 下，能看到它稳定跑完 7 次 optimizer step，本身就是链路成功的证明。</p>
+</div>
+
+<div class="subsection">
+<h3>16.4 为什么只有 7 步</h3>
+<p>配置里是：</p>
+<ul>
+  <li><code>per_device_batch_size = 1</code></li>
+  <li><code>gradient_accumulation_steps = 4</code></li>
+  <li>数据量 = 30</li>
+  <li><code>drop_last = True</code></li>
+</ul>
+<p>所以经过 <code>len(loader) // gradient_accumulation_steps</code> 的计算，最终就是 7 个真正的优化步。这是一个很好的讲义点，因为它能把“微 batch”和“optimizer step”区分清楚。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="eval-output"></span>17. 训练前后 eval 怎么读</h2>
+<p>这次输出最好的地方，是它把“训练前”和“训练后”的单条 eval 与 held-out eval 都并排打出来了。这样我们就能清楚地区分：<b>链路是否跑通</b> 与 <b>指标是否提升</b> 是两件不同的事。</p>
+</div>
+
+<div class="subsection">
+<h3>17.1 Single-Sample Eval Before / After</h3>
+<pre class="code">Question: Where is he looking?
+Prediction: down
+Ground truth: ['down']
+Exact match: 1.0</pre>
+
+<p>训练前后都答对，这并不奇怪。说明 base model 对这道题本来就能做对。这里更有价值的是：<b>训练前评测、训练后评测、解码路径、指标计算路径，全都工作了。</b></p>
+</div>
+
+<div class="subsection">
+<h3>17.2 Held-Out Eval Before Training</h3>
+<pre class="code"><span class="str">'metric_averages'</span>: {<span class="str">'exact_match'</span>: <span class="num">0.8</span>}</pre>
+
+<p>10 条样本里，主要错了两题：</p>
+<ul>
+  <li><code>Is the bed white?</code> 预测 <code>no</code>，标准答案 <code>yes</code></li>
+  <li><code>How many chairs are in the photo?</code> 预测 <code>2</code>，标准答案 <code>1</code></li>
+</ul>
+</div>
+
+<div class="subsection">
+<h3>17.3 Held-Out Eval After Training</h3>
+<pre class="code"><span class="str">'metric_averages'</span>: {<span class="str">'exact_match'</span>: <span class="num">0.8</span>}</pre>
+
+<p>训练后保持 0.8，这个结果完全合理。因为这次是 smoke test，不是效果实验。真正要读出来的是：</p>
+<ul>
+  <li>checkpoint 保存成功</li>
+  <li>checkpoint 重新加载成功</li>
+  <li>LoRA adapter merge / inference 路径成功</li>
+  <li>评测仍然可运行并输出稳定结果</li>
+</ul>
+</div>
+
+<div class="note"><b>讲义里最好明确写出来：</b>“训练前后 held-out 不变，并不意味着训练没工作；它只说明这次小样本 smoke run 的目标是代码链验证，而不是性能结论。”</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="takeaways"></span>18. 这次 run 说明了什么</h2>
+<p>如果我们把整份输出重新压缩成几个真正有判断价值的结论，大概就是下面这些。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">这次 LoRA smoke run 已经验证成功的事情</div>
+<ul>
+  <li>Colab GPU 环境已经正确接上真实 Hugging Face VLM</li>
+  <li>YAML 配置到 Trainer dict 的主链是通的</li>
+  <li>HF dataset 到 <code>CanonicalSample</code> 的数据标准化是通的</li>
+  <li><code>messages → full_text / prompt_text → input_ids / labels</code> 这条预处理链是通的</li>
+  <li>LoRA adapter 注入成功，且只训练 0.05% 参数</li>
+  <li>训练循环、优化器、scheduler、梯度累积都跑完了</li>
+  <li>checkpoint 保存、重新加载、生成评测也都跑通了</li>
+</ul>
+</div>
+
+<div class="callout">
+<div class="callout-title">讲义里最值得强调的一句结论</div>
+<p><b>这次 run 不是证明 “30 条样本就能把模型变好”，而是证明 “mmit2 的 LoRA 第一版整包路径已经可以从头到尾工作”。</b></p>
+</div>
+
+<div class="note"><b>一个小心事项：</b><code>Model Summary Before Training</code> 与 <code>Model Summary After Training</code> 里的 <code>total_params</code> 不适合直接拿来做严格对比，因为训练后推理加载走了 merge / quantization 相关路径。讲义里更适合强调的是 LoRA 的 <code>0.05%</code> 可训练参数比例。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="reading-order"></span>19. 继续读代码时，最推荐的顺序</h2>
+<p>整包讲义写完以后，真正有用的是它能变成你之后自己读代码的地图。下面这个顺序，是我最推荐的二刷方式。</p>
+</div>
+
+<ol>
+<li>先看 <code>configs/colab_lora_smoke.yaml</code>，把“这次 run 到底想做什么”固定住。</li>
+<li>再看 <code>src/mmit2/data/types.py</code>，把 <code>CanonicalSample</code> 的边界记住。</li>
+<li>看 <code>src/mmit2/data/adapters/hf_datasets.py</code>，理解样本从 HF row 变成统一样本。</li>
+<li>看 <code>src/mmit2/training/preprocessors/chat_template.py</code>，重点盯 <code>messages</code>、<code>full_text</code>、<code>prompt_text</code>、<code>labels</code>。</li>
+<li>看 <code>src/mmit2/training/methods/base.py</code> 和 <code>lora.py</code>，理解“方法层到底接管哪些责任”。</li>
+<li>最后再看 <code>src/mmit2/training/trainer.py</code>，因为这时你已经能把每个步骤挂回自己的职责层里。</li>
+</ol>
+
+<div class="graph">最推荐的二刷顺序
+
+config
+  ↓
+CanonicalSample
+  ↓
+HF adapter
+  ↓
+chat template preprocessor
+  ↓
+LoRA method
+  ↓
+Trainer
+  ↓
+LocalMethod / Results</div>
+
+<div class="callout">
+<div class="callout-title">如果要继续写第二版或第三版讲义，最自然的扩展方向</div>
+<ul>
+  <li>把这版 LoRA mental model 迁移到 QLoRA / DoRA，专门讲“方法层差异”</li>
+  <li>单开一份 PyTorch / HF 补充讲义，把 <code>labels</code>、<code>causal LM loss</code>、<code>generate</code> 讲得更细</li>
+  <li>单开一份 benchmark / scoring 讲义，专门解释 <code>VQAv2</code>、<code>TextVQA</code>、<code>VizWiz</code> 的评测差异</li>
+</ul>
+</div>
+</section>
+
+</main>
+</body>
+</html>

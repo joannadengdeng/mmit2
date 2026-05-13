@@ -7,7 +7,7 @@ Usage::
 
     from mmit2.config.training_config import load_config, config_to_trainer_dict
 
-    cfg = load_config("configs/local_qlora.yaml")
+    cfg = load_config("configs/ssh_qlora.yaml")
     trainer_dict = config_to_trainer_dict(cfg)
 """
 from __future__ import annotations
@@ -19,7 +19,9 @@ from typing import Any, Dict, List
 
 import yaml
 
-from mmit2.registry import (
+from mmit2.config.model_layouts import list_model_layouts
+from mmit2.config.runtime import RuntimeConfig, SSHConfig
+from mmit2.training.registry import (
     get_training_method_defaults,
     list_training_methods,
 )
@@ -28,31 +30,6 @@ _LORA_FAMILY_METHODS = {"lora", "qlora", "dora"}
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────
-
-@dataclass
-class SSHConfig:
-    host: str = ""
-    port: int = 22
-    username: str = ""
-    key_path: str = ""
-    password: str = ""
-    conda_env: str = ""
-
-
-@dataclass
-class ColabConfig:
-    mount_drive: bool = True
-    drive_mount_point: str = "/content/drive"
-    pip_install: List[str] = field(default_factory=list)
-    output_to_drive: bool = True
-
-
-@dataclass
-class RuntimeConfig:
-    mode: str = "local"  # "local" | "colab" | "ssh"
-    ssh: SSHConfig = field(default_factory=SSHConfig)
-    colab: ColabConfig = field(default_factory=ColabConfig)
-
 
 @dataclass
 class ModelConfig:
@@ -75,6 +52,12 @@ class TrainingParams:
 
 
 @dataclass
+class ExperimentConfig:
+    name: str = ""
+    base_dir: str = ""
+
+
+@dataclass
 class DataConfig:
     adapter: str = "hf_datasets"
     data_path: str = ""
@@ -88,6 +71,7 @@ class TrainingConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingParams = field(default_factory=TrainingParams)
+    experiment: ExperimentConfig = field(default_factory=ExperimentConfig)
     data: DataConfig = field(default_factory=DataConfig)
 
 
@@ -106,15 +90,75 @@ def _parse_ssh(raw: dict) -> SSHConfig:
     )
 
 
-def _parse_colab(raw: dict) -> ColabConfig:
-    if not raw:
-        return ColabConfig()
-    return ColabConfig(
-        mount_drive=bool(raw.get("mount_drive", True)),
-        drive_mount_point=str(raw.get("drive_mount_point", "/content/drive")),
-        pip_install=list(raw.get("pip_install", [])),
-        output_to_drive=bool(raw.get("output_to_drive", True)),
+def _raw_ssh_section(raw: Dict[str, Any]) -> Dict[str, Any]:
+    if isinstance(raw.get("ssh"), dict):
+        return raw.get("ssh") or {}
+
+    raw_runtime = raw.get("runtime", {})
+    if isinstance(raw_runtime, dict) and isinstance(raw_runtime.get("ssh"), dict):
+        return raw_runtime.get("ssh") or {}
+
+    return {}
+
+
+def load_runtime_config_dict(raw: Dict[str, Any]) -> RuntimeConfig:
+    """Parse just the runtime section from an in-memory config mapping."""
+    raw = raw or {}
+    raw_runtime = raw.get("runtime", {})
+    runtime_mode = "ssh"
+    if isinstance(raw_runtime, dict):
+        runtime_mode = str(raw_runtime.get("mode", "ssh") or "ssh")
+    runtime = RuntimeConfig(
+        mode=runtime_mode,
+        ssh=_parse_ssh(_raw_ssh_section(raw)),
     )
+    _validate_runtime(runtime)
+    return runtime
+
+
+def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
+    """Load and validate a training config from an in-memory mapping."""
+    raw = raw or {}
+
+    raw_model = raw.get("model", {})
+    raw_training = raw.get("training", {})
+    raw_experiment = raw.get("experiment", {})
+    raw_data = raw.get("data", {})
+
+    cfg = TrainingConfig(
+        runtime=load_runtime_config_dict(raw),
+        model=ModelConfig(
+            model_path=str(raw_model.get("model_path", "")),
+        ),
+        training=TrainingParams(
+            ft_method=str(raw_training.get("ft_method", "qlora")),
+            num_epochs=int(raw_training.get("num_epochs", 3)),
+            per_device_batch_size=int(raw_training.get("per_device_batch_size", 4)),
+            gradient_accumulation_steps=int(raw_training.get("gradient_accumulation_steps", 4)),
+            learning_rate=float(raw_training.get("learning_rate", 2e-4)),
+            warmup_ratio=float(raw_training.get("warmup_ratio", 0.03)),
+            weight_decay=float(raw_training.get("weight_decay", 0.0)),
+            max_grad_norm=float(raw_training.get("max_grad_norm", 1.0)),
+            save_steps=int(raw_training.get("save_steps", 500)),
+            output_dir=str(raw_training.get("output_dir", "output")),
+            params=dict(raw_training.get("params", {})),
+        ),
+        experiment=ExperimentConfig(
+            name=str(raw_experiment.get("name", "")).strip(),
+            base_dir=str(raw_experiment.get("base_dir", "")).strip(),
+        ),
+        data=DataConfig(
+            adapter=str(raw_data.get("adapter", "hf_datasets")),
+            data_path=str(raw_data.get("data_path", "")),
+            split=str(raw_data.get("split", "train")),
+            image_root=str(raw_data.get("image_root", "")),
+            max_samples=int(raw_data.get("max_samples", 0)),
+        ),
+    )
+
+    _validate(cfg)
+    _merge_method_defaults(cfg)
+    return cfg
 
 
 def load_config(path: str) -> TrainingConfig:
@@ -143,51 +187,18 @@ def load_config(path: str) -> TrainingConfig:
 
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
+    return load_config_dict(raw)
 
-    # ── Parse sections ──
-    raw_runtime = raw.get("runtime", {})
-    raw_model = raw.get("model", {})
-    raw_training = raw.get("training", {})
-    raw_data = raw.get("data", {})
 
-    cfg = TrainingConfig(
-        runtime=RuntimeConfig(
-            mode=str(raw_runtime.get("mode", "local")),
-            ssh=_parse_ssh(raw_runtime.get("ssh")),
-            colab=_parse_colab(raw_runtime.get("colab")),
-        ),
-        model=ModelConfig(
-            model_path=str(raw_model.get("model_path", "")),
-        ),
-        training=TrainingParams(
-            ft_method=str(raw_training.get("ft_method", "qlora")),
-            num_epochs=int(raw_training.get("num_epochs", 3)),
-            per_device_batch_size=int(raw_training.get("per_device_batch_size", 4)),
-            gradient_accumulation_steps=int(raw_training.get("gradient_accumulation_steps", 4)),
-            learning_rate=float(raw_training.get("learning_rate", 2e-4)),
-            warmup_ratio=float(raw_training.get("warmup_ratio", 0.03)),
-            weight_decay=float(raw_training.get("weight_decay", 0.0)),
-            max_grad_norm=float(raw_training.get("max_grad_norm", 1.0)),
-            save_steps=int(raw_training.get("save_steps", 500)),
-            output_dir=str(raw_training.get("output_dir", "output")),
-            params=dict(raw_training.get("params", {})),
-        ),
-        data=DataConfig(
-            adapter=str(raw_data.get("adapter", "hf_datasets")),
-            data_path=str(raw_data.get("data_path", "")),
-            split=str(raw_data.get("split", "train")),
-            image_root=str(raw_data.get("image_root", "")),
-            max_samples=int(raw_data.get("max_samples", 0)),
-        ),
-    )
-
-    # ── Validate ──
-    _validate(cfg)
-
-    # ── Merge method defaults ──
-    _merge_method_defaults(cfg)
-
-    return cfg
+def _validate_runtime(runtime: RuntimeConfig) -> None:
+    if runtime.mode != "ssh":
+        raise ValueError(
+            f"runtime.mode: '{runtime.mode}' is not supported. Only 'ssh' mode is supported."
+        )
+    if not runtime.ssh.host:
+        raise ValueError("runtime.ssh.host: required")
+    if not runtime.ssh.username:
+        raise ValueError("runtime.ssh.username: required")
 
 
 def _validate(cfg: TrainingConfig) -> None:
@@ -206,17 +217,10 @@ def _validate(cfg: TrainingConfig) -> None:
             "Only 'hf_datasets' is supported."
         )
 
-    if cfg.runtime.mode not in ("local", "colab", "ssh"):
-        errors.append(
-            f"runtime.mode: '{cfg.runtime.mode}' is not valid. "
-            f"Must be one of: local, colab, ssh"
-        )
-
-    if cfg.runtime.mode == "ssh":
-        if not cfg.runtime.ssh.host:
-            errors.append("runtime.ssh.host: required when mode is 'ssh'")
-        if not cfg.runtime.ssh.username:
-            errors.append("runtime.ssh.username: required when mode is 'ssh'")
+    try:
+        _validate_runtime(cfg.runtime)
+    except ValueError as exc:
+        errors.append(str(exc))
 
     available = list_training_methods()
     if available and cfg.training.ft_method not in available:
@@ -235,6 +239,12 @@ def _validate(cfg: TrainingConfig) -> None:
         errors.append(
             "training.params.target_modules: required non-empty list for "
             f"method '{method_name}'"
+        )
+
+    if method_name == "freeze" and not str(method_params.get("model_layout", "")).strip():
+        errors.append(
+            "training.params.model_layout: required non-empty string for method "
+            f"'freeze'. Available: {list_model_layouts()}"
         )
 
     if errors:
@@ -271,6 +281,10 @@ def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
     return {
         "model": {
             "model_path": cfg.model.model_path,
+        },
+        "experiment": {
+            "name": cfg.experiment.name,
+            "base_dir": cfg.experiment.base_dir,
         },
         "data": data_config,
         "training_method": cfg.training.ft_method,

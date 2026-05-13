@@ -1,0 +1,10 @@
+layouts:
+  qwen2_5_vl:
+    description: "Qwen2.5-VL language backbone layout"
+    matches:
+      model_ids:
+        - "Qwen/Qwen2.5-VL-3B-Instruct"
+      model_types:
+        - "qwen2_5_vl"
+        - "qwen2_vl"
+    transformer_layer_path: "model.language_model.layers"

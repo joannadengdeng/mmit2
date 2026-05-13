@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>mmit2 data 包讲义：从 HF row 到 CanonicalSample</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--mono:'SF Mono','Fira Code','Consolas',monospace;--sans:-apple-system,'Helvetica Neue',sans-serif}
+body{background:#fff;color:#000;font-family:var(--sans);font-size:9pt;line-height:1.54;padding:12px 24px 12px 220px;max-width:1240px;margin:0 auto}
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  body{padding:0;max-width:none;font-size:8.1pt;line-height:1.38}
+  .print-hint{display:none!important}
+  .sidebar{display:none!important}
+  body{padding:10px 12px}
+  .print-columns{column-count:2;column-gap:8mm}
+  .section{page-break-inside:auto;break-inside:auto;margin-bottom:12px}
+  .section-intro,.vis,.note,.deep,.graph,.callout,.stepbox,.legend{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid}
+  .subsection{display:inline-block;width:100%;page-break-inside:avoid;break-inside:avoid-column}
+  pre.code,table{page-break-inside:auto;break-inside:auto}
+  tr,th,td{page-break-inside:avoid;break-inside:avoid}
+  th,td{padding:3px 4px;font-size:7pt;overflow-wrap:anywhere;word-break:break-word}
+  pre.code,.graph{font-size:7pt;line-height:1.28;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+  .grid-2,.grid-3{display:block!important}
+  .grid-2>*,.grid-3>*{display:block!important;width:100%!important}
+  p,li,td,th{orphans:2;widows:2}
+}
+.sidebar{position:fixed;left:0;top:0;width:205px;height:100vh;overflow-y:auto;background:#fafafa;border-right:1.5px solid #ddd;padding:10px 8px;font-size:7pt;z-index:100}
+.sidebar h3{font-size:7.5pt;margin:8px 0 3px;padding:0;border:none;color:#666;font-weight:600}
+.sidebar a{display:block;padding:2px 6px;margin:1px 0;color:#333;text-decoration:none;border-radius:3px;line-height:1.4;font-size:6.5pt}
+.sidebar a:hover{background:#e8e8e8}
+.sidebar .logo{font-size:9pt;font-weight:700;margin-bottom:6px;padding:4px 6px;border-bottom:1.5px solid #777}
+.sidebar .back-top{display:block;text-align:center;margin-top:8px;padding:4px;font-size:6.5pt;color:#888;border-top:1px solid #ddd}
+h1{font-size:13pt;font-weight:700;border-bottom:1.5px solid #666;padding-bottom:3px;margin-bottom:3px}
+.subtitle{font-size:8pt;color:#444;font-style:italic;margin-bottom:8px}
+h2{font-size:10.5pt;font-weight:700;margin:10px 0 5px;padding:3px 0;border-bottom:1px solid #777;color:#111}
+h3{font-size:9pt;font-weight:700;margin:6px 0 3px;border-bottom:1px solid #ccc;padding-bottom:1px;color:#222}
+p{margin:4px 0;font-size:8pt}
+ul,ol{margin:4px 0 4px 18px}
+li{margin:2px 0;font-size:8pt}
+code{font-family:var(--mono);font-size:0.96em}
+pre.code{background:#fbfbfb;border:1px solid #bbb;border-radius:2px;padding:5px 8px;font-family:var(--mono);font-size:7.45pt;line-height:1.42;margin:4px 0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.vis{border:1px solid #bbb;border-radius:3px;padding:6px 10px;margin:4px 0;background:#fcfcfc}
+.vis .vis-title{font-weight:700;font-size:9pt;margin-bottom:4px;color:#a00000}
+.vis-row{display:flex;align-items:stretch;gap:5px;margin:2px 0;font-family:var(--mono);font-size:7.5pt;flex-wrap:wrap}
+.vis-box{border:1px solid #aaa;padding:4px 8px;border-radius:2px;background:#fff;text-align:center;min-width:58px;font-size:7pt}
+.vis-box.input{background:#fff8e0;border-color:#806000}
+.vis-box.param{background:#fff0f0;border-color:#a00000;font-weight:700}
+.vis-box.result{background:#e8f0ff;border-color:#0040a0}
+.vis-box.file{background:#f2f7f2;border-color:#2f6d1b}
+.vis-arrow{font-size:12pt;font-weight:700;color:#000;align-self:center}
+.vis-label{font-size:6.5pt;color:#666;font-style:italic}
+.note{background:#fffdf4;border-left:2px solid #b08d2f;padding:4px 8px;margin:4px 0;font-size:7.5pt}
+.note b{color:#806000}
+.deep{background:#f7fbff;border:1px solid #a8bfdc;border-radius:3px;padding:6px 10px;margin:6px 0;font-size:7.5pt}
+.deep b{color:#0040a0}
+.deep .deep-title{font-weight:700;font-size:8pt;color:#0040a0;margin-bottom:3px}
+.callout{background:#f8fcf7;border:1px solid #9bc08c;border-radius:3px;padding:6px 10px;margin:6px 0;font-size:7.5pt}
+.callout .callout-title{font-weight:700;font-size:8pt;color:#2f6d1b;margin-bottom:3px}
+.stepbox{background:#fff;border:1px solid #cfd8e3;border-radius:3px;padding:6px 10px;margin:6px 0}
+.stepbox .step-title{font-weight:700;font-size:8pt;color:#0040a0;margin-bottom:3px}
+.legend{background:#fafafa;border:1px dashed #aaa;padding:5px 8px;margin:5px 0;font-size:7.3pt}
+table{width:100%;border-collapse:collapse;font-size:7pt;margin:4px 0}
+th,td{padding:3px 5px;border:1px solid #aaa;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+th{background:#f3f3f3;color:#111}
+.graph{font-family:var(--mono);font-size:7pt;line-height:1.22;white-space:pre-wrap;background:#fbfbfb;border:1px solid #bbb;padding:5px 8px;margin:4px 0;border-radius:2px;word-break:break-word;overflow-wrap:anywhere}
+.print-hint{background:#fffbe0;border:1.5px solid #806000;padding:6px 8px;margin:6px 0 10px;font-size:7.5pt;border-radius:2px}
+.section{margin-bottom:14px}
+.subsection{margin:0 0 6px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.small{font-size:7.2pt;color:#555}
+.path{font-family:var(--mono);font-size:7.15pt;color:#444}
+@media (max-width:900px){
+  body{padding:12px 16px;max-width:none}
+  .sidebar{display:none}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+<div class="logo">data 包讲义</div>
+<h3>总览</h3>
+<a href="#goal">这份讲义在做什么</a>
+<a href="#mental-model">先立 mental model</a>
+<a href="#map">代码地图</a>
+<a href="#boundaries">当前边界</a>
+<h3>主数据对象</h3>
+<a href="#turn">1. Turn</a>
+<a href="#canonical-sample">2. CanonicalSample</a>
+<a href="#eval-sample">3. EvalSample</a>
+<h3>dataset spec 层</h3>
+<a href="#why-spec">4. 为什么要有 dataset spec</a>
+<a href="#column-mapping">5. ColumnMapping</a>
+<a href="#handle-image">6. handle_image_value()</a>
+<a href="#hf-spec">7. HFDatasetSpec</a>
+<a href="#builtins">8. 内建 spec：VQAv2 / TextVQA / VizWiz</a>
+<a href="#registry">9. registry.py</a>
+<h3>adapter 层</h3>
+<a href="#adapter-abc">10. DatasetAdapter 抽象层</a>
+<a href="#hf-adapter">11. HFDatasetsAdapter 主体</a>
+<a href="#load-dataset">12. _load_dataset() 的 fallback 逻辑</a>
+<a href="#streaming">13. streaming / max_samples / __len__</a>
+<a href="#iter-getitem">14. __iter__ / __getitem__ / profile</a>
+<h3>真实例子</h3>
+<a href="#real-row">15. 一条真实 VQAv2 row</a>
+<a href="#real-canonical">16. 变成 CanonicalSample</a>
+<a href="#real-trainer">17. Trainer 怎么接住它</a>
+<a href="#real-preprocessor">18. Preprocessor 怎么接住它</a>
+<a href="#real-eval">19. EvalSample 怎么反向接回</a>
+<h3>扩展与阅读</h3>
+<a href="#config-layer">20. config 层如何约束 data</a>
+<a href="#add-dataset">21. 怎么加一个新数据集</a>
+<a href="#add-adapter">22. 怎么加一个新 adapter</a>
+<a href="#top" class="back-top">↑ 回到顶部</a>
+</nav>
+
+<span id="top"></span>
+<h1>mmit2 data 包讲义：从 HF row 到 CanonicalSample</h1>
+<div class="subtitle">这份讲义专门讲 <code>src/mmit2/data</code>。重点不是“把每个文件逐个念一遍”，而是先建立 mental model，再沿着一条真实 VQAv2 样本的流动过程，讲清 <code>HF dataset row → dataset spec → adapter → CanonicalSample → Trainer / Eval</code> 这条主线。</div>
+
+<div class="print-hint"><b>读法建议：</b>如果你要教别人这部分代码，最值得反复强调的是一句话：<b>data 包的目标不是“把数据集原样暴露出来”，而是“把各种来源的数据重写成 mmit2 自己的标准语言”。</b> 这个标准语言就是 <code>CanonicalSample</code> 和 <code>EvalSample</code>。</div>
+
+<main class="print-columns">
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="goal"></span>这份讲义在做什么</h2>
+<p>很多人一看到 <code>src/mmit2/data</code>，会先把注意力放在“支持了哪些数据集”上。但工程上更关键的问题其实是：<b>这些数据集被转换成了什么样的统一对象，后面的训练和评测为什么能不关心原始格式差异。</b></p>
+</div>
+
+<div class="deep">
+<div class="deep-title">一句话目标</div>
+<p><b>mmit2 的 data 包，本质上是在做“数据格式归一化”。</b> 它把不同 HF 数据集的列名、图像字段、答案字段、是否 streaming、是否内存解码，最后都收束成统一的 <code>CanonicalSample</code>。</p>
+</div>
+
+<div class="callout">
+<div class="callout-title">你读这份讲义时要一直记住的中心句</div>
+<p><b>训练层并不想知道你原始数据集叫不叫 <code>question_id</code>、图像是 bytes 还是 path、答案是单字符串还是 list。</b> data 包的职责，就是在进入 Trainer 之前把这些差异吃掉。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="mental-model"></span>先立 mental model</h2>
+<p>先不要看函数细节。先把 data 包想成三个盒子。</p>
+</div>
+
+<div class="vis">
+<div class="vis-title">data 包最重要的一张图</div>
+<div class="vis-row">
+  <div class="vis-box input">HF row<br><span class="vis-label">原始 dataset 一行</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box param">HFDatasetSpec<br><span class="vis-label">知道列怎么映射</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box result">CanonicalSample<br><span class="vis-label">训练通用标准对象</span></div>
+</div>
+<div class="vis-row">
+  <div class="vis-box file">datasets/<br><span class="vis-label">每种数据集的 spec</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box file">adapters/<br><span class="vis-label">真正去 load / iterate</span></div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box file">types.py<br><span class="vis-label">对象定义</span></div>
+</div>
+</div>
+
+<div class="graph">raw Hugging Face dataset row
+  ↓
+HFDatasetSpec.parse_row()
+  ↓
+handle_image_value()
+  ↓
+CanonicalSample(id, image_path, turns, metadata)
+  ↓
+ChatTemplatePreprocessor.tokenize()
+  ↓
+input_ids / labels / prompt_mask</div>
+
+<div class="note"><b>别把 adapter 和 spec 混在一起：</b>adapter 负责“怎么拿到数据”，spec 负责“拿到以后怎么解释这一行”。这两个角色分开，代码才容易扩展。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="map"></span>代码地图</h2>
+<p>data 包本身不大，但角色分层很清楚。最建议你用这张表来带读源码。</p>
+</div>
+
+<table>
+<tr><th>文件</th><th>职责</th><th>你读它时要问什么</th></tr>
+<tr><td><code>src/mmit2/data/types.py</code></td><td>定义标准对象</td><td>整个包内部统一用什么语言描述“一个样本”？</td></tr>
+<tr><td><code>src/mmit2/data/datasets/base.py</code></td><td>定义 spec 的共享逻辑</td><td>一行 HF row 怎么被拆成 question / answer / image / metadata？</td></tr>
+<tr><td><code>src/mmit2/data/datasets/vqav2.py</code><br><code>textvqa.py</code><br><code>vizwiz.py</code></td><td>每个数据集自己的列映射</td><td>不同数据集的 schema 差异到底在哪里？</td></tr>
+<tr><td><code>src/mmit2/data/datasets/registry.py</code></td><td>内建 spec 注册表</td><td>dataset_name 是怎么找到对应 parser 的？</td></tr>
+<tr><td><code>src/mmit2/data/adapters/base.py</code></td><td>adapter 抽象基类</td><td>mmit2 对“可迭代数据源”的最低要求是什么？</td></tr>
+<tr><td><code>src/mmit2/data/adapters/hf_datasets.py</code></td><td>真正的 HF 数据入口</td><td>怎么 load、stream、slice、yield <code>CanonicalSample</code>？</td></tr>
+</table>
+
+<div class="legend">
+<b>工程上最重要的事实：</b>虽然目录里有 adapter 抽象层，但当前发布版真正打通的训练路径，基本只支持 <code>hf_datasets</code> 这一条。也就是说，这套架构是为扩展准备好的，但目前最主要的现实入口还是 Hugging Face datasets。
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="boundaries"></span>当前边界</h2>
+<p>讲 data 包时，边界一定要讲清楚。不然读者会以为架构已经比实际交付得更广。</p>
+</div>
+
+<ul>
+  <li>当前训练 config 的 <code>data.adapter</code> 只支持 <code>hf_datasets</code>。</li>
+  <li>当前 registry 内建的 dataset spec 只有三个：<code>lmms-lab/VQAv2</code>、<code>lmms-lab/textvqa</code>、<code>lmms-lab/VizWiz-VQA</code>。</li>
+  <li>虽然 <code>HFDatasetsAdapter</code> 支持传入 <code>column_map</code>，但 YAML config 目前没有把这条能力公开成正式配置项。</li>
+  <li><code>image_root</code> 在 HF 数据集路径里通常不是核心角色，因为图像常常已经在 row 里；但 preprocessor 和 eval 仍然保留了它，兼容“文件路径型图像”。</li>
+</ul>
+
+<pre class="code"># training_config.py 的验证逻辑
+if cfg.data.adapter != "hf_datasets":
+    errors.append(
+        f"data.adapter: '{cfg.data.adapter}' is not supported. "
+        "Only 'hf_datasets' is supported."
+    )</pre>
+
+<div class="callout">
+<div class="callout-title">这点在教学里一定要点明</div>
+<p><b>架构上是“adapter 可扩展”，产品上是“当前只正式支持 hf_datasets”。</b> 这两句话同时成立，而且都要讲。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="turn"></span>1. Turn：最小对话单位</h2>
+<p>先从最小粒度开始。<code>types.py</code> 里的 <code>Turn</code> 很简单，但它决定了后面训练数据是怎么被想象成“对话”的。</p>
+</div>
+
+<pre class="code">class Turn:
+    role: str     # "human" | "assistant"
+    content: str</pre>
+
+<ul>
+  <li><code>role</code> 在 data 层用的是 <code>"human"</code> / <code>"assistant"</code>。</li>
+  <li>到了 preprocessor 的 chat-template 层，会被改写成 Hugging Face 更常见的 <code>"user"</code> / <code>"assistant"</code>。</li>
+  <li>也就是说，<b>data 层的 role 命名不必和模型模板完全一致</b>，只要后面的桥接层知道怎么转换就行。</li>
+</ul>
+
+<div class="note"><b>很容易忽略的一点：</b><code>Turn</code> 的存在说明 mmit2 在 data 层就已经把样本看成“多轮对话容器”，哪怕当前大多数 VQA 训练样本实际只有一问一答。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="canonical-sample"></span>2. CanonicalSample：训练路径的标准语言</h2>
+<p>这是 data 包最核心的对象。你可以把它当成“训练世界里的 lingua franca”。</p>
+</div>
+
+<pre class="code">class CanonicalSample:
+    id: str
+    image_path: str
+    turns: List[Turn]
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def first_question(self) -> str: ...
+
+    @property
+    def first_answer(self) -> str: ...</pre>
+
+<div class="grid-2">
+  <div class="stepbox">
+    <div class="step-title">这四个字段各自承担什么角色</div>
+    <ul>
+      <li><code>id</code>：样本身份标识，后面 debug / eval / report 都会打印它。</li>
+      <li><code>image_path</code>：图像来源描述；可以是真路径，也可以是特殊占位符。</li>
+      <li><code>turns</code>：真正的语义主体。</li>
+      <li><code>metadata</code>：保留不适合塞进主 schema 的附加信息，例如 <code>raw_answers</code>、<code>_pil_image</code>。</li>
+    </ul>
+  </div>
+  <div class="stepbox">
+    <div class="step-title">为什么要有 first_question / first_answer</div>
+    <ul>
+      <li>它们不是为了表达完整语义，而是为了给 debug / eval / summary 快速取第一问第一答。</li>
+      <li>这是一种很实用的“展示层 convenience API”。</li>
+      <li>后面的 debug 脚本大量依赖它们打印可读摘要。</li>
+    </ul>
+  </div>
+</div>
+
+<pre class="code"># 真实例子
+CanonicalSample(
+  id="262148000",
+  image_path="&lt;in_memory&gt;",
+  turns=[
+    Turn(role="human", content="Where is he looking?"),
+    Turn(role="assistant", content="down"),
+  ],
+  metadata={
+    "_pil_image": &lt;PIL image ...&gt;,
+    "raw_answers": ["down"],
+  },
+)</pre>
+
+<div class="callout">
+<div class="callout-title">这一层的核心设计判断</div>
+<p><b>CanonicalSample 故意不强绑定任何具体 benchmark schema。</b> 它不要求一定有 <code>question_id</code>、也不要求答案一定叫 <code>multiple_choice_answer</code>。它只关心：这条样本最后能不能用“图像 + 一串对话 turn”表达出来。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="eval-sample"></span>3. EvalSample：评测路径的标准语言</h2>
+<p><code>EvalSample</code> 和 <code>CanonicalSample</code> 长得像，但使用场景不同。讲这两个对象时一定要明确区分训练路径和评测路径。</p>
+</div>
+
+<pre class="code">class EvalSample:
+    id: str
+    image_path: str
+    question: str
+    ground_truth: Optional[Any] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)</pre>
+
+<ul>
+  <li><code>CanonicalSample</code> 面向训练或通用多轮输入。</li>
+  <li><code>EvalSample</code> 面向 benchmark question，一般是一问一答型评测单元。</li>
+  <li><code>ground_truth</code> 的类型故意放得比较宽，因为有时是 VQA 多答案 list，有时可能是 MCQ 选项。</li>
+</ul>
+
+<pre class="code"># eval/methods/base.py
+def prepare_eval_input(self, sample: EvalSample, image_root: str = "") -> Dict[str, Any]:
+    cs = CanonicalSample(
+        id=sample.id,
+        image_path=sample.image_path,
+        turns=[Turn(role="human", content=sample.question)],
+        metadata=sample.metadata,
+    )
+    return self.prepare_input(cs, image_root=image_root)</pre>
+
+<div class="note"><b>很值得讲清的一点：</b>评测路径并没有发明一套新的 tokenizer 逻辑；它是先把 <code>EvalSample</code> 临时包装回 <code>CanonicalSample</code>，然后复用同一套 prepare / template / generate 管线。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="why-spec"></span>4. 为什么要有 dataset spec</h2>
+<p>data 包里最容易被低估的设计，就是把“如何解释某个 HF row”抽成了一层 spec，而不是直接把解析逻辑写死在 adapter 里。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">spec 层回答的是“这一行是什么意思”</div>
+<p>同样是一个 Hugging Face dataset row，不同数据集的列名完全可能不同：</p>
+<ul>
+  <li>有的 id 叫 <code>question_id</code></li>
+  <li>有的答案是 <code>multiple_choice_answer</code></li>
+  <li>有的答案是 <code>answers</code> list</li>
+  <li>有的图像已经是 PIL image，有的是 bytes/path 结构</li>
+</ul>
+<p>spec 层就是负责把这些差异翻译成同一套规则。</p>
+</div>
+
+<div class="graph">HFDatasetsAdapter
+  ├─ 负责 load_dataset(...)
+  ├─ 负责 streaming / slicing / iteration
+  └─ 不想知道 “question 字段到底叫什么”
+
+HFDatasetSpec
+  ├─ 负责 column mapping
+  ├─ 负责 parse_question / parse_answer
+  ├─ 负责 build_metadata
+  └─ 负责 parse_row() → CanonicalSample</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="column-mapping"></span>5. ColumnMapping：最基础的 schema 翻译表</h2>
+<p><code>ColumnMapping</code> 是最轻量的一层。它做的不是解析，而是先告诉系统“哪个列名对应哪个语义”。</p>
+</div>
+
+<pre class="code">class ColumnMapping:
+    id_col: str = "id"
+    image_col: str = "image"
+    question_col: str = "question"
+    answer_col: str = "answer"</pre>
+
+<table>
+<tr><th>字段</th><th>含义</th><th>例子</th></tr>
+<tr><td><code>id_col</code></td><td>样本 ID 来自哪一列</td><td><code>question_id</code></td></tr>
+<tr><td><code>image_col</code></td><td>图像字段来自哪一列</td><td><code>image</code></td></tr>
+<tr><td><code>question_col</code></td><td>问题来自哪一列</td><td><code>question</code></td></tr>
+<tr><td><code>answer_col</code></td><td>答案来自哪一列</td><td><code>multiple_choice_answer</code> 或 <code>answers</code></td></tr>
+</table>
+
+<div class="note"><b>这一层不要过度神化：</b><code>ColumnMapping</code> 只是“列名映射表”，它本身不处理 list 答案、也不处理图像 bytes。真正的解析逻辑在 <code>HFDatasetSpec</code> 里。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="handle-image"></span>6. handle_image_value()：图像字段的翻译器</h2>
+<p>这是 data 包里一个非常关键的小函数，因为多模态训练里最麻烦的差异之一就是“图像这一列到底长什么样”。</p>
+</div>
+
+<pre class="code">def handle_image_value(image_val, load_images: bool = True) -> Tuple[str, Dict[str, Any]]:
+    metadata = {}
+    image_path = ""
+
+    if image_val is None:
+        pass
+    elif isinstance(image_val, str):
+        image_path = image_val
+    elif isinstance(image_val, dict) and ("bytes" in image_val or "path" in image_val):
+        ...
+    else:
+        ...
+
+    return image_path, metadata</pre>
+
+<div class="grid-2">
+  <div class="stepbox">
+    <div class="step-title">它可能收到的 image_val 形态</div>
+    <ul>
+      <li><code>None</code></li>
+      <li>字符串路径</li>
+      <li>HF Image 的 dict 形式：带 <code>bytes</code> / <code>path</code></li>
+      <li>已经 decode 完的 <code>PIL.Image</code></li>
+    </ul>
+  </div>
+  <div class="stepbox">
+    <div class="step-title">它的返回值为什么是二元组</div>
+    <ul>
+      <li><code>image_path</code>：给主 schema 一个统一位置</li>
+      <li><code>metadata</code>：把实际图像对象或 bytes 放到旁路</li>
+      <li>这样上层拿到的 <code>CanonicalSample</code> 就保持稳定</li>
+    </ul>
+  </div>
+</div>
+
+<table>
+<tr><th>输入情况</th><th>load_images=True 时结果</th><th>为什么这么设计</th></tr>
+<tr><td>字符串路径</td><td><code>image_path=that_string</code></td><td>最直观，后面可配合 <code>image_root</code> 读文件</td></tr>
+<tr><td>dict 且有 bytes</td><td>尝试解码为 PIL，<code>metadata["_pil_image"]</code>，<code>image_path="&lt;in_memory&gt;"</code></td><td>说明图像已经在内存里，不必再走文件系统</td></tr>
+<tr><td>dict 但不解码</td><td><code>image_path=path 或 "&lt;deferred&gt;"</code>，可能存 <code>_image_bytes</code></td><td>允许推迟图像解码</td></tr>
+<tr><td>PIL.Image</td><td><code>metadata["_pil_image"]=image</code>，<code>image_path="&lt;in_memory&gt;"</code></td><td>显式告诉后面“这张图已经在内存中”</td></tr>
+</table>
+
+<pre class="code"># 这次真实样本就是这一路
+image_path = "&lt;in_memory&gt;"
+metadata["_pil_image"] = &lt;PIL.JpegImagePlugin.JpegImageFile image mode=RGB size=640x512 ...&gt;</pre>
+
+<div class="callout">
+<div class="callout-title">教程里一定要解释清楚 “&lt;in_memory&gt;”</div>
+<p>它不是一个真路径，而是一个语义标记：<b>“图像已经在 metadata 里了，别再去文件系统找。”</b> 这也是为什么后面的 preprocessor 会优先看 <code>metadata["_pil_image"]</code>。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="hf-spec"></span>7. HFDatasetSpec：一行 row 如何变成 CanonicalSample</h2>
+<p><code>HFDatasetSpec</code> 是整个 datasets 层的核心。它不是某个具体数据集，而是“HF VQA 数据集 spec 的共同行为模板”。</p>
+</div>
+
+<pre class="code">class HFDatasetSpec:
+    dataset_name: str = ""
+    mapping: ColumnMapping = ColumnMapping()
+    prefer_streaming: bool = False
+
+    def parse_question(self, row: dict) -> str: ...
+    def parse_answer(self, row: dict) -> tuple[str, Any]: ...
+    def build_metadata(self, answer_raw: Any) -> Dict[str, Any]: ...
+    def parse_row(self, row: dict, idx: int, load_images: bool = True) -> CanonicalSample: ...</pre>
+
+<h3>7.1 parse_question()</h3>
+<p>它做的事很朴素：按照 mapping 取 question 列，如果拿到 list，就取第一个；最后都收束成字符串。</p>
+
+<h3>7.2 parse_answer()</h3>
+<p>这里开始有一点语义判断了：</p>
+<ul>
+  <li>如果答案是 list，而且 list 里还是 dict，那么默认取第一个 dict 里的 <code>answer</code> 作为训练时的主答案。</li>
+  <li>但它并不会丢掉原始答案集合，而是把原始对象作为 <code>answer_raw</code> 返回给后面的 <code>build_metadata()</code>。</li>
+</ul>
+
+<h3>7.3 build_metadata()</h3>
+<p>这一步专门负责把“原始答案集合”保留到 <code>metadata["raw_answers"]</code>。这对 VQA 很重要，因为训练时可能只监督一个答案，但评测时经常需要保留多个参考答案。</p>
+
+<h3>7.4 parse_row()</h3>
+<p>这是整层的关键函数。它会：</p>
+<ol>
+  <li>解析 question</li>
+  <li>解析主答案和原始答案</li>
+  <li>构建 <code>Turn("human", question)</code> 和 <code>Turn("assistant", answer)</code></li>
+  <li>调用 <code>handle_image_value()</code> 处理图像列</li>
+  <li>合并图像 metadata 和答案 metadata</li>
+  <li>返回完整 <code>CanonicalSample</code></li>
+</ol>
+
+<pre class="code">return CanonicalSample(
+    id=sample_id,
+    image_path=image_path,
+    turns=turns,
+    metadata=metadata,
+)</pre>
+
+<div class="note"><b>设计味道很对的一点：</b><code>parse_row()</code> 不关心数据是 streaming 还是本地，也不关心 DataLoader；它只负责“把一行 row 翻译成统一对象”。这是个很干净的职责边界。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="builtins"></span>8. 内建 spec：VQAv2 / TextVQA / VizWiz</h2>
+<p>内建 spec 本身很轻，因为大部分共享逻辑已经在 <code>HFDatasetSpec</code> 里了。每个具体 spec 主要做两件事：填 dataset_name，填 column mapping。</p>
+</div>
+
+<pre class="code">class VQAv2Spec(HFDatasetSpec):
+    dataset_name = "lmms-lab/VQAv2"
+    mapping = ColumnMapping(
+        id_col="question_id",
+        image_col="image",
+        question_col="question",
+        answer_col="multiple_choice_answer",
+    )
+    prefer_streaming = True</pre>
+
+<pre class="code">class TextVQASpec(HFDatasetSpec):
+    dataset_name = "lmms-lab/textvqa"
+    mapping = ColumnMapping(
+        id_col="question_id",
+        image_col="image",
+        question_col="question",
+        answer_col="answers",
+    )</pre>
+
+<pre class="code">class VizWizVQASpec(HFDatasetSpec):
+    dataset_name = "lmms-lab/VizWiz-VQA"
+    mapping = ColumnMapping(
+        id_col="question_id",
+        image_col="image",
+        question_col="question",
+        answer_col="answers",
+    )</pre>
+
+<table>
+<tr><th>数据集</th><th>关键差异</th><th>对 parse_answer() 有什么影响</th></tr>
+<tr><td>VQAv2</td><td>答案列是单字符串 <code>multiple_choice_answer</code></td><td>主答案直接就是该字符串</td></tr>
+<tr><td>TextVQA</td><td>答案列是 <code>answers</code> list</td><td>主答案取第一个，同时把全部答案写入 <code>raw_answers</code></td></tr>
+<tr><td>VizWiz</td><td>也常是 <code>answers</code> list</td><td>和 TextVQA 类似</td></tr>
+</table>
+
+<div class="callout">
+<div class="callout-title">VQAv2Spec 里最值得单独讲的一行</div>
+<p><code>prefer_streaming = True</code>。这不是解析层的语义，而是给 adapter 的性能/加载策略一个提示：这个数据集更倾向于 streaming 方式读取。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="registry"></span>9. registry.py：dataset_name 怎么找到 spec</h2>
+<p>registry 非常轻，但在 mental model 里很重要，因为它是从“字符串名字”跳到“具体 parser 行为”的桥。</p>
+</div>
+
+<pre class="code">_SPEC_CLASSES = (
+    VQAv2Spec,
+    TextVQASpec,
+    VizWizVQASpec,
+)
+
+DATASET_SPECS = {
+    spec_cls.dataset_name: spec_cls()
+    for spec_cls in _SPEC_CLASSES
+}</pre>
+
+<ul>
+  <li><code>get_dataset_spec(dataset_name)</code>：如果是内建数据集，就取现成 spec。</li>
+  <li><code>build_configured_spec(dataset_name, mapping)</code>：如果你手里有自定义 column_map，可以动态构造一个 <code>ConfiguredVQASpec</code>。</li>
+</ul>
+
+<div class="note"><b>这里要讲清一个现实点：</b>运行时虽然有 <code>build_configured_spec()</code> 这条能力，但当前 YAML config 没直接暴露它，所以它更像“面向程序化扩展”的能力，而不是面向最终用户的标准入口。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="adapter-abc"></span>10. DatasetAdapter：adapter 层的最小契约</h2>
+<p>adapter 抽象层的设计很克制。它不规定太多，只要求两件事：能迭代，能给长度。</p>
+</div>
+
+<pre class="code">class DatasetAdapter(ABC):
+    @abstractmethod
+    def __iter__(self) -> Iterator[CanonicalSample]: ...
+
+    @abstractmethod
+    def __len__(self) -> int: ...</pre>
+
+<ul>
+  <li>这说明 data 层输出的核心接口是“一个可迭代的 <code>CanonicalSample</code> 序列”。</li>
+  <li>它没有强制必须支持随机访问，也没有强制必须是 torch Dataset。</li>
+  <li>真正的随机访问能力是在具体实现里再决定，比如 <code>HFDatasetsAdapter.__getitem__()</code> 只在非 streaming 模式下可用。</li>
+</ul>
+
+<div class="callout">
+<div class="callout-title">这层设计的好处</div>
+<p>如果未来你想接 CSV、JSONL、数据库、对象存储，不必先把它塞进 Hugging Face Dataset 对象，只要最后能持续 yield <code>CanonicalSample</code> 就行。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="hf-adapter"></span>11. HFDatasetsAdapter：当前版本最重要的现实入口</h2>
+<p>虽然 adapter 架构是开放的，但当前真正承担大部分训练数据入口责任的是 <code>HFDatasetsAdapter</code>。</p>
+</div>
+
+<pre class="code">class HFDatasetsAdapter(DatasetAdapter):
+    def __init__(
+        self,
+        dataset_name: str,
+        split: str = "train",
+        column_map: Optional[ColumnMapping] = None,
+        max_samples: Optional[int] = None,
+        streaming: bool = False,
+        trust_remote_code: bool = True,
+        load_images: bool = True,
+        config_name: Optional[str] = None,
+    ) -> None:
+        ...</pre>
+
+<div class="grid-2">
+  <div class="stepbox">
+    <div class="step-title">构造函数最关键的输入</div>
+    <ul>
+      <li><code>dataset_name</code>：HF 数据集名</li>
+      <li><code>split</code>：想读哪个 split</li>
+      <li><code>max_samples</code>：小样本 smoke / debug 时非常关键</li>
+      <li><code>streaming</code>：是否用 iterable 方式读</li>
+      <li><code>load_images</code>：是否急着把图像解码成 PIL</li>
+    </ul>
+  </div>
+  <div class="stepbox">
+    <div class="step-title">构造函数里实际做了什么</div>
+    <ul>
+      <li>根据 <code>dataset_name</code> 取 spec</li>
+      <li>决定是否偏向 streaming</li>
+      <li>调用 <code>_load_dataset()</code> 真正去拿 HF dataset</li>
+      <li>必要时关闭 eager image decode</li>
+      <li>必要时对非 streaming dataset 做 select 截断</li>
+      <li>决定最终使用哪个 spec</li>
+    </ul>
+  </div>
+</div>
+
+<pre class="code">spec = get_dataset_spec(dataset_name)
+prefer_streaming = spec.prefer_streaming if spec is not None else False
+
+if not streaming and (prefer_streaming or (max_samples is not None and max_samples &lt;= 50)):
+    streaming = True
+    self.streaming = True</pre>
+
+<div class="note"><b>这几行特别值得讲：</b>small-sample 调试和某些数据集的默认建议，都会把 adapter 自动推向 streaming 模式。这就是为什么你在 Colab debug 里会频繁看到 streaming 行为。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="load-dataset"></span>12. _load_dataset()：split fallback 与 streaming fallback</h2>
+<p>这段逻辑是 adapter 真正体现“工程味”的地方。它不是单纯一把梭 `load_dataset(name, split=...)`，而是尽量容错。</p>
+</div>
+
+<ol>
+  <li>先尝试用 <code>load_dataset_builder(...).info</code> 看有哪些 split。</li>
+  <li>如果用户指定的 split 不存在，就尝试使用 builder 暴露的第一个 split。</li>
+  <li>无论如何，再补上 <code>train / validation / test</code> 这几个常见 fallback。</li>
+  <li>对每个 candidate split，先尝试普通 load，再尝试带 <code>trust_remote_code</code> 的 load。</li>
+  <li>如果非 streaming 路径都失败，再退回 streaming load 试一次。</li>
+</ol>
+
+<pre class="code">for try_split in splits_to_try:
+    load_kwargs = {"split": try_split, "streaming": streaming}
+    for kwargs in (load_kwargs, {**load_kwargs, "trust_remote_code": trust_remote_code}):
+        try:
+            dataset = datasets_mod.load_dataset(*load_pos, **kwargs)
+            self.split = try_split
+            return dataset
+        except Exception as exc:
+            ...</pre>
+
+<div class="callout">
+<div class="callout-title">它在工程上解决了什么问题</div>
+<p>用户配置里写了一个 split，不代表目标数据集真的有那个 split，也不代表在当前环境下非 streaming 一定能成功。<code>_load_dataset()</code> 的容错逻辑，就是把这些“理想输入”变成“尽量成功的实际加载”。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="streaming"></span>13. streaming / max_samples / __len__：这层最容易踩坑的地方</h2>
+<p>这是 data 包里非常值得单独讲的一个工程点，因为 streaming dataset 在 Python 容器语义上和普通 list-like dataset 并不一样。</p>
+</div>
+
+<pre class="code">def __len__(self) -> int:
+    if self.streaming:
+        return self.max_samples if self.max_samples is not None else -1
+    return len(self._hf_dataset)</pre>
+
+<ul>
+  <li>非 streaming 时，长度就是 HF dataset 的真实长度。</li>
+  <li>streaming 时，如果已经给了 <code>max_samples</code>，那长度就直接返回这个上限。</li>
+  <li>如果 streaming 且没有上限，长度返回 <code>-1</code>，表示“未知或不适合当常规有限序列看待”。</li>
+</ul>
+
+<div class="note"><b>这里的隐含工程约束：</b>调用方如果想安全地把 streaming adapter 收成 list，最好先给 <code>max_samples</code>。这也是为什么 debug / smoke 路径都很依赖小样本上限。</div>
+
+<pre class="code">def __iter__(self) -> Iterator[CanonicalSample]:
+    count = 0
+    for idx, row in enumerate(self._hf_dataset):
+        if self.max_samples is not None and count &gt;= self.max_samples:
+            break
+        yield self._spec.parse_row(row, idx, load_images=self.load_images)
+        count += 1</pre>
+
+<div class="callout">
+<div class="callout-title">这段逻辑的真正意义</div>
+<p><code>max_samples</code> 不只是“训练时偷懒少读一点”，它还是 streaming 语义下把“无限/未知长度可迭代对象”重新拉回可控调试范围的关键工具。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="iter-getitem"></span>14. __iter__ / __getitem__ / profile：调用方实际能用什么</h2>
+<p>一个接口设计好不好，最终要看上层怎么实际使用它。</p>
+</div>
+
+<pre class="code">def __getitem__(self, idx: int) -> CanonicalSample:
+    if self.streaming:
+        raise TypeError("__getitem__ is not supported in streaming mode.")
+    row = self._hf_dataset[idx]
+    return self._spec.parse_row(row, idx, load_images=self.load_images)</pre>
+
+<ul>
+  <li><code>__iter__</code>：主路径；Trainer 和 debug 都主要靠它。</li>
+  <li><code>__getitem__</code>：只在非 streaming 模式下可用，方便随机抽样。</li>
+  <li><code>column_names</code>：暴露底层列名，便于调试。</li>
+  <li><code>mapping</code>：暴露当前 spec 的列映射。</li>
+  <li><code>profile</code>：暴露完整 spec 对象，便于教学或高级检查。</li>
+</ul>
+
+<div class="note"><b>这里很适合讲一个 API 设计判断：</b>mmit2 没把底层 HF dataset 完全藏起来，而是适度暴露了 <code>column_names</code> 和 <code>profile</code> 这种“对调试很有用，但又不会破坏抽象层”的信息。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="real-row"></span>15. 一条真实 VQAv2 row：从原始字段开始看</h2>
+<p>现在我们把上面的抽象层全部落到真实例子上。我们固定这条训练样本：</p>
+</div>
+
+<pre class="code">sample_id = "262148000"
+question = "Where is he looking?"
+answer = "down"
+image_info = {mode: "RGB", size: (640, 512)}</pre>
+
+<p>对于 VQAv2Spec，最重要的列映射是：</p>
+
+<pre class="code">ColumnMapping(
+  id_col="question_id",
+  image_col="image",
+  question_col="question",
+  answer_col="multiple_choice_answer",
+)</pre>
+
+<p>也就是说，原始 HF row 至少要被看成下面这样的语义对象：</p>
+
+<pre class="code">row = {
+  "question_id": 262148000,
+  "image": &lt;HF image field / PIL image / bytes+path dict&gt;,
+  "question": "Where is he looking?",
+  "multiple_choice_answer": "down",
+}</pre>
+
+<div class="note"><b>这一步最重要的不是字面字段，而是“spec 认为哪一列是什么”。</b> 同一个 row，如果换一个 spec 解释，最后出来的 CanonicalSample 就可能完全不同。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="real-canonical"></span>16. 这条真实样本如何变成 CanonicalSample</h2>
+<p>这是整份讲义最应该反复看的例子。</p>
+</div>
+
+<pre class="code">One Raw Sample
+{
+  'first_answer': 'down',
+  'first_question': 'Where is he looking?',
+  'id': '262148000',
+  'image_info': {'mode': 'RGB', 'size': (640, 512)},
+  'image_path': '&lt;in_memory&gt;',
+  'metadata': {
+    '_pil_image': '&lt;PIL.JpegImagePlugin.JpegImageFile image mode=RGB size=640x512 ...&gt;',
+    'raw_answers': ['down']
+  },
+  'raw_answers': ['down'],
+  'turns': [
+    {'content': 'Where is he looking?', 'role': 'human'},
+    {'content': 'down', 'role': 'assistant'}
+  ]
+}</pre>
+
+<div class="grid-2">
+  <div class="stepbox">
+    <div class="step-title">这里每个字段是怎么来的</div>
+    <ul>
+      <li><code>id</code>：来自 <code>question_id</code></li>
+      <li><code>first_question</code>：来自第一个 human turn</li>
+      <li><code>first_answer</code>：来自第一个 assistant turn</li>
+      <li><code>raw_answers</code>：来自 <code>build_metadata()</code></li>
+    </ul>
+  </div>
+  <div class="stepbox">
+    <div class="step-title">这里最值得讲的两个工程细节</div>
+    <ul>
+      <li><code>image_path="&lt;in_memory&gt;"</code> 不是 bug，是语义标记</li>
+      <li><code>metadata["_pil_image"]</code> 让后面不必再走磁盘读图</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout">
+<div class="callout-title">一句话总结这一层</div>
+<p><b>到这里为止，原始 dataset schema 已经被“忘掉”了。</b> 后面训练层只会看到一个带 <code>turns</code>、<code>image_path</code>、<code>metadata</code> 的标准对象。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="real-trainer"></span>17. Trainer 怎么接住 CanonicalSample</h2>
+<p>data 包真正的价值，只有在上层不用再关心原始 schema 时，才算兑现。Trainer 就是最好的验证点。</p>
+</div>
+
+<pre class="code"># trainer.py
+data_cfg = dict(config.data_config)
+adapter_name = data_cfg.pop("adapter", "hf_datasets")
+max_samples = int(data_cfg.pop("max_samples", 0) or 0)
+data_cfg.pop("image_root", None)
+
+adapter = HFDatasetsAdapter(
+    max_samples=max_samples if max_samples &gt; 0 else None,
+    **data_cfg,
+)
+samples = list(adapter)</pre>
+
+<ul>
+  <li>Trainer 只关心从 config 提取出 adapter 参数。</li>
+  <li>一旦 adapter 构造完成，Trainer 拿到的就是 <code>samples = list(adapter)</code>。</li>
+  <li><b>Trainer 不需要知道 question 列名，不需要知道答案是 list 还是 string。</b></li>
+</ul>
+
+<div class="note"><b>很值得讲的一个小点：</b><code>image_root</code> 在这里被显式 pop 掉，因为它不是 adapter 的参数，而是 preprocessor / eval 在真正读图片文件时才需要的参数。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="real-preprocessor"></span>18. Preprocessor 怎么接住它</h2>
+<p>一旦样本进入 preprocessor，data 包的职责就基本完成了。但如果不看这一站，你就很难真正理解 data 包为什么长成现在这样。</p>
+</div>
+
+<pre class="code"># chat_template.py
+def _load_image(sample: CanonicalSample, image_root: str = ""):
+    pil_image = sample.metadata.get("_pil_image")
+    if pil_image is not None:
+        return pil_image.convert("RGB")
+    img_path = os.path.join(image_root, sample.image_path) if image_root else sample.image_path
+    ...</pre>
+
+<p>这段代码正好解释了为什么 data 包要把图像处理成“主 schema + metadata 旁路”两条线：</p>
+
+<ul>
+  <li>如果图像已经在 <code>metadata["_pil_image"]</code>，那就直接用它。</li>
+  <li>如果没有，才退回 <code>image_root + image_path</code> 去文件系统找图。</li>
+</ul>
+
+<pre class="code"># 真实例子接下来的 messages
+[
+  {
+    "role": "user",
+    "content": [
+      {"type": "image"},
+      {"type": "text", "text": "Where is he looking?"}
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {"type": "text", "text": "down"}
+    ]
+  }
+]</pre>
+
+<div class="callout">
+<div class="callout-title">data 包设计为什么是对的</div>
+<p>如果 data 层只存一条僵硬的磁盘路径，HF in-memory 图像这条路径就会变得很别扭。现在这套设计让 preprocessor 可以自然地优先吃内存图像，再 fallback 到文件路径。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="real-eval"></span>19. EvalSample 怎么反向接回训练世界</h2>
+<p>评测路径看似和训练路径不同，但它最后仍然会借助 data 包定义的对象语言。</p>
+</div>
+
+<pre class="code"># eval/benchmarks/vqav2.py
+yield EvalSample(
+    id=str(q["question_id"]),
+    image_path=os.path.join(self.image_root, q["image"]) if self.image_root else q["image"],
+    question=q["text"],
+    ground_truth=self._gt_map.get(str(q["question_id"]), []),
+)</pre>
+
+<p>然后在 <code>Method.prepare_eval_input()</code> 里，又会被重新包成：</p>
+
+<pre class="code">CanonicalSample(
+  id=sample.id,
+  image_path=sample.image_path,
+  turns=[Turn(role="human", content=sample.question)],
+  metadata=sample.metadata,
+)</pre>
+
+<div class="note"><b>这说明什么：</b><code>CanonicalSample</code> 不只是“训练数据对象”，它其实还是整包里更底层、更通用的“模型输入前对象语言”。<code>EvalSample</code> 只是 benchmark 侧更顺手的包装。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="config-layer"></span>20. config 层如何约束 data</h2>
+<p>data 包不是孤立存在的。用户真正触发它，通常是从 YAML config 开始。</p>
+</div>
+
+<pre class="code">class DataConfig:
+    adapter: str = "hf_datasets"
+    data_path: str = ""
+    split: str = "train"
+    image_root: str = ""
+    max_samples: int = 0</pre>
+
+<pre class="code">data_config = {
+    "adapter": cfg.data.adapter,
+    "data_path": cfg.data.data_path,
+    "split": cfg.data.split,
+    "image_root": cfg.data.image_root,
+}
+if cfg.data.max_samples:
+    data_config["max_samples"] = cfg.data.max_samples</pre>
+
+<ul>
+  <li><code>data_path</code> 最后会被 Trainer 转成 adapter 侧的 <code>dataset_name</code>。</li>
+  <li><code>image_root</code> 虽然保留在 config 里，但不是 adapter 主体参数。</li>
+  <li><code>max_samples</code> 对调试、smoke、streaming 的行为影响很大。</li>
+</ul>
+
+<div class="callout">
+<div class="callout-title">讲给用户时可以这样概括</div>
+<p>用户只要在 YAML 里说清“数据来自哪个 HF 数据集、读哪个 split、最多拿多少条”，data 包就负责把它翻译成训练代码真正需要的标准对象。</p>
+</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="add-dataset"></span>21. 怎么加一个新数据集</h2>
+<p>如果你的目标还是 Hugging Face datasets，只是 schema 不同，那大多数情况下你不需要写新 adapter，只需要加一个新的 spec。</p>
+</div>
+
+<ol>
+  <li>在 <code>src/mmit2/data/datasets/</code> 新建一个 spec 文件，例如 <code>myset.py</code>。</li>
+  <li>定义一个继承 <code>HFDatasetSpec</code> 的类，填 <code>dataset_name</code> 和 <code>mapping</code>。</li>
+  <li>如果 question / answer 解析逻辑不一样，重写 <code>parse_question()</code> 或 <code>parse_answer()</code>。</li>
+  <li>如果 metadata 需要额外字段，重写 <code>build_metadata()</code>。</li>
+  <li>在 <code>registry.py</code> 的 <code>_SPEC_CLASSES</code> 里注册它。</li>
+</ol>
+
+<pre class="code">class MyDatasetSpec(HFDatasetSpec):
+    dataset_name = "my-org/my-vqa"
+    mapping = ColumnMapping(
+        id_col="qid",
+        image_col="image",
+        question_col="prompt",
+        answer_col="answers",
+    )</pre>
+
+<div class="note"><b>经验判断：</b>只要底层还是 HF dataset row，优先加 spec，不要急着加 adapter。adapter 是为“数据源类型不同”准备的，不是为“列名不同”准备的。</div>
+</section>
+
+<section class="section">
+<div class="section-intro">
+<h2><span id="add-adapter"></span>22. 怎么加一个新 adapter</h2>
+<p>如果你的数据根本不在 Hugging Face datasets 里，比如是本地 JSONL、数据库、对象存储清单，这时才考虑新 adapter。</p>
+</div>
+
+<div class="deep">
+<div class="deep-title">判断标准</div>
+<p><b>列名不同 → 新 spec</b></p>
+<p><b>数据源类型不同 → 新 adapter</b></p>
+</div>
+
+<p>新 adapter 至少要做两件事：</p>
+<ul>
+  <li>实现 <code>__iter__()</code>，持续 yield <code>CanonicalSample</code></li>
+  <li>实现 <code>__len__()</code></li>
+</ul>
+
+<pre class="code">class MyJsonlAdapter(DatasetAdapter):
+    def __iter__(self):
+        for row in load_jsonl(...):
+            yield CanonicalSample(...)
+
+    def __len__(self):
+        return ...</pre>
+
+<p>但要注意，当前 Trainer 的正式路径仍然只接受 <code>hf_datasets</code>，所以如果你真的新增 adapter，还需要把：</p>
+<ul>
+  <li><code>training_config._validate()</code></li>
+  <li><code>trainer._build_dataset()</code></li>
+  <li>可能还有 debug / smoke 路径里的 adapter 构造</li>
+</ul>
+<p>一起扩进去。</p>
+
+<div class="callout">
+<div class="callout-title">这也是当前 data 包最值得继续演进的地方</div>
+<p>架构已经为多 adapter 留了口子，但产品层面还没有把这条能力完全打通。这个差距在教学里说清楚，读者会更信任这份文档。</p>
+</div>
+</section>
+
+</main>
+</body>
+</html>

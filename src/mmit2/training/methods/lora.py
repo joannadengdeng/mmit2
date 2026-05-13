@@ -11,7 +11,7 @@ import os
 import torch
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 
-from mmit2.modeling import load_processor, load_vlm
+from mmit2.training.modeling import load_processor, load_vlm
 from mmit2.training.methods.base import TrainingMethod
 from mmit2.training.losses.ce_loss import CrossEntropyLoss
 
@@ -54,18 +54,7 @@ class LoRAMethod(TrainingMethod):
             task_type=TaskType.CAUSAL_LM,
             **self._lora_kwargs(),
         )
-        try:
-            peft_model = get_peft_model(model, lora_config)
-        except ImportError as exc:
-            if "torchao" in str(exc).lower():
-                raise ImportError(
-                    "LoRA adapter injection failed because PEFT detected an incompatible 'torchao' "
-                    "installation in the environment. This project does not require torchao for the "
-                    "current LoRA path. In Colab, the simplest fix is:\n"
-                    "pip uninstall -y torchao\n"
-                    "and then rerun the command."
-                ) from exc
-            raise
+        peft_model = get_peft_model(model, lora_config)
 
         trainable = sum(p.numel() for p in peft_model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in peft_model.parameters())

@@ -14,8 +14,8 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from mmit2.data.adapters.hf_datasets import HFDatasetsAdapter
-from mmit2.modeling import load_processor, load_vlm
-from mmit2.registry import build_training_method
+from mmit2.training.modeling import load_processor, load_vlm
+from mmit2.training.registry import build_training_method
 from mmit2.training.preprocessors.chat_template import ChatTemplatePreprocessor
 
 
@@ -73,9 +73,7 @@ def _describe_batch(batch: Dict[str, Any]) -> str:
     return "First batch shapes: " + ", ".join(parts)
 
 
-class _TokenizedMapDataset(Dataset):
-    """Map-style dataset that tokenizes one sample at access time."""
-
+class _TokenizedDatasetBase:
     def __init__(self, adapter, preprocessor, processor, image_root: str, logger) -> None:
         self._adapter = adapter
         self._preprocessor = preprocessor
@@ -83,11 +81,7 @@ class _TokenizedMapDataset(Dataset):
         self._image_root = image_root
         self._logger = logger
 
-    def __len__(self) -> int:
-        return len(self._adapter)
-
-    def __getitem__(self, idx: int):
-        sample = self._adapter[idx]
+    def _tokenize(self, sample):
         try:
             return self._preprocessor.tokenize(
                 sample,
@@ -100,27 +94,19 @@ class _TokenizedMapDataset(Dataset):
             return None
 
 
-class _TokenizedIterableDataset(IterableDataset):
-    """Streaming dataset that tokenizes samples as they are iterated."""
+class _TokenizedMapDataset(_TokenizedDatasetBase, Dataset):
+    def __len__(self) -> int:
+        return len(self._adapter)
 
-    def __init__(self, adapter, preprocessor, processor, image_root: str, logger) -> None:
-        self._adapter = adapter
-        self._preprocessor = preprocessor
-        self._processor = processor
-        self._image_root = image_root
-        self._logger = logger
+    def __getitem__(self, idx: int):
+        return self._tokenize(self._adapter[idx])
 
+
+class _TokenizedIterableDataset(_TokenizedDatasetBase, IterableDataset):
     def __iter__(self):
         for sample in self._adapter:
-            try:
-                yield self._preprocessor.tokenize(
-                    sample,
-                    self._processor,
-                    image_root=self._image_root,
-                    max_length=2048,
-                )
-            except Exception as exc:
-                self._logger(sample.id, exc)
+            if (result := self._tokenize(sample)) is not None:
+                yield result
 
 
 def _safe_collate(preprocessor: ChatTemplatePreprocessor, samples) -> Dict[str, Any]:
@@ -286,6 +272,7 @@ class Trainer:
         device = next(self._model.parameters()).device
         global_step = 0
         total_loss = 0.0
+        ema_loss = None
         start_time = time.time()
         logged_first_batch = False
 
@@ -322,7 +309,9 @@ class Trainer:
                 scheduler.step()
                 optimizer.zero_grad()
                 global_step += 1
-                total_loss += loss.item() * config.gradient_accumulation_steps
+                step_loss = loss.item() * config.gradient_accumulation_steps
+                total_loss += step_loss
+                ema_loss = step_loss if ema_loss is None else (0.98 * ema_loss + 0.02 * step_loss)
 
                 elapsed = time.time() - start_time
                 eta = elapsed / global_step * (total_steps - global_step) if global_step > 0 else 0
@@ -331,8 +320,9 @@ class Trainer:
                     "total": total_steps,
                     "epoch": epoch,
                     "total_epochs": config.num_epochs,
-                    "loss": round(loss.item() * config.gradient_accumulation_steps, 6),
+                    "loss": round(step_loss, 6),
                     "avg_loss": round(total_loss / global_step, 6),
+                    "ema_loss": round(ema_loss, 6),
                     "lr": scheduler.get_last_lr()[0],
                     "eta": round(eta, 1),
                     **{key: round(value, 6) for key, value in metrics.items()},

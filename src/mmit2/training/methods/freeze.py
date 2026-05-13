@@ -7,7 +7,8 @@ import os
 import torch
 import torch.nn as nn
 
-from mmit2.modeling import load_processor, load_vlm
+from mmit2.config.model_layouts import get_model_layout, list_model_layouts
+from mmit2.training.modeling import load_processor, load_vlm
 from mmit2.training.losses.ce_loss import CrossEntropyLoss
 from mmit2.training.methods.base import TrainingMethod
 
@@ -19,32 +20,18 @@ def _can_update(param: nn.Parameter) -> bool:
     return param.dtype in _GRAD_DTYPES
 
 
-def _find_transformer_layers(model: nn.Module) -> tuple[str, list[nn.Module]]:
-    """Find the transformer layer container path and the layer list."""
-    for attr in (
-        "model.language_model.layers",
-        "language_model.layers",
-        "model.visual.blocks",
-        "visual.blocks",
-        "model.layers",
-        "transformer.h",
-        "gpt_neox.layers",
-    ):
-        obj = model
-        try:
-            for part in attr.split("."):
-                obj = getattr(obj, part)
-            return attr, list(obj)
-        except AttributeError:
-            continue
-    return "", []
+def _resolve_attr_path(model: nn.Module, attr_path: str) -> object:
+    obj: object = model
+    for part in attr_path.split("."):
+        obj = getattr(obj, part)
+    return obj
 
 
 def _has_updatable_params(module: nn.Module) -> bool:
     return any(_can_update(param) for param in module.parameters(recurse=True))
 
 
-def _list_tunable_modules(model: nn.Module) -> list[str]:
+def _list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
     candidates = set()
     for name, module in model.named_modules():
         if not name or name.count(".") > 1:
@@ -52,11 +39,19 @@ def _list_tunable_modules(model: nn.Module) -> list[str]:
         if _has_updatable_params(module):
             candidates.add(name)
 
-    layer_prefix, layers = _find_transformer_layers(model)
-    if layer_prefix:
-        candidates.add(layer_prefix)
-        for idx in range(len(layers)):
-            candidates.add(f"{layer_prefix}.{idx}")
+    layout = get_model_layout(model_layout)
+    try:
+        layers = list(_resolve_attr_path(model, layout.transformer_layer_path))
+    except AttributeError as exc:
+        raise ValueError(
+            f"model_layout '{layout.name}' expects transformer layers at "
+            f"'{layout.transformer_layer_path}', but that path was not found on "
+            f"{model.__class__.__name__}."
+        ) from exc
+
+    candidates.add(layout.transformer_layer_path)
+    for idx in range(len(layers)):
+        candidates.add(f"{layout.transformer_layer_path}.{idx}")
 
     return sorted(candidates)
 
@@ -79,16 +74,25 @@ class FreezeTuningMethod(TrainingMethod):
 
     def default_config(self):
         return {
+            "model_layout": "",
             "unfreeze_modules": [],
         }
 
     def _prepare_model_impl(self, model, processor, config):
-        available = _list_tunable_modules(model)
+        model_layout = str(config.get("model_layout", "")).strip()
+        if not model_layout:
+            raise ValueError(
+                "Freeze Tuning requires training.params.model_layout. "
+                f"Available layouts: {list_model_layouts()}"
+            )
+
+        available = _list_tunable_modules(model, model_layout)
         unfreeze_modules = [str(name).strip() for name in config["unfreeze_modules"] if str(name).strip()]
         if not unfreeze_modules:
             available_lines = "\n".join(f"  - {name}" for name in available) or "  (no parameterized modules found)"
             raise ValueError(
                 "Freeze Tuning requires a non-empty 'unfreeze_modules' list.\n"
+                f"Model layout: {model_layout}\n"
                 "Available module prefixes you can unfreeze:\n"
                 f"{available_lines}"
             )
@@ -114,13 +118,14 @@ class FreezeTuningMethod(TrainingMethod):
             available_lines = "\n".join(f"  - {name}" for name in available) or "  (no parameterized modules found)"
             raise ValueError(
                 "Unknown unfreeze_modules entries: "
-                f"{unknown}\nAvailable module prefixes you can unfreeze:\n{available_lines}"
+                f"{unknown}\nModel layout: {model_layout}\n"
+                f"Available module prefixes you can unfreeze:\n{available_lines}"
             )
 
         trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
         total = sum(param.numel() for param in model.parameters())
         info = (
-            f"Freeze Tuning: unfrozen [{', '.join(sorted(matched_modules))}]\n"
+            f"Freeze Tuning ({model_layout}): unfrozen [{', '.join(sorted(matched_modules))}]\n"
             f"Trainable parameter tensors: {unfrozen_params}\n"
             f"Trainable: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)"
         )

@@ -1,41 +1,32 @@
-"""mmit2.training — pluggable training framework for multimodal instruction tuning.
+"""Training package exports."""
+from __future__ import annotations
 
-Quick start
------------
->>> from mmit2.training import TrainingMethod
+from importlib import import_module
+from typing import Any
 
-Register a custom training method::
+_EXPORTS: dict[str, tuple[str, str]] = {
+    "TrainingMethod": ("mmit2.training.methods.base", "TrainingMethod"),
+    "QLoRAMethod": ("mmit2.training.methods.lora", "QLoRAMethod"),
+    "LoRAMethod": ("mmit2.training.methods.lora", "LoRAMethod"),
+    "DoRAMethod": ("mmit2.training.methods.dora", "DoRAMethod"),
+    "FreezeTuningMethod": ("mmit2.training.methods.freeze", "FreezeTuningMethod"),
+    "L2TMethod": ("mmit2.training.methods.l2t", "L2TMethod"),
+}
 
-    from mmit2.registry import register_training_method
-    from mmit2.training import TrainingMethod
+__all__ = list(_EXPORTS)
 
-    class MyMethod(TrainingMethod):
-        name = "my-method"
-        display_name = "My Method"
-        def default_config(self): ...
-        def _prepare_model_impl(self, model, processor, config): ...
-        def compute_loss(self, model, batch, outputs): ...
-        def get_trainable_params(self, model): ...
-        def save_checkpoint(self, model, processor, path, metadata): ...
-        def load_for_inference(self, path, base_model_id, **kwargs): ...
 
-    register_training_method("my-method", MyMethod)
-"""
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attr_name = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
 
-from mmit2.training.methods import (
-    DoRAMethod,
-    FreezeTuningMethod,
-    L2TMethod,
-    LoRAMethod,
-    QLoRAMethod,
-)
-from mmit2.training.methods.base import TrainingMethod
+    module = import_module(module_name)
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
 
-__all__ = [
-    "TrainingMethod",
-    "QLoRAMethod",
-    "LoRAMethod",
-    "DoRAMethod",
-    "FreezeTuningMethod",
-    "L2TMethod",
-]
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *__all__})

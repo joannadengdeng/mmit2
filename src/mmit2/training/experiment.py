@@ -8,13 +8,10 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 
-# ---------------------------------------------------------------------------
-# Experiment metadata
-# ---------------------------------------------------------------------------
-
 @dataclass
 class ExperimentMeta:
     """Single persisted experiment record."""
+
     exp_id: str = ""
     status: str = "running"
     created_at: str = ""
@@ -48,9 +45,9 @@ class ExperimentTracker:
         config: Optional[Dict[str, Any]] = None,
         exp_id: Optional[str] = None,
     ) -> "ExperimentTracker":
-        """Create a new experiment directory and initial summary."""
         now = datetime.now()
         ts = now.strftime("%Y%m%d_%H%M%S")
+        explicit_name = exp_id is not None
 
         if exp_id is None:
             os.makedirs(base_dir, exist_ok=True)
@@ -60,6 +57,12 @@ class ExperimentTracker:
             exp_id = f"exp_{next_num:03d}_{method}_{samples_label}_{ts}"
 
         exp_dir = os.path.join(base_dir, exp_id)
+        summary_path = os.path.join(exp_dir, "summary.json")
+        if explicit_name and os.path.isfile(summary_path):
+            raise FileExistsError(
+                f"Experiment '{exp_id}' already exists at {exp_dir}. "
+                "Please choose a different experiment name."
+            )
         os.makedirs(exp_dir, exist_ok=True)
         os.makedirs(os.path.join(exp_dir, "checkpoint"), exist_ok=True)
 
@@ -80,16 +83,19 @@ class ExperimentTracker:
         return tracker
 
     @classmethod
+    def load_by_name(cls, base_dir: str, exp_id: str) -> "ExperimentTracker":
+        exp_dir = os.path.join(base_dir, exp_id)
+        return cls.load(exp_dir)
+
+    @classmethod
     def load(cls, exp_dir: str) -> "ExperimentTracker":
-        """Load a persisted experiment."""
         summary_path = os.path.join(exp_dir, "summary.json")
         if not os.path.isfile(summary_path):
             raise FileNotFoundError(f"No summary.json in {exp_dir}")
         with open(summary_path) as f:
             data = json.load(f)
         meta = ExperimentMeta(**{
-            k: v for k, v in data.items()
-            if k in ExperimentMeta.__dataclass_fields__
+            k: v for k, v in data.items() if k in ExperimentMeta.__dataclass_fields__
         })
         return cls(meta=meta)
 
@@ -102,7 +108,6 @@ class ExperimentTracker:
         total_params: int = 0,
         **extra,
     ) -> None:
-        """Record final training summary."""
         self.meta.train_summary = {
             "avg_loss": round(avg_loss, 6),
             "total_steps": total_steps,
@@ -119,32 +124,29 @@ class ExperimentTracker:
         benchmark: str,
         scores: Dict[str, float],
     ) -> None:
-        """Record aggregate evaluation scores for one benchmark."""
         self.meta.eval_results[benchmark] = scores
         self._save_summary()
 
     def set_checkpoint_path(self, path: str) -> None:
-        """Record the saved checkpoint directory."""
         self.meta.checkpoint_path = path
         self._save_summary()
 
     def get_checkpoint_dir(self) -> str:
-        """Return the default checkpoint directory for this experiment."""
         return os.path.join(self.meta.exp_dir, "checkpoint")
 
+    def resolve_checkpoint_path(self) -> str:
+        return self.meta.checkpoint_path or self.get_checkpoint_dir()
+
     def finalize(self, status: str = "completed") -> None:
-        """Mark the experiment complete and persist it."""
         self.meta.status = status
         self.meta.completed_at = datetime.now().isoformat()
         self._save_summary()
 
     def fail(self, error: str = "") -> None:
-        """Mark the experiment as failed."""
         self.meta.error = error
         self.finalize(status="failed")
 
     def _save_summary(self) -> None:
-        """Write the full summary file."""
         summary_path = os.path.join(self.meta.exp_dir, "summary.json")
         with open(summary_path, "w") as f:
             json.dump(asdict(self.meta), f, indent=2, ensure_ascii=False)

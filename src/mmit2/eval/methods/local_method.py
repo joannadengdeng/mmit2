@@ -1,6 +1,6 @@
 """LocalMethod — run inference with a locally loaded model (base or PEFT checkpoint).
 
-Used for evaluating trained models on benchmarks like VQAv2, POPE, and MME.
+Used for evaluating trained models on VQA-style datasets such as VQAv2, TextVQA, and VizWiz.
 
 Usage:
     method = LocalMethod.from_checkpoint(
@@ -22,8 +22,8 @@ from PIL import Image
 
 from mmit2.data.types import CanonicalSample
 from mmit2.eval.methods.base import Method
-from mmit2.modeling import load_processor, load_vlm
-from mmit2.registry import build_training_method
+from mmit2.training.modeling import load_processor, load_vlm
+from mmit2.training.registry import build_training_method
 
 
 class LocalMethod(Method):
@@ -37,6 +37,22 @@ class LocalMethod(Method):
         self.processor = processor
         self.device = device or next(model.parameters()).device
         self.model.eval()
+
+    @classmethod
+    def from_base_model(
+        cls,
+        base_model_id: str,
+        quantize_4bit: bool = True,
+    ) -> "LocalMethod":
+        """Load an unfine-tuned base model for baseline evaluation."""
+        processor = load_processor(base_model_id)
+        model = load_vlm(
+            base_model_id,
+            quantize_4bit=quantize_4bit,
+            torch_dtype=torch.bfloat16,
+        )
+        model.eval()
+        return cls(model, processor)
 
     @classmethod
     def from_checkpoint(
@@ -69,15 +85,10 @@ class LocalMethod(Method):
             )
             return cls(model, processor)
 
-        processor = load_processor(base_model_id)
-        model = load_vlm(
+        return cls.from_base_model(
             base_model_id,
             quantize_4bit=quantize_4bit,
-            torch_dtype=torch.bfloat16,
         )
-
-        model.eval()
-        return cls(model, processor)
 
     def prepare_input(
         self,

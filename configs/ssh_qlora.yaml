@@ -38,6 +38,6 @@ training:
 
 data:
   adapter: hf_datasets
-  data_path: "lmms-lab/VQAv2"
+  data_path: "lmms-lab/textvqa"
   split: train
   max_samples: 200

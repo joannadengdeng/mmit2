@@ -20,9 +20,24 @@ DATASET_SPECS: Dict[str, HFDatasetSpec] = {
     for spec_cls in _SPEC_CLASSES
 }
 
+_EVAL_COLUMN_OVERRIDES: Dict[str, ColumnMapping] = {
+    "lmms-lab/VQAv2": ColumnMapping(
+        id_col="question_id",
+        image_col="image",
+        question_col="question",
+        answer_col="answers",
+    ),
+}
+
 
 def get_dataset_spec(dataset_name: str) -> Optional[HFDatasetSpec]:
     return DATASET_SPECS.get(dataset_name)
+
+
+def get_eval_column_map(dataset_name: str) -> Optional[ColumnMapping]:
+    """Return eval-time column overrides when scoring needs richer supervision."""
+
+    return _EVAL_COLUMN_OVERRIDES.get(dataset_name)
 
 
 def build_configured_spec(

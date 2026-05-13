@@ -1,7 +1,17 @@
-# Freeze Tuning: unfreeze explicit module prefixes and keep the rest frozen
+# SSH: freeze tuning on a remote server
+#
+# Usage:
+#   python -m mmit2.training --config configs/ssh_freeze.yaml
 
 runtime:
-  mode: local
+  mode: ssh
+  ssh:
+    host: "192.168.1.100"
+    port: 22
+    username: "root"
+    key_path: "~/.ssh/id_rsa"
+    # password: ""
+    conda_env: "mmit"
 
 model:
   model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -16,8 +26,9 @@ training:
   weight_decay: 0.0
   max_grad_norm: 1.0
   save_steps: 200
-  output_dir: "output/freeze_qwen2vl_3b"
+  output_dir: "output/freeze_remote"
   params:
+    model_layout: "qwen2_5_vl"
     unfreeze_modules:
       - "model.language_model.layers.0"
       - "model.language_model.layers.1"
@@ -26,6 +37,6 @@ training:
 
 data:
   adapter: hf_datasets
-  data_path: "lmms-lab/VQAv2"
+  data_path: "lmms-lab/textvqa"
   split: train
   max_samples: 100

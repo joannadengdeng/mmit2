@@ -2,10 +2,10 @@
 
 Usage::
 
-    # YAML config:
-    python -m mmit2.training --config configs/local_qlora.yaml
+    # SSH YAML config (delegates to the SSH runner):
+    python -m mmit2.training --config configs/ssh_qlora.yaml
 
-    # JSON config (from subprocess):
+    # JSON config (used by the remote machine after SSH dispatch):
     python -m mmit2.training --config-json '{"model": {...}, "data": {...}, ...}'
 
 Config schema::
@@ -35,10 +35,7 @@ import argparse
 import json
 import sys
 import traceback
-
-import yaml
-
-from mmit2.config.training_config import config_to_trainer_dict, load_config
+from mmit2.training.experiment import ExperimentTracker
 from mmit2.training.trainer import Trainer, TrainerConfig, _emit
 
 
@@ -66,29 +63,54 @@ def _parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
     return model_path, train_config
 
 
+def _create_experiment_tracker(config: dict, model_path: str, train_config: TrainerConfig) -> ExperimentTracker:
+    experiment_cfg = config.get("experiment", {}) or {}
+    exp_name = str(experiment_cfg.get("name", "")).strip() or None
+    base_dir = str(experiment_cfg.get("base_dir", "")).strip() or train_config.output_dir
+    data_cfg = train_config.data_config or {}
+    dataset_name = (
+        str(data_cfg.get("data_path", "")).strip()
+        or str(data_cfg.get("dataset_name", "")).strip()
+    )
+    num_samples = int(data_cfg.get("max_samples", 0) or 0)
+    tracker = ExperimentTracker.create(
+        base_dir=base_dir,
+        method=train_config.training_method,
+        model=model_path,
+        dataset=dataset_name,
+        num_samples=num_samples,
+        config=config,
+        exp_id=exp_name,
+    )
+    train_config.output_dir = tracker.meta.exp_dir
+    return tracker
+
+
 def main():
     parser = argparse.ArgumentParser(description="mmit2 headless trainer")
-    parser.add_argument("--config-json", default=None,
-                        help="Full training config as JSON string")
-    parser.add_argument("--config", default=None,
-                        help="Path to YAML config file")
+    parser.add_argument(
+        "--config-json",
+        default=None,
+        help="Normalized training config as a JSON string",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to an SSH training YAML config file",
+    )
     args = parser.parse_args()
 
-    if args.config:
-        with open(args.config, "r") as f:
-            raw_config = yaml.safe_load(f) or {}
-        # Support both:
-        # 1) the normalized trainer dict schema (training_method / method_params)
-        # 2) the higher-level YAML schema used by repo configs (training.ft_method / training.params)
-        if "training_method" in raw_config or "method_params" in raw_config:
-            config = raw_config
-        else:
-            config = config_to_trainer_dict(load_config(args.config))
-    elif args.config_json:
+    if args.config_json:
         config = json.loads(args.config_json)
+    elif args.config:
+        from mmit2.training.runner import run as run_over_ssh
+
+        run_over_ssh(args.config)
+        return
     else:
         parser.error("Either --config or --config-json is required")
 
+    tracker = None
     try:
         if "data" not in config:
             _emit("error", {"message": "config must contain 'data' key"})
@@ -100,10 +122,25 @@ def main():
             _emit("error", {"message": "model.model_path is required"})
             sys.exit(1)
 
-        trainer = Trainer(model_path)
+        tracker = _create_experiment_tracker(config, model_path, train_config)
+        _emit(
+            "log",
+            {
+                "message": (
+                    f"Experiment: {tracker.meta.exp_id} "
+                    f"(dir={tracker.meta.exp_dir})"
+                ),
+                "level": "INFO",
+            },
+        )
+
+        trainer = Trainer(model_path, experiment_tracker=tracker)
         trainer.train(train_config)
+        tracker.finalize(status="completed")
 
     except Exception as e:
+        if tracker is not None:
+            tracker.fail(str(e))
         _emit("error", {"message": str(e), "traceback": traceback.format_exc()})
         _emit("status", {"status": "failed"})
         sys.exit(1)

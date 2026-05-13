@@ -59,7 +59,7 @@ def _load_modeling_with_stubs():
         "transformers.utils.logging",
         "huggingface_hub",
         "huggingface_hub.utils",
-        "mmit2.modeling",
+        "mmit2.training.modeling",
     ]
     saved_modules = {name: sys.modules.get(name) for name in module_names}
 
@@ -68,9 +68,9 @@ def _load_modeling_with_stubs():
     sys.modules["transformers.utils.logging"] = transformers_logging_mod
     sys.modules["huggingface_hub"] = huggingface_hub_mod
     sys.modules["huggingface_hub.utils"] = huggingface_hub_utils_mod
-    sys.modules.pop("mmit2.modeling", None)
+    sys.modules.pop("mmit2.training.modeling", None)
 
-    modeling = importlib.import_module("mmit2.modeling")
+    modeling = importlib.import_module("mmit2.training.modeling")
     return modeling, calls, saved_modules
 
 
