@@ -20,10 +20,17 @@ from typing import Any, Dict
 import torch
 from PIL import Image
 
-from mmit2.data.types import CanonicalSample
+from mmit2.data.types import CanonicalSample, EvalSample, Turn
 from mmit2.eval.methods.base import Method
 from mmit2.training.methods.base import load_processor, load_vlm
 from mmit2.training.registry import build_training_method
+
+_SHORT_ANSWER_INSTRUCTION = "Answer with a single short answer only. Do not use a full sentence."
+
+
+def _build_eval_question(question: str) -> str:
+    question = question.strip() or "Describe this image."
+    return f"{question}\n{_SHORT_ANSWER_INSTRUCTION}"
 
 
 class LocalMethod(Method):
@@ -89,6 +96,19 @@ class LocalMethod(Method):
             base_model_id,
             quantize_4bit=quantize_4bit,
         )
+
+    def prepare_eval_input(
+        self,
+        sample: EvalSample,
+        image_root: str = "",
+    ) -> Dict[str, Any]:
+        cs = CanonicalSample(
+            id=sample.id,
+            image_path=sample.image_path,
+            turns=[Turn(role="human", content=_build_eval_question(sample.question))],
+            metadata=sample.metadata,
+        )
+        return self.prepare_input(cs, image_root=image_root)
 
     def prepare_input(
         self,

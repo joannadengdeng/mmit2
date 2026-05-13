@@ -3,10 +3,14 @@ import sys
 import json
 
 import pytest
+import torch
+import torch.nn as nn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmit2.data.adapters.hf_datasets import HFDatasetsAdapter
+from mmit2.data.types import EvalSample
+from mmit2.eval.methods.local_method import LocalMethod
 from mmit2.eval.run import (
     EvalTarget,
     _evaluate_vqa_dataset,
@@ -91,6 +95,28 @@ class _DummyMethod:
         return "cat"
 
 
+class _FakeEvalModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.dummy = nn.Parameter(torch.zeros(1))
+
+
+class _FakeEvalProcessor:
+    def __init__(self):
+        self.last_text = ""
+
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
+        self.last_text = messages[0]["content"][-1]["text"]
+        return self.last_text
+
+    def __call__(self, text, images=None, return_tensors="pt"):
+        self.last_text = text
+        return {
+            "input_ids": torch.tensor([[1]]),
+            "attention_mask": torch.tensor([[1]]),
+        }
+
+
 def test_evaluate_vqav2_uses_multi_annotator_answers(monkeypatch, tmp_path):
     rows = [
         {
@@ -131,3 +157,19 @@ def test_evaluate_vqav2_uses_multi_annotator_answers(monkeypatch, tmp_path):
 
     assert len(record["ground_truth"]) == 10
     assert record["ground_truth"].count("cat") == 3
+
+
+def test_local_method_eval_prompt_requests_short_answer():
+    processor = _FakeEvalProcessor()
+    method = LocalMethod(_FakeEvalModel(), processor)
+
+    method.prepare_eval_input(
+        EvalSample(
+            id="1",
+            image_path="",
+            question="What number is on the player's jersey?",
+        )
+    )
+
+    assert "single short answer only" in processor.last_text.lower()
+    assert "do not use a full sentence" in processor.last_text.lower()
