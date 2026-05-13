@@ -33,10 +33,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import traceback
 from mmit2.training.experiment import ExperimentTracker
 from mmit2.training.trainer import Trainer, TrainerConfig, _emit
+
+
+def _apply_hf_token(token: str | None, token_file: str | None) -> None:
+    token = (token or "").strip()
+    token_file = os.path.expanduser((token_file or "").strip())
+    if not token and token_file:
+        with open(token_file, "r", encoding="utf-8") as f:
+            token = f.read().strip()
+    if token:
+        os.environ["HF_TOKEN"] = token
 
 
 def _parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
@@ -98,7 +109,10 @@ def main():
         default=None,
         help="Path to an SSH training YAML config file",
     )
+    parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token")
+    parser.add_argument("--hf-token-file", default=None, help="Path to a file containing a Hugging Face token")
     args = parser.parse_args()
+    _apply_hf_token(args.hf_token, args.hf_token_file)
 
     if args.config_json:
         config = json.loads(args.config_json)
