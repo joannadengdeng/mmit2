@@ -34,6 +34,16 @@ def test_parse_eval_target_infers_defaults():
     assert target.max_samples == 25
 
 
+def test_parse_eval_target_uses_vizwiz_val_default():
+    target = parse_eval_target(
+        {
+            "dataset_name": "lmms-lab/VizWiz-VQA",
+        }
+    )
+
+    assert target.split == "val"
+
+
 def test_parse_eval_target_rejects_unknown_dataset():
     with pytest.raises(ValueError, match="Unsupported eval.dataset_name"):
         parse_eval_target({"dataset_name": "foo/bar"})

@@ -36,7 +36,7 @@ class EvalSource:
 _SUPPORTED_EVAL_DATASETS: dict[str, str] = {
     "lmms-lab/VQAv2": "validation",
     "lmms-lab/textvqa": "validation",
-    "lmms-lab/VizWiz-VQA": "validation",
+    "lmms-lab/VizWiz-VQA": "val",
 }
 
 

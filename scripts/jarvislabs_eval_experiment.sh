@@ -10,7 +10,7 @@ set -euo pipefail
 # Defaults:
 #   - experiment: latest directory under ./experiments
 #   - eval dataset: lmms-lab/textvqa
-#   - split: validation
+#   - split: dataset default
 #   - samples: 100
 #
 # Common overrides:
@@ -28,7 +28,7 @@ VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 EXPERIMENT_BASE_DIR="${EXPERIMENT_BASE_DIR:-$ROOT_DIR/experiments}"
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-}"
 EVAL_DATASET_NAME="${EVAL_DATASET_NAME:-lmms-lab/textvqa}"
-EVAL_SPLIT="${EVAL_SPLIT:-validation}"
+EVAL_SPLIT="${EVAL_SPLIT:-}"
 EVAL_MAX_SAMPLES="${EVAL_MAX_SAMPLES:-100}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-16}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
@@ -114,12 +114,15 @@ config = {
     },
     "eval": {
         "dataset_name": os.environ["EVAL_DATASET_NAME"],
-        "split": os.environ["EVAL_SPLIT"],
         "max_samples": int(os.environ["EVAL_MAX_SAMPLES"]),
         "max_new_tokens": int(os.environ["MAX_NEW_TOKENS"]),
         "temperature": float(os.environ["TEMPERATURE"]),
     },
 }
+
+eval_split = os.environ.get("EVAL_SPLIT", "").strip()
+if eval_split:
+    config["eval"]["split"] = eval_split
 
 eval_name = os.environ.get("EVAL_NAME", "").strip()
 if eval_name:
@@ -161,7 +164,11 @@ export PYTHONUNBUFFERED=1
 echo "[mmit2] Starting JarvisLabs eval run"
 echo "[mmit2] Experiment: $EXPERIMENT_NAME"
 echo "[mmit2] Summary: $SUMMARY_PATH"
-echo "[mmit2] Eval dataset: $EVAL_DATASET_NAME ($EVAL_SPLIT)"
+if [[ -n "$EVAL_SPLIT" ]]; then
+  echo "[mmit2] Eval dataset: $EVAL_DATASET_NAME ($EVAL_SPLIT)"
+else
+  echo "[mmit2] Eval dataset: $EVAL_DATASET_NAME (dataset default split)"
+fi
 echo "[mmit2] Eval samples: $EVAL_MAX_SAMPLES"
 if [[ -n "${HF_TOKEN:-}" ]]; then
   echo "[mmit2] HF token: enabled"
