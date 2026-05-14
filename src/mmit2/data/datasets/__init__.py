@@ -3,7 +3,6 @@ from mmit2.data.datasets.registry import (
     DATASET_SPECS,
     build_configured_spec,
     get_dataset_spec,
-    get_eval_column_map,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "DATASET_SPECS",
     "build_configured_spec",
     "get_dataset_spec",
-    "get_eval_column_map",
 ]

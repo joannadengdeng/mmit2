@@ -22,26 +22,16 @@ from mmit2.eval.run import (
 def test_parse_eval_target_infers_defaults():
     target = parse_eval_target(
         {
-            "dataset_name": "lmms-lab/VQAv2",
+            "dataset_name": "lmms-lab/textvqa",
             "max_new_tokens": 12,
             "max_samples": 25,
         }
     )
 
-    assert target.dataset_name == "lmms-lab/VQAv2"
+    assert target.dataset_name == "lmms-lab/textvqa"
     assert target.split == "validation"
     assert target.max_new_tokens == 12
     assert target.max_samples == 25
-
-
-def test_parse_eval_target_uses_vizwiz_val_default():
-    target = parse_eval_target(
-        {
-            "dataset_name": "lmms-lab/VizWiz-VQA",
-        }
-    )
-
-    assert target.split == "val"
 
 
 def test_parse_eval_target_rejects_unknown_dataset():
@@ -49,9 +39,9 @@ def test_parse_eval_target_rejects_unknown_dataset():
         parse_eval_target({"dataset_name": "foo/bar"})
 
 
-def test_parse_eval_target_rejects_removed_eval_dataset():
+def test_parse_eval_target_rejects_non_textvqa_dataset():
     with pytest.raises(ValueError, match="Unsupported eval.dataset_name"):
-        parse_eval_target({"dataset_name": "lmms-lab/POPE"})
+        parse_eval_target({"dataset_name": "lmms-lab/VQAv2"})
 
 
 def test_parse_eval_target_rejects_multi_target_legacy_config():
@@ -59,7 +49,7 @@ def test_parse_eval_target_rejects_multi_target_legacy_config():
         parse_eval_target(
             {
                 "targets": [
-                    {"dataset_name": "lmms-lab/VQAv2"},
+                    {"dataset_name": "lmms-lab/textvqa"},
                     {"dataset_name": "lmms-lab/textvqa"},
                 ]
             }
@@ -127,13 +117,12 @@ class _FakeEvalProcessor:
         }
 
 
-def test_evaluate_vqav2_uses_multi_annotator_answers(monkeypatch, tmp_path):
+def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
     rows = [
         {
             "question_id": 123,
             "image": None,
             "question": "What animal is shown?",
-            "multiple_choice_answer": "dog",
             "answers": (
                 [{"answer": "cat"}] * 3
                 + [{"answer": "dog"}] * 7
@@ -150,8 +139,8 @@ def test_evaluate_vqav2_uses_multi_annotator_answers(monkeypatch, tmp_path):
     result = _evaluate_vqa_dataset(
         _DummyMethod(),
         EvalTarget(
-            name="vqav2_validation",
-            dataset_name="lmms-lab/VQAv2",
+            name="textvqa_validation",
+            dataset_name="lmms-lab/textvqa",
             split="validation",
             max_samples=1,
             streaming=True,

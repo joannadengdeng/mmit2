@@ -9,7 +9,7 @@ set -euo pipefail
 #
 # Defaults:
 #   - model: Qwen/Qwen2.5-VL-3B-Instruct
-#   - dataset: lmms-lab/textvqa
+#   - dataset: lmms-lab/textvqa (the only built-in dataset in the initial release)
 #   - samples: 100
 #   - method: LoRA
 #
@@ -31,16 +31,7 @@ normalize_slug() {
 
 dataset_slug() {
   local raw="${DATASET_NAME##*/}"
-  local slug
-  slug="$(normalize_slug "$raw")"
-  case "$slug" in
-    vizwiz-vqa)
-      echo "vizwiz"
-      ;;
-    *)
-      echo "$slug"
-      ;;
-  esac
+  normalize_slug "$raw"
 }
 
 model_size_slug() {

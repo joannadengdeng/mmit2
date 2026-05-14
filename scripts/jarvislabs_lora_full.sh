@@ -8,12 +8,11 @@ set -euo pipefail
 #
 # Defaults:
 #   - model: Qwen/Qwen2.5-VL-3B-Instruct
-#   - dataset: lmms-lab/textvqa
+#   - dataset: lmms-lab/textvqa (the only built-in dataset in the initial release)
 #   - split: train
 #   - samples: full split (MAX_SAMPLES=0)
 #
 # Common overrides:
-#   DATASET_NAME=lmms-lab/VQAv2 ./scripts/jarvislabs_lora_full.sh
 #   NUM_EPOCHS=2 ./scripts/jarvislabs_lora_full.sh
 #   ./scripts/jarvislabs_lora_full.sh --hf-token-file /root/.hf_token
 

@@ -1,6 +1,6 @@
 """LocalMethod — run inference with a locally loaded model (base or PEFT checkpoint).
 
-Used for evaluating trained models on VQA-style datasets such as VQAv2, TextVQA, and VizWiz.
+Used for evaluating trained models on TextVQA-style runs.
 
 Usage:
     method = LocalMethod.from_checkpoint(

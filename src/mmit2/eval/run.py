@@ -34,9 +34,7 @@ class EvalSource:
 
 
 _SUPPORTED_EVAL_DATASETS: dict[str, str] = {
-    "lmms-lab/VQAv2": "validation",
     "lmms-lab/textvqa": "validation",
-    "lmms-lab/VizWiz-VQA": "val",
 }
 
 
@@ -136,13 +134,11 @@ def _prediction_path(output_dir: str, target_name: str) -> str:
 def _evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
     from mmit2.data.adapters.hf_datasets import HFDatasetsAdapter
     from mmit2.data.types import EvalSample
-    from mmit2.data.datasets import get_eval_column_map
     from mmit2.eval.metrics.scoring import auto_select_metric, score_prediction_multi
 
     adapter = HFDatasetsAdapter(
         dataset_name=target.dataset_name,
         split=target.split,
-        column_map=get_eval_column_map(target.dataset_name),
         max_samples=target.max_samples,
         streaming=target.streaming,
         load_images=True,

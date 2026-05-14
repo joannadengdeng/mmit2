@@ -5,7 +5,7 @@ import json
 import math
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
 import torch
@@ -73,21 +73,87 @@ def _describe_batch(batch: Dict[str, Any]) -> str:
     return "First batch shapes: " + ", ".join(parts)
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
+def _sample_debug_record(sample) -> Dict[str, Any]:
+    record = asdict(sample)
+    metadata = dict(record.get("metadata") or {})
+    metadata.pop("_pil_image", None)
+    record["metadata"] = _json_safe(metadata)
+    return record
+
+
+def _write_json(path: str, payload: Any) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+class _DebugRecorder:
+    def __init__(self, limit: int = 5) -> None:
+        self.limit = limit
+        self.samples = []
+        self.prompts = []
+        self.total_skipped = 0
+        self.skip_examples = []
+
+    def record_sample(self, sample) -> None:
+        if len(self.samples) < self.limit:
+            self.samples.append(_sample_debug_record(sample))
+
+    def record_prompt(self, preview: Dict[str, Any]) -> None:
+        if len(self.prompts) < self.limit:
+            self.prompts.append(_json_safe(preview))
+
+    def record_skip(self, sample_id: Any, exc: Exception) -> None:
+        self.total_skipped += 1
+        if len(self.skip_examples) < self.limit:
+            self.skip_examples.append({
+                "sample_id": str(sample_id),
+                "error": str(exc),
+            })
+
+    def flush(self, debug_dir: str) -> None:
+        os.makedirs(debug_dir, exist_ok=True)
+        if self.samples:
+            _write_json(os.path.join(debug_dir, "first_5_canonical_samples.json"), self.samples)
+        if self.prompts:
+            _write_json(os.path.join(debug_dir, "first_5_rendered_prompts.json"), self.prompts)
+        _write_json(
+            os.path.join(debug_dir, "skip_summary.json"),
+            {
+                "total_skipped": self.total_skipped,
+                "first_errors": self.skip_examples,
+            },
+        )
+
+
 class _TokenizedDatasetBase:
-    def __init__(self, adapter, preprocessor, processor, image_root: str, logger) -> None:
+    def __init__(self, adapter, preprocessor, processor, image_root: str, logger, debug_recorder=None) -> None:
         self._adapter = adapter
         self._preprocessor = preprocessor
         self._processor = processor
         self._image_root = image_root
         self._logger = logger
+        self._debug_recorder = debug_recorder
 
     def _tokenize(self, sample):
+        if self._debug_recorder is not None:
+            self._debug_recorder.record_sample(sample)
         try:
             return self._preprocessor.tokenize(
                 sample,
                 self._processor,
                 image_root=self._image_root,
                 max_length=2048,
+                debug_sink=self._debug_recorder.record_prompt if self._debug_recorder is not None else None,
             )
         except Exception as exc:
             self._logger(sample.id, exc)
@@ -151,6 +217,11 @@ class Trainer:
             torch_dtype=torch.bfloat16,
         )
 
+    def _resolve_debug_dir(self, config: TrainerConfig) -> str:
+        if self._tracker is not None:
+            return os.path.join(self._tracker.meta.exp_dir, "debug")
+        return os.path.join(config.output_dir, "debug")
+
     def _build_dataset(self, config: TrainerConfig):
         data_cfg = dict(config.data_config)
         adapter_name = data_cfg.pop("adapter", "hf_datasets")
@@ -172,13 +243,16 @@ class Trainer:
             **data_cfg,
         )
 
-    def _build_tokenized_dataset(self, adapter, config: TrainerConfig):
+    def _build_tokenized_dataset(self, adapter, config: TrainerConfig, debug_recorder=None):
         preprocessor = ChatTemplatePreprocessor()
         image_root = config.data_config.get("image_root", "")
-        logger = lambda sample_id, exc: _emit(
-            "log",
-            {"message": f"Skipping sample {sample_id}: {exc}", "level": "WARNING"},
-        )
+        def logger(sample_id, exc):
+            if debug_recorder is not None:
+                debug_recorder.record_skip(sample_id, exc)
+            _emit(
+                "log",
+                {"message": f"Skipping sample {sample_id}: {exc}", "level": "WARNING"},
+            )
         if getattr(adapter, "streaming", False):
             return _TokenizedIterableDataset(
                 adapter,
@@ -186,6 +260,7 @@ class Trainer:
                 self._processor,
                 image_root,
                 logger,
+                debug_recorder,
             ), preprocessor
         return _TokenizedMapDataset(
             adapter,
@@ -193,6 +268,7 @@ class Trainer:
             self._processor,
             image_root,
             logger,
+            debug_recorder,
         ), preprocessor
 
     def train(self, config: TrainerConfig) -> None:
@@ -206,6 +282,7 @@ class Trainer:
 
         _emit("log", {"message": "Loading dataset...", "level": "INFO"})
         adapter = self._build_dataset(config)
+        debug_recorder = _DebugRecorder()
         dataset_len = len(adapter)
         if dataset_len < 0:
             raise ValueError(
@@ -226,7 +303,11 @@ class Trainer:
         )
 
         _emit("log", {"message": "Preprocessing...", "level": "INFO"})
-        tokenized_dataset, preprocessor = self._build_tokenized_dataset(adapter, config)
+        tokenized_dataset, preprocessor = self._build_tokenized_dataset(
+            adapter,
+            config,
+            debug_recorder=debug_recorder,
+        )
         _emit("log", {"message": f"{dataset_len} samples scheduled for lazy tokenization", "level": "INFO"})
 
         self._model, info_str = method_obj.prepare_model(
@@ -335,6 +416,10 @@ class Trainer:
                         "base_model": self.model_path,
                         "step": global_step,
                     })
+
+        debug_dir = self._resolve_debug_dir(config)
+        debug_recorder.flush(debug_dir)
+        _emit("log", {"message": f"Debug artifacts saved to {debug_dir}", "level": "INFO"})
 
         final_path = os.path.join(config.output_dir, "final")
         if self._tracker is not None:

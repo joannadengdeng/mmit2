@@ -56,17 +56,13 @@ pip install -e ".[remote]"
 
 Built-in dataset specs currently cover:
 
-- `lmms-lab/VQAv2`
 - `lmms-lab/textvqa`
-- `lmms-lab/VizWiz-VQA`
 
 Training uses the Hugging Face adapter path in `src/mmit2/data/adapters/hf_datasets.py`. The example training configs default to `lmms-lab/textvqa` because it exposes a `train` split on Hugging Face.
 
 ### Evaluation support
 
-- `VQAv2`
 - `TextVQA`
-- `VizWiz`
 
 ### Runtime mode
 
@@ -116,7 +112,7 @@ Notes:
 - JarvisLabs helper scripts are available in `scripts/`:
   - `./scripts/jarvislabs_lora_100.sh` for a 100-sample smoke run
   - `./scripts/jarvislabs_lora_full.sh` for a full-split LoRA run
-- Those JarvisLabs scripts default to experiment names like `20260513_lora_textvqa_3b_full` or `20260513_lora_vqav2_3b_100samples`.
+- Those JarvisLabs scripts default to experiment names like `20260513_lora_textvqa_3b_full` or `20260513_lora_textvqa_3b_100samples`.
 
 ## Evaluation
 

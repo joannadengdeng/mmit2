@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import torch
 from PIL import Image
@@ -51,6 +51,7 @@ class ChatTemplatePreprocessor(Preprocessor):
         processor: Any,
         image_root: str = "",
         max_length: int = 2048,
+        debug_sink: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         # `processor` must be a Hugging Face multimodal processor that supports
         # both `apply_chat_template(...)` and `processor(text=..., images=...)`.
@@ -69,6 +70,15 @@ class ChatTemplatePreprocessor(Preprocessor):
             prompt_text = processor.apply_chat_template(
                 prompt_messages, tokenize=False, add_generation_prompt=True,
             )
+
+        if debug_sink is not None:
+            debug_sink({
+                "sample_id": sample.id,
+                "has_image": image is not None,
+                "message_count": len(messages),
+                "full_text": full_text,
+                "prompt_text": prompt_text,
+            })
 
         images = [image] if image is not None else None
         full_inputs = processor(

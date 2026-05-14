@@ -9,13 +9,13 @@ set -euo pipefail
 #
 # Defaults:
 #   - experiment: latest directory under ./experiments
-#   - eval dataset: lmms-lab/textvqa
+#   - eval dataset: lmms-lab/textvqa (the only built-in dataset in the initial release)
 #   - split: dataset default
 #   - samples: 100
 #
 # Common overrides:
 #   EXPERIMENT_NAME=jarvislabs_lora_100_20260513_123456 ./scripts/jarvislabs_eval_experiment.sh
-#   EVAL_DATASET_NAME=lmms-lab/VQAv2 EVAL_MAX_SAMPLES=200 ./scripts/jarvislabs_eval_experiment.sh
+#   EVAL_MAX_SAMPLES=200 ./scripts/jarvislabs_eval_experiment.sh
 #   ./scripts/jarvislabs_eval_experiment.sh --hf-token-file /root/.hf_token
 #   ./scripts/jarvislabs_eval_experiment.sh --hf-token hf_xxx
 #   DRY_RUN=1 ./scripts/jarvislabs_eval_experiment.sh
