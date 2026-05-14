@@ -23,6 +23,53 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 cd "$ROOT_DIR"
 
+normalize_slug() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+}
+
+dataset_slug() {
+  local raw="${DATASET_NAME##*/}"
+  local slug
+  slug="$(normalize_slug "$raw")"
+  case "$slug" in
+    vizwiz-vqa)
+      echo "vizwiz"
+      ;;
+    *)
+      echo "$slug"
+      ;;
+  esac
+}
+
+model_size_slug() {
+  local base="${MODEL_PATH##*/}"
+  local token
+
+  for token in ${base//[-_\/]/ }; do
+    if [[ "$token" =~ ^[0-9]+([.][0-9]+)?[BbMm]$ ]]; then
+      printf '%s\n' "$token" | tr '[:upper:]' '[:lower:]'
+      return
+    fi
+  done
+
+  if [[ "$base" =~ ([0-9]+([.][0-9]+)?[BbMm]) ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]'
+    return
+  fi
+
+  echo "model"
+}
+
+sample_scope_slug() {
+  if [[ -z "${MAX_SAMPLES:-}" || "${MAX_SAMPLES}" == "0" ]]; then
+    echo "full"
+  else
+    echo "$(normalize_slug "${MAX_SAMPLES}samples")"
+  fi
+}
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"
@@ -42,7 +89,7 @@ LORA_ALPHA="${LORA_ALPHA:-16}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
 TARGET_MODULES="${TARGET_MODULES:-q_proj,v_proj}"
 EXPERIMENT_BASE_DIR="${EXPERIMENT_BASE_DIR:-$ROOT_DIR/experiments}"
-DEFAULT_EXPERIMENT_NAME="jarvislabs_lora_100_$(date +%Y%m%d_%H%M%S)"
+DEFAULT_EXPERIMENT_NAME="$(date +%Y%m%d)_lora_$(dataset_slug)_$(model_size_slug)_$(sample_scope_slug)"
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-$DEFAULT_EXPERIMENT_NAME}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 DRY_RUN="${DRY_RUN:-0}"

@@ -21,6 +21,5 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 cd "$ROOT_DIR"
 
 export MAX_SAMPLES="${MAX_SAMPLES:-0}"
-export EXPERIMENT_NAME="${EXPERIMENT_NAME:-jarvislabs_lora_full_$(date +%Y%m%d_%H%M%S)}"
 
 exec "$ROOT_DIR/scripts/jarvislabs_lora_100.sh" "$@"

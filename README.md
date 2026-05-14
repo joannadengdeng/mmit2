@@ -116,6 +116,7 @@ Notes:
 - JarvisLabs helper scripts are available in `scripts/`:
   - `./scripts/jarvislabs_lora_100.sh` for a 100-sample smoke run
   - `./scripts/jarvislabs_lora_full.sh` for a full-split LoRA run
+- Those JarvisLabs scripts default to experiment names like `20260513_lora_textvqa_3b_full` or `20260513_lora_vqav2_3b_100samples`.
 
 ## Evaluation
 
