@@ -37,10 +37,10 @@ import os
 import sys
 import traceback
 from mmit2.training.experiment import ExperimentTracker
-from mmit2.training.trainer import Trainer, TrainerConfig, _emit
+from mmit2.training.trainer import Trainer, TrainerConfig, emit
 
 
-def _apply_hf_token(token: str | None, token_file: str | None) -> None:
+def apply_hf_token(token: str | None, token_file: str | None) -> None:
     token = (token or "").strip()
     token_file = os.path.expanduser((token_file or "").strip())
     if not token and token_file:
@@ -50,7 +50,7 @@ def _apply_hf_token(token: str | None, token_file: str | None) -> None:
         os.environ["HF_TOKEN"] = token
 
 
-def _parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
+def parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
     """Parse a single-stage config dict into TrainerConfig."""
     model_cfg = config.get("model", {})
     model_path = model_cfg.get("model_path", "")
@@ -74,7 +74,7 @@ def _parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
     return model_path, train_config
 
 
-def _create_experiment_tracker(config: dict, model_path: str, train_config: TrainerConfig) -> ExperimentTracker:
+def create_experiment_tracker(config: dict, model_path: str, train_config: TrainerConfig) -> ExperimentTracker:
     experiment_cfg = config.get("experiment", {}) or {}
     exp_name = str(experiment_cfg.get("name", "")).strip() or None
     base_dir = str(experiment_cfg.get("base_dir", "")).strip() or train_config.output_dir
@@ -112,7 +112,7 @@ def main():
     parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token")
     parser.add_argument("--hf-token-file", default=None, help="Path to a file containing a Hugging Face token")
     args = parser.parse_args()
-    _apply_hf_token(args.hf_token, args.hf_token_file)
+    apply_hf_token(args.hf_token, args.hf_token_file)
 
     if args.config_json:
         config = json.loads(args.config_json)
@@ -127,17 +127,17 @@ def main():
     tracker = None
     try:
         if "data" not in config:
-            _emit("error", {"message": "config must contain 'data' key"})
+            emit("error", {"message": "config must contain 'data' key"})
             sys.exit(1)
 
-        model_path, train_config = _parse_train_config(config)
+        model_path, train_config = parse_train_config(config)
 
         if not model_path:
-            _emit("error", {"message": "model.model_path is required"})
+            emit("error", {"message": "model.model_path is required"})
             sys.exit(1)
 
-        tracker = _create_experiment_tracker(config, model_path, train_config)
-        _emit(
+        tracker = create_experiment_tracker(config, model_path, train_config)
+        emit(
             "log",
             {
                 "message": (
@@ -155,8 +155,8 @@ def main():
     except Exception as e:
         if tracker is not None:
             tracker.fail(str(e))
-        _emit("error", {"message": str(e), "traceback": traceback.format_exc()})
-        _emit("status", {"status": "failed"})
+        emit("error", {"message": str(e), "traceback": traceback.format_exc()})
+        emit("status", {"status": "failed"})
         sys.exit(1)
 
 

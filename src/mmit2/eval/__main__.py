@@ -13,12 +13,12 @@ from mmit2.config.training_config import load_runtime_config_dict
 from mmit2.eval.run import run_eval_config
 
 
-def _load_raw_config(config_path: str) -> Dict[str, Any]:
+def load_raw_config(config_path: str) -> Dict[str, Any]:
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
-def _apply_hf_token(token: str | None, token_file: str | None) -> None:
+def apply_hf_token(token: str | None, token_file: str | None) -> None:
     token = (token or "").strip()
     token_file = os.path.expanduser((token_file or "").strip())
     if not token and token_file:
@@ -29,7 +29,7 @@ def _apply_hf_token(token: str | None, token_file: str | None) -> None:
 
 
 def run(config_path: str) -> None:
-    raw_cfg = _load_raw_config(config_path)
+    raw_cfg = load_raw_config(config_path)
     runtime = load_runtime_config_dict(raw_cfg)
     run_remote_module(
         runtime.ssh,
@@ -46,7 +46,7 @@ def main() -> None:
     parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token")
     parser.add_argument("--hf-token-file", default=None, help="Path to a file containing a Hugging Face token")
     args = parser.parse_args()
-    _apply_hf_token(args.hf_token, args.hf_token_file)
+    apply_hf_token(args.hf_token, args.hf_token_file)
     if args.config_json:
         run_eval_config(json.loads(args.config_json))
         return

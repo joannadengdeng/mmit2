@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmit2.eval.__main__ import _apply_hf_token as apply_eval_hf_token
-from mmit2.training.__main__ import _apply_hf_token as apply_train_hf_token
+from mmit2.eval.__main__ import apply_hf_token as apply_eval_hf_token
+from mmit2.training.__main__ import apply_hf_token as apply_train_hf_token
 
 
 def test_eval_cli_applies_direct_hf_token(monkeypatch):
