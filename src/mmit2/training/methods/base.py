@@ -6,11 +6,6 @@ Built-in methods:
   - QLoRA, LoRA, DoRA          — parameter-efficient LoRA variants
   - FreezeTuning               — train selected modules only
   - L2T                        — instruction-aware loss masking (Zhou et al. 2025)
-
-To add a custom method:
-  1. Subclass ``TrainingMethod``
-  2. Implement all abstract methods
-  3. Register: ``register_training_method("my-method", MyMethod)``
 """
 from __future__ import annotations
 

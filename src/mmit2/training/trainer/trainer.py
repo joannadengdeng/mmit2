@@ -68,27 +68,29 @@ class Trainer:
     def train(self, config: TrainerConfig) -> None:
         emit("status", {"status": "loading"})
 
+        # 1. Resolve the tuning method and load the base model.
         method_obj = build_training_method(config.training_method)
         method_config = {**method_obj.default_config(), **config.method_params}
 
         if self.model is None:
             self.load_model(method_obj, method_config)
 
+        # 2. Build the dataset pipeline and lazy tokenization wrapper.
         emit("log", {"message": "Loading dataset...", "level": "INFO"})
         adapter, dataset_len = build_dataset(config)
         debug_recorder = DebugRecorder()
-        log_skip = build_skip_logger(debug_recorder)
 
         emit("log", {"message": "Preprocessing...", "level": "INFO"})
         tokenized_dataset, preprocessor = build_tokenized_dataset(
             adapter=adapter,
             processor=self.processor,
             image_root=config.data_config.get("image_root", ""),
-            skip_logger=log_skip,
+            skip_logger=build_skip_logger(debug_recorder),
             debug_recorder=debug_recorder,
         )
         emit("log", {"message": f"{dataset_len} samples scheduled for lazy tokenization", "level": "INFO"})
 
+        # 3. Prepare trainable parameters and optimizer state.
         self.model, info_str = method_obj.prepare_model(
             self.model, self.processor, method_config,
         )
@@ -127,6 +129,7 @@ class Trainer:
             },
         )
 
+        # 4. Run the training loop and emit progress metrics.
         emit("status", {"status": "training"})
         self.model.train()
         device = next(self.model.parameters()).device
@@ -196,6 +199,7 @@ class Trainer:
                         "step": global_step,
                     })
 
+        # 5. Persist debug artifacts, final weights, and train summary.
         debug_dir = resolve_debug_dir(config, self.tracker)
         debug_recorder.flush(debug_dir)
         emit("log", {"message": f"Debug artifacts saved to {debug_dir}", "level": "INFO"})
