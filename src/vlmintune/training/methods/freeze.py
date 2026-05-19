@@ -15,32 +15,32 @@ _ce_loss = CrossEntropyLoss()
 _GRAD_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 
-def _can_update(param: nn.Parameter) -> bool:
+def can_update(param: nn.Parameter) -> bool:
     return param.dtype in _GRAD_DTYPES
 
 
-def _resolve_attr_path(model: nn.Module, attr_path: str) -> object:
+def resolve_attr_path(model: nn.Module, attr_path: str) -> object:
     obj: object = model
     for part in attr_path.split("."):
         obj = getattr(obj, part)
     return obj
 
 
-def _has_updatable_params(module: nn.Module) -> bool:
-    return any(_can_update(param) for param in module.parameters(recurse=True))
+def has_updatable_params(module: nn.Module) -> bool:
+    return any(can_update(param) for param in module.parameters(recurse=True))
 
 
-def _list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
+def list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
     candidates = set()
     for name, module in model.named_modules():
         if not name or name.count(".") > 1:
             continue
-        if _has_updatable_params(module):
+        if has_updatable_params(module):
             candidates.add(name)
 
     layout = get_model_layout(model_layout)
     try:
-        layers = list(_resolve_attr_path(model, layout.transformer_layer_path))
+        layers = list(resolve_attr_path(model, layout.transformer_layer_path))
     except AttributeError as exc:
         raise ValueError(
             f"model_layout '{layout.name}' expects transformer layers at "
@@ -55,14 +55,8 @@ def _list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
     return sorted(candidates)
 
 
-def _matches_prefix(param_name: str, prefix: str) -> bool:
+def matches_prefix(param_name: str, prefix: str) -> bool:
     return param_name == prefix or param_name.startswith(prefix + ".")
-
-
-def _restore_trainable_flags(model: nn.Module, trained_names: list[str]) -> None:
-    trained = set(trained_names)
-    for name, param in model.named_parameters():
-        param.requires_grad = _can_update(param) and name in trained
 
 
 class FreezeTuningMethod(TrainingMethod):
@@ -77,7 +71,7 @@ class FreezeTuningMethod(TrainingMethod):
             "unfreeze_modules": [],
         }
 
-    def _prepare_model_impl(self, model, processor, config):
+    def prepare_model_impl(self, model, processor, config):
         model_layout = str(config.get("model_layout", "")).strip()
         if not model_layout:
             raise ValueError(
@@ -85,7 +79,7 @@ class FreezeTuningMethod(TrainingMethod):
                 f"Available layouts: {list_model_layouts()}"
             )
 
-        available = _list_tunable_modules(model, model_layout)
+        available = list_tunable_modules(model, model_layout)
         unfreeze_modules = [str(name).strip() for name in config["unfreeze_modules"] if str(name).strip()]
         if not unfreeze_modules:
             available_lines = "\n".join(f"  - {name}" for name in available) or "  (no parameterized modules found)"
@@ -97,16 +91,16 @@ class FreezeTuningMethod(TrainingMethod):
             )
 
         for param in model.parameters():
-            if _can_update(param):
+            if can_update(param):
                 param.requires_grad = False
 
         matched_modules = set()
         unfrozen_params = 0
         for name, param in model.named_parameters():
-            if not _can_update(param):
+            if not can_update(param):
                 continue
             for prefix in unfreeze_modules:
-                if _matches_prefix(name, prefix):
+                if matches_prefix(name, prefix):
                     param.requires_grad = True
                     matched_modules.add(prefix)
                     unfrozen_params += 1
@@ -143,7 +137,6 @@ class FreezeTuningMethod(TrainingMethod):
         torch.save(trainable_state, os.path.join(path, "freeze_tuned.pt"))
         processor.save_pretrained(path)
         metadata["ft_method"] = self.name
-        metadata["trained_param_names"] = sorted(trained_names)
         with open(os.path.join(path, "vlmintune_meta.json"), "w") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
@@ -155,13 +148,6 @@ class FreezeTuningMethod(TrainingMethod):
             map_location="cpu", weights_only=True,
         )
         model.load_state_dict(state, strict=False)
-        meta_path = os.path.join(path, "vlmintune_meta.json")
-        if os.path.exists(meta_path):
-            with open(meta_path, encoding="utf-8") as f:
-                meta = json.load(f)
-            trained_names = meta.get("trained_param_names", [])
-            if trained_names:
-                _restore_trainable_flags(model, trained_names)
         model.eval()
 
         adapter_name = os.path.basename(path)

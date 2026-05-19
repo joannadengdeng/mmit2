@@ -99,10 +99,10 @@ class TrainingMethod(ABC):
         -------
         (prepared_model, info_str)
         """
-        return self._prepare_model_impl(model, processor, config)
+        return self.prepare_model_impl(model, processor, config)
 
     @abstractmethod
-    def _prepare_model_impl(
+    def prepare_model_impl(
         self,
         model: nn.Module,
         processor: Any,

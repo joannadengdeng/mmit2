@@ -69,7 +69,7 @@ class L2TMethod(TrainingMethod):
     def requires_quantization(self, config: Optional[Dict[str, Any]] = None):
         return self._get_base(config).requires_quantization(config)
 
-    def _prepare_model_impl(self, model, processor, config):
+    def prepare_model_impl(self, model, processor, config):
         self._last_config = dict(config)
         self._special_token_ids = self._collect_special_token_ids(processor)
         return self._get_base(config).prepare_model(model, processor, config)

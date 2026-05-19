@@ -37,7 +37,7 @@ class LoRAMethod(TrainingMethod):
         """Extra kwargs for LoraConfig. Override in subclasses."""
         return {}
 
-    def _prepare_model_impl(self, model, processor, config):
+    def prepare_model_impl(self, model, processor, config):
         r = int(config["lora_r"])
         alpha = int(config["lora_alpha"])
         dropout = float(config["lora_dropout"])
