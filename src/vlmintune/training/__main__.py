@@ -109,6 +109,7 @@ def main():
         default=None,
         help="Path to an SSH training YAML config file",
     )
+    parser.add_argument("--host", default=None, help="Optional SSH host override when using --config")
     parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token")
     parser.add_argument("--hf-token-file", default=None, help="Path to a file containing a Hugging Face token")
     args = parser.parse_args()
@@ -119,7 +120,7 @@ def main():
     elif args.config:
         from vlmintune.training.runner import run as run_over_ssh
 
-        run_over_ssh(args.config)
+        run_over_ssh(args.config, host_override=args.host)
         return
     else:
         parser.error("Either --config or --config-json is required")

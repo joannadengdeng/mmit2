@@ -102,7 +102,7 @@ def _raw_ssh_section(raw: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def load_runtime_config_dict(raw: Dict[str, Any]) -> RuntimeConfig:
+def load_runtime_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> RuntimeConfig:
     """Parse just the runtime section from an in-memory config mapping."""
     raw = raw or {}
     raw_runtime = raw.get("runtime", {})
@@ -113,11 +113,11 @@ def load_runtime_config_dict(raw: Dict[str, Any]) -> RuntimeConfig:
         mode=runtime_mode,
         ssh=_parse_ssh(_raw_ssh_section(raw)),
     )
-    _validate_runtime(runtime)
+    _validate_runtime(runtime, require_host=require_host)
     return runtime
 
 
-def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
+def load_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> TrainingConfig:
     """Load and validate a training config from an in-memory mapping."""
     raw = raw or {}
 
@@ -127,7 +127,7 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
     raw_data = raw.get("data", {})
 
     cfg = TrainingConfig(
-        runtime=load_runtime_config_dict(raw),
+        runtime=load_runtime_config_dict(raw, require_host=require_host),
         model=ModelConfig(
             model_path=str(raw_model.get("model_path", "")),
         ),
@@ -158,12 +158,12 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
         ),
     )
 
-    _validate(cfg)
+    _validate(cfg, require_host=require_host)
     _merge_method_defaults(cfg)
     return cfg
 
 
-def load_config(path: str) -> TrainingConfig:
+def load_config(path: str, *, require_host: bool = True) -> TrainingConfig:
     """Load and validate a YAML training config file.
 
     Parameters
@@ -189,7 +189,7 @@ def load_config(path: str) -> TrainingConfig:
 
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    cfg = load_config_dict(raw)
+    cfg = load_config_dict(raw, require_host=require_host)
     if not cfg.experiment.setup_dir:
         cfg.experiment.setup_dir = _infer_setup_dir_from_config_path(path)
     return cfg
@@ -213,18 +213,18 @@ def _infer_setup_dir_from_config_path(path: str) -> str:
     return config_dir
 
 
-def _validate_runtime(runtime: RuntimeConfig) -> None:
+def _validate_runtime(runtime: RuntimeConfig, *, require_host: bool = True) -> None:
     if runtime.mode != "ssh":
         raise ValueError(
             f"runtime.mode: '{runtime.mode}' is not supported. Only 'ssh' mode is supported."
         )
-    if not runtime.ssh.host:
+    if require_host and not runtime.ssh.host:
         raise ValueError("runtime.ssh.host: required")
     if not runtime.ssh.username:
         raise ValueError("runtime.ssh.username: required")
 
 
-def _validate(cfg: TrainingConfig) -> None:
+def _validate(cfg: TrainingConfig, *, require_host: bool = True) -> None:
     """Validate config fields; raise ValueError with all issues at once."""
     errors: List[str] = []
 
@@ -241,7 +241,7 @@ def _validate(cfg: TrainingConfig) -> None:
         )
 
     try:
-        _validate_runtime(cfg.runtime)
+        _validate_runtime(cfg.runtime, require_host=require_host)
     except ValueError as exc:
         errors.append(str(exc))
 

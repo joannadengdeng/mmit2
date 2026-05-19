@@ -7,7 +7,7 @@ Usage::
     run("experiment_setup/my_experiment/train_config.yaml")
 
     # From CLI:
-    python -m vlmintune.training.runner --config experiment_setup/my_experiment/train_config.yaml
+    python -m vlmintune.training.runner --config experiment_setup/my_experiment/train_config.yaml --host 10.0.0.8
 """
 from __future__ import annotations
 
@@ -22,9 +22,12 @@ from vlmintune.config.runtime import run_remote_module
 from vlmintune.training.peft_env import ensure_peft_runtime_compatible
 
 
-def run(config_path: str) -> None:
+def run(config_path: str, host_override: str | None = None) -> None:
     """Load config and run training on the configured SSH server."""
-    cfg = load_config(config_path)
+    host_override = (host_override or "").strip()
+    cfg = load_config(config_path, require_host=not bool(host_override))
+    if host_override:
+        cfg.runtime.ssh.host = host_override
     ensure_peft_runtime_compatible(cfg.training.ft_method, cfg.training.params)
     run_remote_module(
         cfg.runtime.ssh,
@@ -95,8 +98,9 @@ def _print_event(event: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="vlmintune SSH training runner")
     parser.add_argument("--config", required=True, help="Path to SSH training YAML config")
+    parser.add_argument("--host", default=None, help="Optional SSH host override")
     args = parser.parse_args()
-    run(args.config)
+    run(args.config, host_override=args.host)
 
 
 if __name__ == "__main__":
