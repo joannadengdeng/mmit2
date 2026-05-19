@@ -112,6 +112,8 @@ Notes:
 - JarvisLabs helper scripts are available in `scripts/`:
   - `./scripts/jarvislabs_lora_100.sh` for a 100-sample smoke run
   - `./scripts/jarvislabs_lora_full.sh` for a full-split LoRA run
+  - `EVAL_SPLIT=validation ./scripts/jarvislabs_eval_experiment.sh` for saved-experiment eval
+  - `./scripts/jarvislabs_bundle_results.sh` to collect one experiment, its checkpoint, eval outputs, and baseline comparison into one folder
 - Those JarvisLabs scripts default to experiment names like `20260513_lora_textvqa_3b_full` or `20260513_lora_textvqa_3b_100samples`.
 
 ## Evaluation
@@ -134,6 +136,7 @@ In that config:
 - `experiment.name` selects the saved experiment
 - `experiment.base_dir` points at the experiment root directory
 - `eval.dataset_name` selects the eval dataset
+- `eval.split` is required
 - `eval.max_samples` limits the eval sample count
 
 ### Evaluate A Base-Model Baseline
@@ -148,6 +151,7 @@ In that config:
 
 - `model.model_path` is required
 - `eval.dataset_name` selects the eval dataset
+- `eval.split` is required
 - `eval.max_samples` limits the eval sample count
 - `eval.output_dir` controls where the summary and predictions are written
 

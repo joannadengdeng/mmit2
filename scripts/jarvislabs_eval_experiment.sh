@@ -10,15 +10,15 @@ set -euo pipefail
 # Defaults:
 #   - experiment: latest directory under ./experiments
 #   - eval dataset: lmms-lab/textvqa (the only built-in dataset in the initial release)
-#   - split: dataset default
+#   - split: must be set explicitly via EVAL_SPLIT
 #   - samples: 100
 #
 # Common overrides:
-#   EXPERIMENT_NAME=jarvislabs_lora_100_20260513_123456 ./scripts/jarvislabs_eval_experiment.sh
-#   EVAL_MAX_SAMPLES=200 ./scripts/jarvislabs_eval_experiment.sh
+#   EXPERIMENT_NAME=jarvislabs_lora_100_20260513_123456 EVAL_SPLIT=validation ./scripts/jarvislabs_eval_experiment.sh
+#   EVAL_SPLIT=validation EVAL_MAX_SAMPLES=200 ./scripts/jarvislabs_eval_experiment.sh
 #   ./scripts/jarvislabs_eval_experiment.sh --hf-token-file /root/.hf_token
 #   ./scripts/jarvislabs_eval_experiment.sh --hf-token hf_xxx
-#   DRY_RUN=1 ./scripts/jarvislabs_eval_experiment.sh
+#   DRY_RUN=1 EVAL_SPLIT=validation ./scripts/jarvislabs_eval_experiment.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 cd "$ROOT_DIR"
@@ -94,6 +94,11 @@ if [[ ! -f "$SUMMARY_PATH" ]]; then
   exit 1
 fi
 
+if [[ -z "$EVAL_SPLIT" ]]; then
+  echo "[mmit2] EVAL_SPLIT is required (for example: validation)." >&2
+  exit 1
+fi
+
 export EXPERIMENT_BASE_DIR
 export EXPERIMENT_NAME
 export EVAL_DATASET_NAME
@@ -114,15 +119,12 @@ config = {
     },
     "eval": {
         "dataset_name": os.environ["EVAL_DATASET_NAME"],
+        "split": os.environ["EVAL_SPLIT"],
         "max_samples": int(os.environ["EVAL_MAX_SAMPLES"]),
         "max_new_tokens": int(os.environ["MAX_NEW_TOKENS"]),
         "temperature": float(os.environ["TEMPERATURE"]),
     },
 }
-
-eval_split = os.environ.get("EVAL_SPLIT", "").strip()
-if eval_split:
-    config["eval"]["split"] = eval_split
 
 eval_name = os.environ.get("EVAL_NAME", "").strip()
 if eval_name:
@@ -164,11 +166,7 @@ export PYTHONUNBUFFERED=1
 echo "[mmit2] Starting JarvisLabs eval run"
 echo "[mmit2] Experiment: $EXPERIMENT_NAME"
 echo "[mmit2] Summary: $SUMMARY_PATH"
-if [[ -n "$EVAL_SPLIT" ]]; then
-  echo "[mmit2] Eval dataset: $EVAL_DATASET_NAME ($EVAL_SPLIT)"
-else
-  echo "[mmit2] Eval dataset: $EVAL_DATASET_NAME (dataset default split)"
-fi
+echo "[mmit2] Eval dataset: $EVAL_DATASET_NAME ($EVAL_SPLIT)"
 echo "[mmit2] Eval samples: $EVAL_MAX_SAMPLES"
 if [[ -n "${HF_TOKEN:-}" ]]; then
   echo "[mmit2] HF token: enabled"
