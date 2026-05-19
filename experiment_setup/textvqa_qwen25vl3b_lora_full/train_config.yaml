@@ -8,7 +8,6 @@ runtime:
   ssh:
     port: 22
     username: "root"
-    key_path: "~/.ssh/id_rsa"
     # password: ""
 
 model:
