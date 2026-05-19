@@ -7,3 +7,6 @@ build/
 dist/
 *.egg-info/
 run_logs/
+experiments/
+eval_outputs/
+experiment_results/

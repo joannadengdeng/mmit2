@@ -1,8 +1,8 @@
-# mmit2
+# vlmintune
 
-This repository is the official implementation of **mmit2**, a compact multimodal instruction tuning toolkit for vision-language models. The project is organized around reproducible fine-tuning, evaluation, and SSH-based runtime orchestration rather than a single monolithic training script.
+This repository is the official implementation of **vlmintune**, a compact multimodal instruction tuning toolkit for vision-language models. The project is organized around reproducible fine-tuning, evaluation, and SSH-based runtime orchestration rather than a single monolithic training script.
 
-`mmit2` currently supports LoRA-family fine-tuning, freeze tuning, label-to-target (L2T) composition, Hugging Face VQA-style datasets, and a small SSH-based experiment workflow for training and evaluation.
+`vlmintune` currently supports LoRA-family fine-tuning, freeze tuning, label-to-target (L2T) composition, Hugging Face VQA-style datasets, and a small SSH-based experiment workflow for training and evaluation.
 
 ## Requirements
 
@@ -58,7 +58,7 @@ Built-in dataset specs currently cover:
 
 - `lmms-lab/textvqa`
 
-Training uses the Hugging Face adapter path in `src/mmit2/data/adapters/hf_datasets.py`. The example training configs default to `lmms-lab/textvqa` because it exposes a `train` split on Hugging Face.
+Training uses the Hugging Face adapter path in `src/vlmintune/data/adapters/hf_datasets.py`. The example training configs default to `lmms-lab/textvqa` because it exposes a `train` split on Hugging Face.
 
 ### Evaluation support
 
@@ -71,34 +71,39 @@ Training uses the Hugging Face adapter path in `src/mmit2/data/adapters/hf_datas
 ## Repository Layout
 
 ```text
-src/mmit2/
+src/vlmintune/
   training/      fine-tuning methods, trainer, runtime runner
   eval/          inference methods and scoring helpers
   data/          dataset specs, adapters, canonical sample types
-configs/         ready-to-run YAML configs
-examples/        inspection helpers and package notes
+experiment_setup/
+  <experiment>/  per-experiment configs and run scripts
 tests/           lightweight regression tests
 ```
 
 ## Training
 
-All training flows are config-driven. The YAML files in `configs/` define the SSH target, model, method, optimizer settings, training dataset, and training sample count.
+All training flows are config-driven. Each experiment keeps its own YAML configs and run scripts under `experiment_setup/<experiment_name>/`.
 
 ### SSH training
 
-To run QLoRA training through the SSH runner:
+To run one experiment through the SSH runner:
 
 ```bash
-python -m mmit2.training --config configs/ssh_qlora.yaml
+python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml
 ```
 
-Other built-in SSH configs:
+The recommended setup layout is:
 
-- `configs/ssh_lora.yaml`
-- `configs/ssh_lora_textvqa.yaml`
-- `configs/ssh_dora.yaml`
-- `configs/ssh_freeze.yaml`
-- `configs/ssh_l2t.yaml`
+```text
+experiment_setup/<experiment_name>/
+  train_config.yaml
+  eval_config.yaml
+  base_eval_config.yaml
+  run_train.sh
+  run_eval_trained.sh
+  run_eval_base.sh
+  bundle_results.sh
+```
 
 Notes:
 
@@ -107,28 +112,25 @@ Notes:
 - Training dataset selection lives under `data.data_path`.
 - Training sample count lives under `data.max_samples`. Set it to `0` or omit it for the full split.
 - Each training run creates an experiment directory with a saved `summary.json`, checkpoint path, config snapshot, and train summary.
+- The loaded training config automatically records its parent `experiment_setup/<experiment_name>/` directory in the saved experiment summary, so bundling can copy the exact setup files used for the run.
 - The trainer emits a small amount of runtime information by design, including dataset resolution, estimated training plan, and the first batch tensor shapes.
 - There is no separate `fullrun` command in the initial release. Training the full dataset is just a normal training run with `data.max_samples` omitted or set to `0`.
-- JarvisLabs helper scripts are available in `scripts/`:
-  - `./scripts/jarvislabs_lora_100.sh` for a 100-sample smoke run
-  - `./scripts/jarvislabs_lora_full.sh` for a full-split LoRA run
-  - `EVAL_SPLIT=validation ./scripts/jarvislabs_eval_experiment.sh` for saved-experiment eval
-  - `./scripts/jarvislabs_bundle_results.sh` to collect one experiment, its checkpoint, eval outputs, and baseline comparison into one folder
-- Those JarvisLabs scripts default to experiment names like `20260513_lora_textvqa_3b_full` or `20260513_lora_textvqa_3b_100samples`.
+- Use the experiment-local wrappers in `experiment_setup/<experiment_name>/` when you want one-command train / eval / bundle runs.
+- The results bundle copies `experiment_setup/<experiment_name>/` into `experiment_results/<bundle_name>/experiment_setup/`, together with the experiment directory, optional baseline eval output, and optional train log.
 
 ## Evaluation
 
 The intended workflow is:
 
-1. Run `python -m mmit2.training --config ...`
-2. Run `python -m mmit2.eval --config ...`
+1. Run `python -m vlmintune.training --config ...`
+2. Run `python -m vlmintune.eval --config ...`
 
 ### Evaluate A Saved Experiment
 
 To evaluate a previously saved experiment without retraining:
 
 ```bash
-python -m mmit2.eval --config configs/ssh_experiment_eval.yaml
+python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/eval_config.yaml
 ```
 
 In that config:
@@ -144,7 +146,7 @@ In that config:
 To evaluate an unfine-tuned Hugging Face base model as a baseline:
 
 ```bash
-python -m mmit2.eval --config configs/ssh_baseline_eval.yaml
+python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/base_eval_config.yaml
 ```
 
 In that config:
@@ -155,7 +157,7 @@ In that config:
 - `eval.max_samples` limits the eval sample count
 - `eval.output_dir` controls where the summary and predictions are written
 
-This initial release intentionally evaluates one dataset per run. If you want multiple eval datasets, run `mmit2.eval` multiple times with different configs.
+This initial release intentionally evaluates one dataset per run. If you want multiple eval datasets, run `vlmintune.eval` multiple times with different configs.
 
 ## Pre-trained Models
 
@@ -188,7 +190,7 @@ If you change training, runtime, or serialization behavior, please run an approp
 
 ## Project Status
 
-`mmit2` is usable today for small-to-medium multimodal fine-tuning experiments, but it is still early-stage infrastructure. In particular:
+`vlmintune` is usable today for small-to-medium multimodal fine-tuning experiments, but it is still early-stage infrastructure. In particular:
 
 - the repository does not yet ship published pre-trained adapters
 - benchmark result tables are not yet curated in the README

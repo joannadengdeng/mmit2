@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mmit2"
+name = "vlmintune"
 version = "0.1.0"
 description = "Multimodal Instruction Tuning library v2 — pluggable training, inference, and evaluation for VLMs"
 requires-python = ">=3.9"
@@ -27,4 +27,4 @@ remote = ["paramiko>=3.0"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-mmit2 = ["config/*.yaml"]
+vlmintune = ["config/*.yaml"]
