@@ -28,7 +28,7 @@ from mmit2.training.registry import build_training_method
 _SHORT_ANSWER_INSTRUCTION = "Answer with a single short answer only. Do not use a full sentence."
 
 
-def _build_eval_question(question: str) -> str:
+def build_eval_question(question: str) -> str:
     question = question.strip() or "Describe this image."
     return f"{question}\n{_SHORT_ANSWER_INSTRUCTION}"
 
@@ -105,7 +105,7 @@ class LocalMethod(Method):
         cs = CanonicalSample(
             id=sample.id,
             image_path=sample.image_path,
-            turns=[Turn(role="human", content=_build_eval_question(sample.question))],
+            turns=[Turn(role="human", content=build_eval_question(sample.question))],
             metadata=sample.metadata,
         )
         return self.prepare_input(cs, image_root=image_root)

@@ -33,12 +33,12 @@ class EvalSource:
     experiment_name: str = ""
 
 
-_SUPPORTED_EVAL_DATASETS: dict[str, str] = {
-    "lmms-lab/textvqa": "validation",
+SUPPORTED_EVAL_DATASETS = {
+    "lmms-lab/textvqa",
 }
 
 
-def _iter_with_progress(items: Iterable[Any], total: Optional[int], desc: str) -> Iterator[Any]:
+def iter_with_progress(items: Iterable[Any], total: Optional[int], desc: str) -> Iterator[Any]:
     try:
         from tqdm import tqdm
 
@@ -55,7 +55,7 @@ def _iter_with_progress(items: Iterable[Any], total: Optional[int], desc: str) -
             yield item
 
 
-def _default_eval_name(dataset_name: str, split: str) -> str:
+def default_eval_name(dataset_name: str, split: str) -> str:
     dataset_short = dataset_name.rstrip("/").split("/")[-1].replace(".", "_").replace("-", "_")
     return f"{dataset_short}_{split}".lower()
 
@@ -77,16 +77,17 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
     if not dataset_name:
         raise ValueError("eval.dataset_name is required")
 
-    try:
-        default_split = _SUPPORTED_EVAL_DATASETS[dataset_name]
-    except KeyError as exc:
+    if dataset_name not in SUPPORTED_EVAL_DATASETS:
         raise ValueError(
             f"Unsupported eval.dataset_name '{dataset_name}'. "
-            f"Supported: {sorted(_SUPPORTED_EVAL_DATASETS)}"
-        ) from exc
+            f"Supported: {sorted(SUPPORTED_EVAL_DATASETS)}"
+        )
 
-    split = str(raw.get("split", default_split)).strip() or default_split
-    name = str(raw.get("name", "")).strip() or _default_eval_name(dataset_name, split)
+    split = str(raw.get("split", "")).strip()
+    if not split:
+        raise ValueError("eval.split is required")
+
+    name = str(raw.get("name", "")).strip() or default_eval_name(dataset_name, split)
     metrics = raw.get("metrics", ["auto"])
     if not isinstance(metrics, list) or not metrics:
         metrics = ["auto"]
@@ -105,7 +106,7 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
     )
 
 
-def _create_eval_output_dir(
+def create_eval_output_dir(
     *,
     base_dir: str = "eval_outputs",
     model_path: str,
@@ -124,14 +125,14 @@ def _create_eval_output_dir(
     return output_dir
 
 
-def _prediction_path(output_dir: str, target_name: str) -> str:
+def prediction_path(output_dir: str, target_name: str) -> str:
     pred_dir = os.path.join(output_dir, "eval_predictions")
     os.makedirs(pred_dir, exist_ok=True)
     safe_name = target_name.replace("/", "_").replace(" ", "_")
     return os.path.join(pred_dir, f"{safe_name}.jsonl")
 
 
-def _evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
+def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
     from mmit2.data.adapters.hf_datasets import HFDatasetsAdapter
     from mmit2.data.types import EvalSample
     from mmit2.eval.metrics.scoring import auto_select_metric, score_prediction_multi
@@ -144,15 +145,15 @@ def _evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[s
         load_images=True,
     )
     total = len(adapter) if len(adapter) >= 0 else None
-    prediction_path = _prediction_path(output_dir, target.name)
+    prediction_file = prediction_path(output_dir, target.name)
 
     metric_sums: Dict[str, float] = {}
     num_predictions = 0
     primary_metric = ""
     primary_reason = ""
 
-    with open(prediction_path, "w", encoding="utf-8") as f:
-        for sample in _iter_with_progress(adapter, total, f"Evaluating {target.name}"):
+    with open(prediction_file, "w", encoding="utf-8") as f:
+        for sample in iter_with_progress(adapter, total, f"Evaluating {target.name}"):
             ground_truth = sample.metadata.get("raw_answers") or ([sample.first_answer] if sample.first_answer else [])
             if not primary_metric:
                 primary_metric, primary_reason = auto_select_metric("open_vqa", ground_truth)
@@ -200,11 +201,11 @@ def _evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[s
         "primary_metric": primary_metric,
         "primary_metric_reason": primary_reason,
         "metrics": metrics,
-        "prediction_file": prediction_path,
+        "prediction_file": prediction_file,
     }
 
 
-def _resolve_experiment_source(
+def resolve_experiment_source(
     raw_cfg: Dict[str, Any],
 ) -> tuple[EvalSource, ExperimentTracker]:
     experiment_cfg = raw_cfg.get("experiment", {}) or {}
@@ -244,7 +245,7 @@ def _resolve_experiment_source(
     return source, tracker
 
 
-def _resolve_baseline_source(raw_cfg: Dict[str, Any], dataset_name: str) -> EvalSource:
+def resolve_baseline_source(raw_cfg: Dict[str, Any], dataset_name: str) -> EvalSource:
     model_cfg = raw_cfg.get("model", {}) or {}
     base_model_id = str(model_cfg.get("model_path", "")).strip()
     if not base_model_id:
@@ -269,7 +270,7 @@ def _resolve_baseline_source(raw_cfg: Dict[str, Any], dataset_name: str) -> Eval
         )
 
     eval_cfg = raw_cfg.get("eval", {}) or {}
-    output_dir = _create_eval_output_dir(
+    output_dir = create_eval_output_dir(
         base_dir=str(eval_cfg.get("base_dir", "eval_outputs")).strip() or "eval_outputs",
         model_path=base_model_id,
         dataset_name=dataset_name,
@@ -289,11 +290,11 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
     experiment_name = str((raw_cfg.get("experiment", {}) or {}).get("name", "")).strip()
     tracker = None
     if experiment_name:
-        source, tracker = _resolve_experiment_source(raw_cfg)
+        source, tracker = resolve_experiment_source(raw_cfg)
         if source.checkpoint_path and not os.path.isdir(source.checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {source.checkpoint_path}")
     else:
-        source = _resolve_baseline_source(raw_cfg, eval_target.dataset_name)
+        source = resolve_baseline_source(raw_cfg, eval_target.dataset_name)
 
     print("=" * 80)
     print("mmit2 Eval Run")
@@ -320,7 +321,7 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
     else:
         method = LocalMethod.from_base_model(source.base_model_id)
 
-    eval_result = _evaluate_vqa_dataset(method, eval_target, source.output_dir)
+    eval_result = evaluate_vqa_dataset(method, eval_target, source.output_dir)
     if tracker is not None:
         tracker.log_eval(eval_target.name, eval_result["metrics"])
     print(json.dumps(eval_result["metrics"], indent=2, ensure_ascii=False))

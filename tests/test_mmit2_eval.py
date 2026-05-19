@@ -13,16 +13,28 @@ from mmit2.data.types import EvalSample
 from mmit2.eval.methods.local_method import LocalMethod
 from mmit2.eval.run import (
     EvalTarget,
-    _evaluate_vqa_dataset,
-    _resolve_baseline_source,
+    evaluate_vqa_dataset,
+    resolve_baseline_source,
     parse_eval_target,
 )
 
 
-def test_parse_eval_target_infers_defaults():
+def test_parse_eval_target_requires_explicit_split():
+    with pytest.raises(ValueError, match="eval.split is required"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "max_new_tokens": 12,
+                "max_samples": 25,
+            }
+        )
+
+
+def test_parse_eval_target_accepts_explicit_split():
     target = parse_eval_target(
         {
             "dataset_name": "lmms-lab/textvqa",
+            "split": "validation",
             "max_new_tokens": 12,
             "max_samples": 25,
         }
@@ -57,7 +69,7 @@ def test_parse_eval_target_rejects_multi_target_legacy_config():
 
 
 def test_resolve_baseline_source_uses_base_model_only(tmp_path):
-    source = _resolve_baseline_source(
+    source = resolve_baseline_source(
         {
             "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
             "eval": {
@@ -76,7 +88,7 @@ def test_resolve_baseline_source_uses_base_model_only(tmp_path):
 
 def test_resolve_baseline_source_rejects_checkpoint_config():
     with pytest.raises(ValueError, match="Baseline eval only supports an unfine-tuned base model"):
-        _resolve_baseline_source(
+        resolve_baseline_source(
             {
                 "model": {
                     "model_path": "Qwen/Qwen2.5-VL-3B-Instruct",
@@ -136,7 +148,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
 
     monkeypatch.setattr(HFDatasetsAdapter, "_load_dataset", fake_load_dataset)
 
-    result = _evaluate_vqa_dataset(
+    result = evaluate_vqa_dataset(
         _DummyMethod(),
         EvalTarget(
             name="textvqa_validation",
