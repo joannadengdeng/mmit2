@@ -12,7 +12,6 @@ experiment_setup/<experiment_name>/
   run_train.sh
   run_eval_trained.sh
   run_eval_base.sh
-  bundle_results.sh
 ```
 
 Workflow:
@@ -20,8 +19,5 @@ Workflow:
 1. Create one setup directory for the experiment.
 2. Put that experiment's config files and run scripts there.
 3. Run training and evaluation from that setup directory.
-4. Bundle results after the run.
-
-The results bundler copies the matching experiment setup directory into
-`experiment_results/<bundle_name>/experiment_setup/`, so each archived result
-keeps its own config and scripts together with the copied experiment directory.
+4. If you want to archive the setup, manually copy it into `experiment_results/`
+   together with the experiment artifacts you want to keep.

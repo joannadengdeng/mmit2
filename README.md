@@ -102,7 +102,6 @@ experiment_setup/<experiment_name>/
   run_train.sh
   run_eval_trained.sh
   run_eval_base.sh
-  bundle_results.sh
 ```
 
 Notes:
@@ -115,8 +114,8 @@ Notes:
 - The loaded training config automatically records its parent `experiment_setup/<experiment_name>/` directory in the saved experiment summary, so bundling can copy the exact setup files used for the run.
 - The trainer emits a small amount of runtime information by design, including dataset resolution, estimated training plan, and the first batch tensor shapes.
 - There is no separate `fullrun` command in the initial release. Training the full dataset is just a normal training run with `data.max_samples` omitted or set to `0`.
-- Use the experiment-local wrappers in `experiment_setup/<experiment_name>/` when you want one-command train / eval / bundle runs.
-- The results bundle copies `experiment_setup/<experiment_name>/` into `experiment_results/<bundle_name>/experiment_setup/`, together with the experiment directory, optional baseline eval output, and optional train log.
+- Use the experiment-local wrappers in `experiment_setup/<experiment_name>/` when you want one-command train / eval runs.
+- If you want to archive setup files into `experiment_results/`, copy them there manually after the run.
 
 ## Evaluation
 

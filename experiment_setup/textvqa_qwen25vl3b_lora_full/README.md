@@ -6,8 +6,6 @@ This setup directory contains one complete experiment definition:
 - `eval_config.yaml`: evaluate the trained checkpoint
 - `base_eval_config.yaml`: evaluate the unfine-tuned base model
 - `run_*.sh`: thin wrappers to run the configs
-- `bundle_results.sh`: archive setup + experiment artifacts into `experiment_results/`
 
 Adjust the SSH section and any model/dataset/training values here when cloning
 this setup into a new experiment directory.
-
