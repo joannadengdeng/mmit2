@@ -1,7 +1,7 @@
 # SSH training config for one experiment setup.
 #
 # Usage:
-#   python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml --host 10.0.0.8
+#   python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml
 
 runtime:
   mode: ssh

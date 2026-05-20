@@ -7,7 +7,11 @@ import os
 import torch
 import torch.nn as nn
 
-from vlmintune.config.model_layouts import get_model_layout, list_model_layouts
+from vlmintune.config.model_layouts import (
+    get_model_layout,
+    list_model_layouts,
+    resolve_transformer_layers,
+)
 from vlmintune.training.losses.ce_loss import CrossEntropyLoss
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
 
@@ -17,13 +21,6 @@ _GRAD_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 def can_update(param: nn.Parameter) -> bool:
     return param.dtype in _GRAD_DTYPES
-
-
-def resolve_attr_path(model: nn.Module, attr_path: str) -> object:
-    obj: object = model
-    for part in attr_path.split("."):
-        obj = getattr(obj, part)
-    return obj
 
 
 def has_updatable_params(module: nn.Module) -> bool:
@@ -39,15 +36,7 @@ def list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
             candidates.add(name)
 
     layout = get_model_layout(model_layout)
-    try:
-        layers = list(resolve_attr_path(model, layout.transformer_layer_path))
-    except AttributeError as exc:
-        raise ValueError(
-            f"model_layout '{layout.name}' expects transformer layers at "
-            f"'{layout.transformer_layer_path}', but that path was not found on "
-            f"{model.__class__.__name__}."
-        ) from exc
-
+    layers = resolve_transformer_layers(model, model_layout)
     candidates.add(layout.transformer_layer_path)
     for idx in range(len(layers)):
         candidates.add(f"{layout.transformer_layer_path}.{idx}")

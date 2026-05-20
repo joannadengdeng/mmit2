@@ -89,7 +89,7 @@ All training flows are config-driven. Each experiment keeps its own YAML configs
 To run one experiment through the SSH runner:
 
 ```bash
-python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml --host 10.0.0.8
+python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml
 ```
 
 The recommended setup layout is:
@@ -108,7 +108,8 @@ Notes:
 
 - The local machine only needs the SSH client-side dependency path, for example `pip install -e ".[remote]"`.
 - The remote machine needs the actual training dependencies, for example `pip install -e ".[finetune]"`.
-- The example setup YAMLs can omit `runtime.ssh.host`. Pass the real server IP from the terminal with `--host`.
+- If you run directly on the SSH machine, the example setup YAMLs work as-is with `python -m vlmintune.training --config ...` or the local `run_*.sh` wrappers.
+- If you want local-to-remote SSH dispatch from another machine, add `runtime.ssh.host` to the YAML first.
 - Training dataset selection lives under `data.data_path`.
 - Training sample count lives under `data.max_samples`. Set it to `0` or omit it for the full split.
 - Each training run creates an experiment directory with a saved `summary.json`, checkpoint path, config snapshot, and train summary.
@@ -130,7 +131,7 @@ The intended workflow is:
 To evaluate a previously saved experiment without retraining:
 
 ```bash
-python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/eval_config.yaml --host 10.0.0.8
+python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/eval_config.yaml
 ```
 
 In that config:
@@ -139,6 +140,7 @@ In that config:
 - `experiment.base_dir` points at the experiment root directory
 - `eval.dataset_name` selects the eval dataset
 - `eval.split` is required
+- `eval.metric` is required and must be `"vqa_accuracy"`
 - `eval.max_samples` limits the eval sample count
 
 ### Evaluate A Base-Model Baseline
@@ -146,7 +148,7 @@ In that config:
 To evaluate an unfine-tuned Hugging Face base model as a baseline:
 
 ```bash
-python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/base_eval_config.yaml --host 10.0.0.8
+python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/base_eval_config.yaml
 ```
 
 In that config:
@@ -154,6 +156,7 @@ In that config:
 - `model.model_path` is required
 - `eval.dataset_name` selects the eval dataset
 - `eval.split` is required
+- `eval.metric` is required and must be `"vqa_accuracy"`
 - `eval.max_samples` limits the eval sample count
 - `eval.output_dir` controls where the summary and predictions are written
 

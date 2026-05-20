@@ -14,8 +14,8 @@ The sample counts are intentionally small so you can quickly inspect a few outpu
 
 For a full run later, set those values to `0`.
 
-Pass the real SSH server IP from the terminal when running:
+Run on the SSH machine:
 
-- `./run_train.sh --host 10.0.0.8`
-- `./run_eval_trained.sh --host 10.0.0.8`
-- `./run_eval_base.sh --host 10.0.0.8`
+- `./run_train.sh`
+- `./run_eval_trained.sh`
+- `./run_eval_base.sh`

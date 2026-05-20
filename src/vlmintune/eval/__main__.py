@@ -28,12 +28,12 @@ def apply_hf_token(token: str | None, token_file: str | None) -> None:
         os.environ["HF_TOKEN"] = token
 
 
-def run(config_path: str, host_override: str | None = None) -> None:
+def run(config_path: str) -> None:
     raw_cfg = load_raw_config(config_path)
-    host_override = (host_override or "").strip()
-    runtime = load_runtime_config_dict(raw_cfg, require_host=not bool(host_override))
-    if host_override:
-        runtime.ssh.host = host_override
+    runtime = load_runtime_config_dict(raw_cfg, require_host=False)
+    if not runtime.ssh.host:
+        run_eval_config(raw_cfg)
+        return
     run_remote_module(
         runtime.ssh,
         module_name="vlmintune.eval",
@@ -44,9 +44,8 @@ def run(config_path: str, host_override: str | None = None) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate a saved experiment or base-model baseline")
-    parser.add_argument("--config", default=None, help="Path to an SSH eval YAML config file")
+    parser.add_argument("--config", default=None, help="Path to an eval YAML config file")
     parser.add_argument("--config-json", default=None, help="Full eval config as JSON string")
-    parser.add_argument("--host", default=None, help="Optional SSH host override when using --config")
     parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token")
     parser.add_argument("--hf-token-file", default=None, help="Path to a file containing a Hugging Face token")
     args = parser.parse_args()
@@ -55,7 +54,7 @@ def main() -> None:
         run_eval_config(json.loads(args.config_json))
         return
     if args.config:
-        run(args.config, host_override=args.host)
+        run(args.config)
         return
     parser.error("Either --config or --config-json is required")
 

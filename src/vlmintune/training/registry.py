@@ -8,6 +8,7 @@ from vlmintune.training.methods.dora import DoRAMethod
 from vlmintune.training.methods.freeze import FreezeTuningMethod
 from vlmintune.training.methods.l2t import L2TMethod
 from vlmintune.training.methods.lora import LoRAMethod, QLoRAMethod
+from vlmintune.training.methods.mores import MoReSMethod
 
 TrainingMethodType = type[TrainingMethod]
 
@@ -17,6 +18,7 @@ _TRAINING_METHODS: dict[str, TrainingMethodType] = {
     "dora": DoRAMethod,
     "freeze": FreezeTuningMethod,
     "l2t": L2TMethod,
+    "mores": MoReSMethod,
 }
 
 

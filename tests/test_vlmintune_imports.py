@@ -12,4 +12,5 @@ def test_source_tree_imports_without_cycles():
 
     assert vlmintune.Method.__name__ == "Method"
     assert vlmintune.FreezeTuningMethod.__name__ == "FreezeTuningMethod"
+    assert vlmintune.MoReSMethod.__name__ == "MoReSMethod"
     assert callable(vlmintune.registry.build_training_method)

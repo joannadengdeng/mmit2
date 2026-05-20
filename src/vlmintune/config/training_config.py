@@ -13,6 +13,7 @@ Usage::
 from __future__ import annotations
 
 import os
+import re
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
@@ -27,6 +28,8 @@ from vlmintune.training.registry import (
 )
 
 _LORA_FAMILY_METHODS = {"lora", "qlora", "dora"}
+_MORES_FIRST_LAST_PATTERN = re.compile(r"^f\d+\+l\d+$")
+_MORES_UNIFORM_PATTERN = re.compile(r"^uniform\d+$")
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────
@@ -264,11 +267,28 @@ def _validate(cfg: TrainingConfig, *, require_host: bool = True) -> None:
             f"method '{method_name}'"
         )
 
-    if method_name == "freeze" and not str(method_params.get("model_layout", "")).strip():
+    if method_name in {"freeze", "mores"} and not str(method_params.get("model_layout", "")).strip():
         errors.append(
             "training.params.model_layout: required non-empty string for method "
-            f"'freeze'. Available: {list_model_layouts()}"
+            f"'{method_name}'. Available: {list_model_layouts()}"
         )
+
+    if method_name == "mores" and int(method_params.get("hidden_size", 0) or 0) <= 0:
+        errors.append(
+            "training.params.hidden_size: required positive integer for method 'mores'"
+        )
+    if method_name == "mores":
+        intervention_positions = str(
+            method_params.get("intervention_positions", "f4+l5")
+        ).strip().lower()
+        if not (
+            _MORES_FIRST_LAST_PATTERN.fullmatch(intervention_positions)
+            or _MORES_UNIFORM_PATTERN.fullmatch(intervention_positions)
+        ):
+            errors.append(
+                "training.params.intervention_positions: expected 'f4+l5' or "
+                "'uniform9' for method 'mores'"
+            )
 
     if errors:
         msg = "Config validation errors:\n" + "\n".join(f"  - {e}" for e in errors)

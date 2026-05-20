@@ -2,10 +2,10 @@
 
 Usage::
 
-    # SSH YAML config (delegates to the SSH runner):
+    # YAML config on the current machine:
     python -m vlmintune.training --config experiment_setup/my_experiment/train_config.yaml
 
-    # JSON config (used by the remote machine after SSH dispatch):
+    # JSON config (used internally after YAML normalization):
     python -m vlmintune.training --config-json '{"model": {...}, "data": {...}, ...}'
 
 Config schema::
@@ -36,6 +36,8 @@ import json
 import os
 import sys
 import traceback
+
+from vlmintune.config.training_config import config_to_trainer_dict, load_config
 from vlmintune.training.experiment import ExperimentTracker
 from vlmintune.training.trainer import Trainer, TrainerConfig, emit
 
@@ -97,6 +99,17 @@ def create_experiment_tracker(config: dict, model_path: str, train_config: Train
     return tracker
 
 
+def load_config_or_dispatch(config_path: str) -> dict | None:
+    """Load a YAML config locally, or dispatch over SSH if it includes a host."""
+    cfg = load_config(config_path, require_host=False)
+    if cfg.runtime.ssh.host:
+        from vlmintune.training.runner import run as run_over_ssh
+
+        run_over_ssh(config_path)
+        return None
+    return config_to_trainer_dict(cfg)
+
+
 def main():
     parser = argparse.ArgumentParser(description="vlmintune headless trainer")
     parser.add_argument(
@@ -107,9 +120,8 @@ def main():
     parser.add_argument(
         "--config",
         default=None,
-        help="Path to an SSH training YAML config file",
+        help="Path to a training YAML config file",
     )
-    parser.add_argument("--host", default=None, help="Optional SSH host override when using --config")
     parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token")
     parser.add_argument("--hf-token-file", default=None, help="Path to a file containing a Hugging Face token")
     args = parser.parse_args()
@@ -118,10 +130,10 @@ def main():
     if args.config_json:
         config = json.loads(args.config_json)
     elif args.config:
-        from vlmintune.training.runner import run as run_over_ssh
-
-        run_over_ssh(args.config, host_override=args.host)
-        return
+        loaded = load_config_or_dispatch(args.config)
+        if loaded is None:
+            return
+        config = loaded
     else:
         parser.error("Either --config or --config-json is required")
 
