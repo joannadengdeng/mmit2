@@ -1,0 +1,37 @@
+[
+  {
+    "sample_id": "7245",
+    "has_image": true,
+    "message_count": 2,
+    "full_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>who made this glass?<|im_end|>\n<|im_start|>assistant\nguinness<|im_end|>\n",
+    "prompt_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>who made this glass?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+    "sample_id": "31526",
+    "has_image": true,
+    "message_count": 2,
+    "full_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is in the bottle?<|im_end|>\n<|im_start|>assistant\nwine<|im_end|>\n",
+    "prompt_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is in the bottle?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+    "sample_id": "4754",
+    "has_image": true,
+    "message_count": 2,
+    "full_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>who wrote old salem?<|im_end|>\n<|im_start|>assistant\neleanor putnam<|im_end|>\n",
+    "prompt_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>who wrote old salem?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+    "sample_id": "8476",
+    "has_image": true,
+    "message_count": 2,
+    "full_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is the calculator brand?<|im_end|>\n<|im_start|>assistant\ncasio<|im_end|>\n",
+    "prompt_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is the calculator brand?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+    "sample_id": "16049",
+    "has_image": true,
+    "message_count": 2,
+    "full_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>whose bride is featured?<|im_end|>\n<|im_start|>assistant\nfrankenstein<|im_end|>\n",
+    "prompt_text": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>whose bride is featured?<|im_end|>\n<|im_start|>assistant\n"
+  }
+]

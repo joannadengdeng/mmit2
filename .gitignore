@@ -6,7 +6,6 @@ __pycache__/
 build/
 dist/
 *.egg-info/
-run_logs/
-experiments/
-eval_outputs/
-experiment_results/
+/run_logs/
+/experiments/
+/eval_outputs/

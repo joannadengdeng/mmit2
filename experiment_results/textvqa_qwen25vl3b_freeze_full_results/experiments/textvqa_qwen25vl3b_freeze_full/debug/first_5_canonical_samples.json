@@ -1,0 +1,142 @@
+[
+  {
+    "id": "7245",
+    "image_path": "<in_memory>",
+    "turns": [
+      {
+        "role": "human",
+        "content": "who made this glass?"
+      },
+      {
+        "role": "assistant",
+        "content": "guinness"
+      }
+    ],
+    "metadata": {
+      "raw_answers": [
+        "guinness",
+        "guinness",
+        "guinness",
+        "guinness",
+        "guinness",
+        "guinness",
+        "guinness",
+        "guiness",
+        "guinness",
+        "guinness"
+      ]
+    }
+  },
+  {
+    "id": "31526",
+    "image_path": "<in_memory>",
+    "turns": [
+      {
+        "role": "human",
+        "content": "what is in the bottle?"
+      },
+      {
+        "role": "assistant",
+        "content": "wine"
+      }
+    ],
+    "metadata": {
+      "raw_answers": [
+        "unanswerable",
+        "dry creek",
+        "wine",
+        "answering does not require reading text in the image",
+        "dry creek wine",
+        "wine",
+        "wine",
+        "sag awards cuvee",
+        "answering does not require reading text in the image",
+        "dry creek wine"
+      ]
+    }
+  },
+  {
+    "id": "4754",
+    "image_path": "<in_memory>",
+    "turns": [
+      {
+        "role": "human",
+        "content": "who wrote old salem?"
+      },
+      {
+        "role": "assistant",
+        "content": "eleanor putnam"
+      }
+    ],
+    "metadata": {
+      "raw_answers": [
+        "eleanor putnam",
+        "eleanor putnam",
+        "eleanor putnam",
+        "eleanor putnam",
+        "elernor putnam",
+        "eleanor putnam",
+        "eleanor putnam",
+        "eleanor putnam",
+        "666",
+        "eleanor putnam"
+      ]
+    }
+  },
+  {
+    "id": "8476",
+    "image_path": "<in_memory>",
+    "turns": [
+      {
+        "role": "human",
+        "content": "what is the calculator brand?"
+      },
+      {
+        "role": "assistant",
+        "content": "casio"
+      }
+    ],
+    "metadata": {
+      "raw_answers": [
+        "casio",
+        "casio",
+        "casio",
+        "casio",
+        "casio",
+        "casio",
+        "casio",
+        "casio",
+        "casio",
+        "casio"
+      ]
+    }
+  },
+  {
+    "id": "16049",
+    "image_path": "<in_memory>",
+    "turns": [
+      {
+        "role": "human",
+        "content": "whose bride is featured?"
+      },
+      {
+        "role": "assistant",
+        "content": "frankenstein"
+      }
+    ],
+    "metadata": {
+      "raw_answers": [
+        "frankenstein",
+        "the bride of frankenstein ",
+        "bride of frankenstein",
+        "frankenstein",
+        "frankenstein",
+        "frankenstein",
+        "frankenstein",
+        "frankenstein ",
+        "frankstein",
+        "frankenstein"
+      ]
+    }
+  }
+]

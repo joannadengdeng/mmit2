@@ -1,0 +1,35 @@
+{
+  "source": {
+    "kind": "baseline",
+    "experiment_name": "",
+    "output_dir": "eval_outputs/textvqa_qwen25vl3b_freeze_full_base",
+    "checkpoint": ""
+  },
+  "model": {
+    "model_path": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "ft_method": ""
+  },
+  "eval_target": {
+    "name": "textvqa_validation_full",
+    "dataset_name": "lmms-lab/textvqa",
+    "split": "validation",
+    "max_new_tokens": 16,
+    "temperature": 0.0,
+    "max_samples": null,
+    "streaming": true,
+    "metrics": [
+      "auto"
+    ]
+  },
+  "eval_result": {
+    "dataset_name": "lmms-lab/textvqa",
+    "split": "validation",
+    "num_predictions": 5000,
+    "primary_metric": "vqa_accuracy",
+    "primary_metric_reason": "VQA v2 soft accuracy (detected at least 3 annotators)",
+    "metrics": {
+      "vqa_accuracy": 75.89
+    },
+    "prediction_file": "eval_outputs/textvqa_qwen25vl3b_freeze_full_base/eval_predictions/textvqa_validation_full.jsonl"
+  }
+}

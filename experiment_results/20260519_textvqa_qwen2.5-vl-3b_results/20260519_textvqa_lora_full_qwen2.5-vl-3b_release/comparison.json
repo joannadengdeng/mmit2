@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-05-19T17:40:11.338613",
+  "experiment_name": "jarvislabs_lora_full_20260513_230955",
+  "experiment_dir": "/root/vlmintune/experiments/jarvislabs_lora_full_20260513_230955",
+  "baseline_eval_dir": "/root/vlmintune/eval_outputs/Qwen2.5-VL-3B-Instruct_textvqa_20260519_173002",
+  "experiment_metric": {
+    "name": "vqa_accuracy",
+    "value": 81.0
+  },
+  "baseline_metric": {
+    "name": "vqa_accuracy",
+    "value": 74.33
+  },
+  "delta": 6.67
+}

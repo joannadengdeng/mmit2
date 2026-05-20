@@ -1,0 +1,63 @@
+{
+  "exp_id": "textvqa_qwen25vl3b_freeze_full",
+  "status": "completed",
+  "created_at": "2026-05-19T20:34:37.738396",
+  "completed_at": "2026-05-19T23:28:13.091041",
+  "error": "",
+  "method": "freeze",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "dataset": "lmms-lab/textvqa",
+  "num_samples": 0,
+  "config": {
+    "model": {
+      "model_path": "Qwen/Qwen2.5-VL-3B-Instruct"
+    },
+    "experiment": {
+      "name": "textvqa_qwen25vl3b_freeze_full",
+      "base_dir": "experiments",
+      "setup_dir": "experiment_setup/textvqa_qwen25vl3b_freeze_full"
+    },
+    "data": {
+      "adapter": "hf_datasets",
+      "data_path": "lmms-lab/textvqa",
+      "split": "train",
+      "image_root": ""
+    },
+    "training_method": "freeze",
+    "method_params": {
+      "model_layout": "qwen2_5_vl",
+      "unfreeze_modules": [
+        "model.language_model.layers.0",
+        "model.language_model.layers.1",
+        "model.language_model.layers.2",
+        "model.language_model.layers.3"
+      ]
+    },
+    "training": {
+      "num_epochs": 1,
+      "per_device_batch_size": 1,
+      "gradient_accumulation_steps": 4,
+      "learning_rate": 1e-05,
+      "warmup_ratio": 0.03,
+      "weight_decay": 0.0,
+      "max_grad_norm": 1.0,
+      "save_steps": 0,
+      "output_dir": "experiments"
+    }
+  },
+  "train_summary": {
+    "avg_loss": 0.297427,
+    "total_steps": 8648,
+    "train_time_s": 10233.0,
+    "trainable_params": 308307968,
+    "total_params": 3754622976,
+    "trainable_pct": 8.2114
+  },
+  "eval_results": {
+    "textvqa_validation_full": {
+      "vqa_accuracy": 82.09
+    }
+  },
+  "checkpoint_path": "experiments/textvqa_qwen25vl3b_freeze_full/checkpoint",
+  "exp_dir": "experiments/textvqa_qwen25vl3b_freeze_full"
+}

@@ -1,0 +1,19 @@
+{
+  "bundle_dir": "/root/vlmintune/result_bundles/20260519_textvqa_lora_full_release",
+  "experiment_name": "jarvislabs_lora_full_20260513_230955",
+  "experiment_source_dir": "/root/vlmintune/experiments/jarvislabs_lora_full_20260513_230955",
+  "baseline_source_dir": "/root/vlmintune/eval_outputs/Qwen2.5-VL-3B-Instruct_textvqa_20260519_173002",
+  "files": [
+    "README.md",
+    "baseline_eval",
+    "baseline_eval_summary.json",
+    "comparison.json",
+    "experiment",
+    "experiment_eval_summary.json",
+    "experiment_overview.json",
+    "experiment_summary.json",
+    "train.log",
+    "train_summary.json",
+    "training_config.json"
+  ]
+}

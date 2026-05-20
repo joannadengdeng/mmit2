@@ -1,0 +1,11 @@
+{
+  "experiment_name": "jarvislabs_lora_full_20260513_230955",
+  "status": "completed",
+  "method": "lora",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "dataset": "lmms-lab/textvqa",
+  "num_samples": 0,
+  "checkpoint_path": "/root/vlmintune/experiments/jarvislabs_lora_full_20260513_230955/checkpoint",
+  "created_at": "2026-05-13T23:11:16.847621",
+  "completed_at": "2026-05-14T01:57:46.297242"
+}

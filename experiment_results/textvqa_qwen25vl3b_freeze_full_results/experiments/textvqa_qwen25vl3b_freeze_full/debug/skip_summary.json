@@ -1,0 +1,25 @@
+{
+  "total_skipped": 11,
+  "first_errors": [
+    {
+      "sample_id": "27588",
+      "error": "Mismatch in `image` token count between text and `input_ids`. Got ids=[2033] and text=[16170]. Likely due to `truncation='max_length'`. Please disable truncation or increase `max_length`."
+    },
+    {
+      "sample_id": "26381",
+      "error": "Mismatch in `image` token count between text and `input_ids`. Got ids=[2033] and text=[6745]. Likely due to `truncation='max_length'`. Please disable truncation or increase `max_length`."
+    },
+    {
+      "sample_id": "26382",
+      "error": "Mismatch in `image` token count between text and `input_ids`. Got ids=[2033] and text=[6745]. Likely due to `truncation='max_length'`. Please disable truncation or increase `max_length`."
+    },
+    {
+      "sample_id": "8333",
+      "error": "Mismatch in `image` token count between text and `input_ids`. Got ids=[2033] and text=[15301]. Likely due to `truncation='max_length'`. Please disable truncation or increase `max_length`."
+    },
+    {
+      "sample_id": "27589",
+      "error": "Mismatch in `image` token count between text and `input_ids`. Got ids=[2033] and text=[16170]. Likely due to `truncation='max_length'`. Please disable truncation or increase `max_length`."
+    }
+  ]
+}

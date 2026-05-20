@@ -1,0 +1,62 @@
+{
+  "exp_id": "jarvislabs_lora_full_20260513_230955",
+  "status": "completed",
+  "created_at": "2026-05-13T23:11:16.847621",
+  "completed_at": "2026-05-14T01:57:46.297242",
+  "error": "",
+  "method": "lora",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "dataset": "lmms-lab/textvqa",
+  "num_samples": 0,
+  "config": {
+    "model": {
+      "model_path": "Qwen/Qwen2.5-VL-3B-Instruct"
+    },
+    "experiment": {
+      "name": "jarvislabs_lora_full_20260513_230955",
+      "base_dir": "/root/vlmintune/experiments"
+    },
+    "data": {
+      "adapter": "hf_datasets",
+      "data_path": "lmms-lab/textvqa",
+      "split": "train",
+      "max_samples": 0
+    },
+    "training_method": "lora",
+    "method_params": {
+      "lora_r": 8,
+      "lora_alpha": 16,
+      "lora_dropout": 0.05,
+      "target_modules": [
+        "q_proj",
+        "v_proj"
+      ]
+    },
+    "training": {
+      "num_epochs": 1,
+      "per_device_batch_size": 1,
+      "gradient_accumulation_steps": 4,
+      "learning_rate": 0.0002,
+      "warmup_ratio": 0.03,
+      "weight_decay": 0.0,
+      "max_grad_norm": 1.0,
+      "save_steps": 0,
+      "output_dir": "/root/vlmintune/experiments"
+    }
+  },
+  "train_summary": {
+    "avg_loss": 0.218198,
+    "total_steps": 8644,
+    "train_time_s": 9668.6,
+    "trainable_params": 1843200,
+    "total_params": 3756466176,
+    "trainable_pct": 0.0491
+  },
+  "eval_results": {
+    "textvqa_validation": {
+      "vqa_accuracy": 81.0
+    }
+  },
+  "checkpoint_path": "/root/vlmintune/experiments/jarvislabs_lora_full_20260513_230955/checkpoint",
+  "exp_dir": "/root/vlmintune/experiments/jarvislabs_lora_full_20260513_230955"
+}

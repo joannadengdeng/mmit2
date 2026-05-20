@@ -1,0 +1,8 @@
+{
+  "avg_loss": 0.218198,
+  "total_steps": 8644,
+  "train_time_s": 9668.6,
+  "trainable_params": 1843200,
+  "total_params": 3756466176,
+  "trainable_pct": 0.0491
+}
