@@ -1,21 +1,15 @@
 from vlmintune.eval.metrics.vqa import (
-    METRIC_REGISTRY,
+    validate_metric,
+    coerce_ground_truths,
     normalize_answer,
     vqa_accuracy,
-    aggregate_vqa_accuracy,
-    exact_match,
-    token_f1,
-    anls_score,
-    contains_match,
+    score_textvqa_prediction,
 )
 
 __all__ = [
-    "METRIC_REGISTRY",
+    "validate_metric",
+    "coerce_ground_truths",
     "normalize_answer",
     "vqa_accuracy",
-    "aggregate_vqa_accuracy",
-    "exact_match",
-    "token_f1",
-    "anls_score",
-    "contains_match",
+    "score_textvqa_prediction",
 ]

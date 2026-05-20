@@ -1,15 +1,11 @@
-"""VQA evaluation metrics.
-
-Includes VQA v2 soft accuracy, exact match, token F1, ANLS, and contains match.
+"""Minimal VQA metrics for the initial TextVQA release.
 
 References:
   - VQA v2: https://visualqa.org/evaluation.html
-  - ANLS: https://arxiv.org/abs/1907.00490
 """
 from __future__ import annotations
 
 import re
-from collections import Counter
 from typing import Dict, List
 
 
@@ -58,6 +54,15 @@ _ARTICLES = {"a", "an", "the"}
 _PUNCT = set(r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~""")
 
 
+# 1. Validate the configured metric.
+def validate_metric(raw_metric: str) -> str:
+    """Validate the explicit metric for the current release."""
+    if raw_metric != "vqa_accuracy":
+        raise ValueError("eval.metric must be exactly 'vqa_accuracy'.")
+    return raw_metric
+
+
+# 2. Normalize a single answer string before comparison.
 def normalize_answer(answer: str) -> str:
     """Apply VQA v2 standard normalisation to an answer string."""
     answer = answer.lower()
@@ -80,6 +85,17 @@ def normalize_answer(answer: str) -> str:
     return answer
 
 
+# 3. Coerce the raw ground truth into answer strings.
+def coerce_ground_truths(ground_truth: object) -> List[str]:
+    """Convert raw ground truth into a non-empty list of answer strings."""
+    if ground_truth is None or ground_truth == "":
+        return []
+    if isinstance(ground_truth, list):
+        return [str(gt) for gt in ground_truth if str(gt).strip()]
+    return [str(ground_truth)]
+
+
+# 4. Compute VQA accuracy from the normalized prediction and ground truths.
 def vqa_accuracy(
     prediction: str,
     ground_truths: List[str],
@@ -94,130 +110,12 @@ def vqa_accuracy(
     return min(count / 3.0, 1.0)
 
 
-def exact_match(
+def score_textvqa_prediction(
     prediction: str,
-    ground_truths: List[str],
-) -> float:
-    """1.0 if normalised prediction matches any ground truth, else 0.0."""
-    norm_pred = normalize_answer(prediction)
-    return 1.0 if any(normalize_answer(gt) == norm_pred for gt in ground_truths) else 0.0
-
-
-def token_f1(
-    prediction: str,
-    ground_truths: List[str],
-) -> float:
-    """Token-level F1 between prediction and best-matching ground truth.
-
-    Splits on whitespace after normalisation, computes precision/recall
-    on the token multisets, returns the max F1 across all ground truths.
-    """
-    norm_pred = normalize_answer(prediction)
-    pred_tokens = norm_pred.split()
-    if not pred_tokens:
-        return 0.0
-
-    best_f1 = 0.0
-    for gt in ground_truths:
-        gt_tokens = normalize_answer(gt).split()
-        if not gt_tokens:
-            continue
-        common = Counter(pred_tokens) & Counter(gt_tokens)
-        num_common = sum(common.values())
-        if num_common == 0:
-            continue
-        precision = num_common / len(pred_tokens)
-        recall = num_common / len(gt_tokens)
-        f1 = 2 * precision * recall / (precision + recall)
-        best_f1 = max(best_f1, f1)
-    return best_f1
-
-
-def anls_score(
-    prediction: str,
-    ground_truths: List[str],
-    threshold: float = 0.5,
-) -> float:
-    """Average Normalized Levenshtein Similarity (ANLS).
-
-    Used in TextVQA / DocVQA evaluations.  Returns the best NLS across
-    all ground truths, with values below *threshold* clamped to 0.
-    """
-    norm_pred = normalize_answer(prediction)
-    best = 0.0
-    for gt in ground_truths:
-        norm_gt = normalize_answer(gt)
-        if not norm_pred and not norm_gt:
-            best = max(best, 1.0)
-            continue
-        max_len = max(len(norm_pred), len(norm_gt))
-        if max_len == 0:
-            best = max(best, 1.0)
-            continue
-        dist = _levenshtein(norm_pred, norm_gt)
-        nls = 1.0 - dist / max_len
-        if nls >= threshold:
-            best = max(best, nls)
-    return best
-
-
-def _levenshtein(s1: str, s2: str) -> int:
-    """Compute Levenshtein edit distance between two strings."""
-    if len(s1) < len(s2):
-        return _levenshtein(s2, s1)
-    if not s2:
-        return len(s1)
-    prev_row = list(range(len(s2) + 1))
-    for i, c1 in enumerate(s1):
-        curr_row = [i + 1]
-        for j, c2 in enumerate(s2):
-            cost = 0 if c1 == c2 else 1
-            curr_row.append(min(
-                curr_row[j] + 1,
-                prev_row[j + 1] + 1,
-                prev_row[j] + cost,
-            ))
-        prev_row = curr_row
-    return prev_row[-1]
-
-
-def contains_match(
-    prediction: str,
-    ground_truths: List[str],
-) -> float:
-    """1.0 if any ground truth is contained in prediction (or vice versa)."""
-    norm_pred = normalize_answer(prediction)
-    for gt in ground_truths:
-        norm_gt = normalize_answer(gt)
-        if not norm_gt:
-            continue
-        if norm_gt in norm_pred or norm_pred in norm_gt:
-            return 1.0
-    return 0.0
-
-
-# ---------------------------------------------------------------------------
-# Registry: metric_name -> (function, display_label)
-# ---------------------------------------------------------------------------
-METRIC_REGISTRY: Dict[str, tuple] = {
-    "exact_match": (exact_match, "Exact Match"),
-    "vqa_accuracy": (vqa_accuracy, "VQA Accuracy (soft)"),
-    "token_f1": (token_f1, "Token F1"),
-    "anls": (anls_score, "ANLS"),
-    "contains": (contains_match, "Contains Match"),
-}
-
-
-def aggregate_vqa_accuracy(results: List[Dict]) -> float:
-    """Average VQA accuracy over a list of result dicts.
-
-    Each dict must have keys ``"prediction"`` and ``"ground_truths"``
-    (a list of strings).
-    """
-    if not results:
-        return 0.0
-    total = sum(
-        vqa_accuracy(r["prediction"], r["ground_truths"])
-        for r in results
-    )
-    return total / len(results)
+    ground_truth: object,
+) -> Dict[str, float]:
+    """Score one TextVQA prediction with the single supported metric."""
+    ground_truths = coerce_ground_truths(ground_truth)
+    if not ground_truths:
+        return {}
+    return {"vqa_accuracy": vqa_accuracy(prediction, ground_truths)}

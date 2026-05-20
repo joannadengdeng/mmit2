@@ -20,7 +20,7 @@ class EvalTarget:
     temperature: float = 0.0
     max_samples: Optional[int] = None
     streaming: bool = True
-    metrics: tuple[str, ...] = ("auto",)
+    metric: str = ""
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,8 @@ def default_eval_name(dataset_name: str, split: str) -> str:
 
 
 def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
+    from vlmintune.eval.metrics.vqa import validate_metric
+
     raw_eval = raw_eval or {}
     if "targets" in raw_eval:
         raw_targets = raw_eval.get("targets", [])
@@ -82,15 +84,15 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
             f"Unsupported eval.dataset_name '{dataset_name}'. "
             f"Supported: {sorted(SUPPORTED_EVAL_DATASETS)}"
         )
-
     split = str(raw.get("split", "")).strip()
     if not split:
         raise ValueError("eval.split is required")
 
     name = str(raw.get("name", "")).strip() or default_eval_name(dataset_name, split)
-    metrics = raw.get("metrics", ["auto"])
-    if not isinstance(metrics, list) or not metrics:
-        metrics = ["auto"]
+    raw_metric = raw.get("metric")
+    if not isinstance(raw_metric, str):
+        raise ValueError("eval.metric is required and must be a string")
+    metric = validate_metric(raw_metric)
     max_samples_raw = raw.get("max_samples")
     max_samples = int(max_samples_raw) if max_samples_raw not in (None, "", 0) else None
 
@@ -102,7 +104,7 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
         temperature=float(raw.get("temperature", raw_eval.get("temperature", 0.0))),
         max_samples=max_samples,
         streaming=bool(raw.get("streaming", True)),
-        metrics=tuple(str(metric) for metric in metrics),
+        metric=metric,
     )
 
 
@@ -135,8 +137,7 @@ def prediction_path(output_dir: str, target_name: str) -> str:
 def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
     from vlmintune.data.adapters.hf_datasets import HFDatasetsAdapter
     from vlmintune.data.types import EvalSample
-    from vlmintune.eval.metrics.scoring import auto_select_metric, score_prediction_multi
-
+    from vlmintune.eval.metrics.vqa import score_textvqa_prediction
     adapter = HFDatasetsAdapter(
         dataset_name=target.dataset_name,
         split=target.split,
@@ -149,14 +150,10 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
 
     metric_sums: Dict[str, float] = {}
     num_predictions = 0
-    primary_metric = ""
-    primary_reason = ""
 
     with open(prediction_file, "w", encoding="utf-8") as f:
         for sample in iter_with_progress(adapter, total, f"Evaluating {target.name}"):
             ground_truth = sample.metadata.get("raw_answers") or ([sample.first_answer] if sample.first_answer else [])
-            if not primary_metric:
-                primary_metric, primary_reason = auto_select_metric("open_vqa", ground_truth)
 
             eval_sample = EvalSample(
                 id=sample.id,
@@ -171,11 +168,9 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
                 max_new_tokens=target.max_new_tokens,
                 temperature=target.temperature,
             )
-            scores = score_prediction_multi(
-                prediction,
-                ground_truth,
-                task_type="open_vqa",
-                metrics=list(target.metrics),
+            scores = score_textvqa_prediction(
+                prediction=prediction,
+                ground_truth=ground_truth,
             )
             for metric_name, value in scores.items():
                 metric_sums[metric_name] = metric_sums.get(metric_name, 0.0) + float(value)
@@ -198,8 +193,6 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
         "dataset_name": target.dataset_name,
         "split": target.split,
         "num_predictions": num_predictions,
-        "primary_metric": primary_metric,
-        "primary_metric_reason": primary_reason,
         "metrics": metrics,
         "prediction_file": prediction_file,
     }

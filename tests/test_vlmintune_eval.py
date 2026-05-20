@@ -35,6 +35,7 @@ def test_parse_eval_target_accepts_explicit_split():
         {
             "dataset_name": "lmms-lab/textvqa",
             "split": "validation",
+            "metric": "vqa_accuracy",
             "max_new_tokens": 12,
             "max_samples": 25,
         }
@@ -42,8 +43,30 @@ def test_parse_eval_target_accepts_explicit_split():
 
     assert target.dataset_name == "lmms-lab/textvqa"
     assert target.split == "validation"
+    assert target.metric == "vqa_accuracy"
     assert target.max_new_tokens == 12
     assert target.max_samples == 25
+
+
+def test_parse_eval_target_requires_metric():
+    with pytest.raises(ValueError, match="eval.metric is required"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "split": "validation",
+            }
+        )
+
+
+def test_parse_eval_target_rejects_non_string_metric():
+    with pytest.raises(ValueError, match="eval.metric is required"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "split": "validation",
+                "metric": ["vqa_accuracy"],
+            }
+        )
 
 
 def test_parse_eval_target_rejects_unknown_dataset():
@@ -54,6 +77,28 @@ def test_parse_eval_target_rejects_unknown_dataset():
 def test_parse_eval_target_rejects_non_textvqa_dataset():
     with pytest.raises(ValueError, match="Unsupported eval.dataset_name"):
         parse_eval_target({"dataset_name": "lmms-lab/VQAv2"})
+
+
+def test_parse_eval_target_rejects_unsupported_metric():
+    with pytest.raises(ValueError, match="eval.metric must be exactly"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "split": "validation",
+                "metric": "anls",
+            }
+        )
+
+
+def test_parse_eval_target_rejects_metric_with_whitespace():
+    with pytest.raises(ValueError, match="eval.metric must be exactly"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "split": "validation",
+                "metric": " vqa_accuracy ",
+            }
+        )
 
 
 def test_parse_eval_target_rejects_multi_target_legacy_config():
@@ -154,13 +199,13 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
             name="textvqa_validation",
             dataset_name="lmms-lab/textvqa",
             split="validation",
+            metric="vqa_accuracy",
             max_samples=1,
             streaming=True,
         ),
         str(tmp_path),
     )
 
-    assert result["primary_metric"] == "vqa_accuracy"
     assert result["metrics"]["vqa_accuracy"] == 100.0
 
     with open(result["prediction_file"], "r", encoding="utf-8") as f:
