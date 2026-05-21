@@ -16,10 +16,11 @@ from vlmintune.eval.method import (
 from vlmintune.eval.run import (
     EvalTarget,
     evaluate_vqa_dataset,
-    resolve_baseline_source,
     parse_eval_target,
+    resolve_experiment_source,
 )
 from vlmintune.eval.vqa import normalize_answer, vqa_accuracy
+from vlmintune.training.experiment import ExperimentTracker
 
 
 def test_parse_eval_target_requires_explicit_split():
@@ -38,6 +39,7 @@ def test_parse_eval_target_accepts_explicit_split():
         {
             "dataset_name": "lmms-lab/textvqa",
             "split": "validation",
+            "source": "trained",
             "metric": "vqa_accuracy",
             "max_new_tokens": 12,
             "max_samples": 25,
@@ -46,6 +48,7 @@ def test_parse_eval_target_accepts_explicit_split():
 
     assert target.dataset_name == "lmms-lab/textvqa"
     assert target.split == "validation"
+    assert target.source == "trained"
     assert target.metric == "vqa_accuracy"
     assert target.max_new_tokens == 12
     assert target.max_samples == 25
@@ -57,6 +60,7 @@ def test_parse_eval_target_requires_metric():
             {
                 "dataset_name": "lmms-lab/textvqa",
                 "split": "validation",
+                "source": "trained",
             }
         )
 
@@ -67,6 +71,7 @@ def test_parse_eval_target_rejects_non_string_metric():
             {
                 "dataset_name": "lmms-lab/textvqa",
                 "split": "validation",
+                "source": "trained",
                 "metric": ["vqa_accuracy"],
             }
         )
@@ -88,6 +93,7 @@ def test_parse_eval_target_rejects_unsupported_metric():
             {
                 "dataset_name": "lmms-lab/textvqa",
                 "split": "validation",
+                "source": "trained",
                 "metric": "anls",
             }
         )
@@ -99,7 +105,31 @@ def test_parse_eval_target_rejects_metric_with_whitespace():
             {
                 "dataset_name": "lmms-lab/textvqa",
                 "split": "validation",
+                "source": "trained",
                 "metric": " vqa_accuracy ",
+            }
+        )
+
+
+def test_parse_eval_target_requires_source():
+    with pytest.raises(ValueError, match="eval.source is required"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "split": "validation",
+                "metric": "vqa_accuracy",
+            }
+        )
+
+
+def test_parse_eval_target_rejects_unknown_source():
+    with pytest.raises(ValueError, match="eval.source must be exactly"):
+        parse_eval_target(
+            {
+                "dataset_name": "lmms-lab/textvqa",
+                "split": "validation",
+                "source": "baseline",
+                "metric": "vqa_accuracy",
             }
         )
 
@@ -130,35 +160,64 @@ def test_vqa_accuracy_matches_official_leave_one_out_scoring():
     assert vqa_accuracy("cat", ["cat"] * 4 + ["dog"] * 6) == 1.0
 
 
-def test_resolve_baseline_source_uses_base_model_only(tmp_path):
-    source = resolve_baseline_source(
-        {
-            "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
-            "eval": {
-                "dataset_name": "lmms-lab/textvqa",
-                "output_dir": str(tmp_path / "baseline_eval"),
+def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
+    tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
+    meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "base_model": "Qwen/Qwen2.5-VL-3B-Instruct",
+                "ft_method": "lora",
             },
+            f,
+        )
+
+    source, loaded_tracker = resolve_experiment_source(
+        {
+            "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
+            "eval": {"dataset_name": "lmms-lab/textvqa", "split": "validation", "source": "trained", "metric": "vqa_accuracy"},
         },
-        "lmms-lab/textvqa",
+        EvalTarget(
+            name="textvqa_validation",
+            dataset_name="lmms-lab/textvqa",
+            split="validation",
+            source="trained",
+            metric="vqa_accuracy",
+        ),
     )
 
-    assert source.kind == "baseline"
+    assert source.kind == "trained"
+    assert source.base_model_id == "Qwen/Qwen2.5-VL-3B-Instruct"
+    assert source.checkpoint_path == tracker.get_checkpoint_dir()
+    assert source.ft_method == "lora"
+    assert source.output_dir == tracker.get_eval_dir("trained")
+    assert loaded_tracker.exp_name == "demo_exp"
+
+
+def test_resolve_experiment_source_uses_base_eval_dir(tmp_path):
+    tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
+    meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({"base_model": "Qwen/Qwen2.5-VL-3B-Instruct"}, f)
+
+    source, _ = resolve_experiment_source(
+        {
+            "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
+            "eval": {"dataset_name": "lmms-lab/textvqa", "split": "validation", "source": "base", "metric": "vqa_accuracy"},
+        },
+        EvalTarget(
+            name="textvqa_validation",
+            dataset_name="lmms-lab/textvqa",
+            split="validation",
+            source="base",
+            metric="vqa_accuracy",
+        ),
+    )
+
+    assert source.kind == "base"
     assert source.base_model_id == "Qwen/Qwen2.5-VL-3B-Instruct"
     assert source.checkpoint_path == ""
-    assert source.ft_method == ""
-
-
-def test_resolve_baseline_source_rejects_checkpoint_config():
-    with pytest.raises(ValueError, match="Baseline eval only supports an unfine-tuned base model"):
-        resolve_baseline_source(
-            {
-                "model": {
-                    "model_path": "Qwen/Qwen2.5-VL-3B-Instruct",
-                    "checkpoint_path": "some/checkpoint",
-                }
-            },
-            "lmms-lab/textvqa",
-        )
+    assert source.output_dir == tracker.get_eval_dir("base")
 
 
 class _DummyMethod:
@@ -216,6 +275,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
             name="textvqa_validation",
             dataset_name="lmms-lab/textvqa",
             split="validation",
+            source="trained",
             metric="vqa_accuracy",
             max_samples=1,
             streaming=True,
@@ -228,6 +288,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
     with open(result["prediction_file"], "r", encoding="utf-8") as f:
         record = json.loads(f.readline())
 
+    assert os.path.basename(result["prediction_file"]) == "predictions.jsonl"
     assert len(record["ground_truth"]) == 10
     assert record["ground_truth"].count("cat") == 3
 

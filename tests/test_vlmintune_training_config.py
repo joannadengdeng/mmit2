@@ -34,3 +34,29 @@ data:
     cfg = load_config(str(config_path.relative_to(repo_root)))
 
     assert cfg.experiment.setup_dir == "experiment_setup/demo_exp"
+
+
+def test_load_config_requires_experiment_name(tmp_path):
+    config_path = tmp_path / "train_config.yaml"
+    config_path.write_text(
+        """
+model:
+  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+training:
+  ft_method: lora
+  params:
+    target_modules: ["q_proj", "v_proj"]
+data:
+  data_path: "lmms-lab/textvqa"
+  split: train
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    try:
+        load_config(str(config_path))
+    except ValueError as exc:
+        assert "experiment.name" in str(exc)
+        return
+    raise AssertionError("load_config should require experiment.name")

@@ -1,7 +1,7 @@
 """Tokenization and dataset-wrapping helpers for training."""
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 from torch.utils.data import Dataset, IterableDataset
 
@@ -17,7 +17,7 @@ class TokenizedDatasetBase:
         processor,
         image_root: str,
         skip_logger: Callable[[Any, Exception], None],
-        debug_recorder: Optional[DebugRecorder] = None,
+        debug_recorder: DebugRecorder,
     ) -> None:
         self.adapter = adapter
         self.preprocessor = preprocessor
@@ -27,20 +27,16 @@ class TokenizedDatasetBase:
         self.debug_recorder = debug_recorder
 
     def tokenize_sample(self, sample):
-        if self.debug_recorder is not None:
-            self.debug_recorder.record_sample(sample)
+        self.debug_recorder.record_sample(sample)
         try:
-            return self.preprocessor.tokenize(
+            result = self.preprocessor.tokenize(
                 sample,
                 self.processor,
                 image_root=self.image_root,
                 max_length=2048,
-                debug_sink=(
-                    self.debug_recorder.record_prompt
-                    if self.debug_recorder is not None
-                    else None
-                ),
             )
+            self.debug_recorder.record_prompt(result.pop("prompt_preview"))
+            return result
         except Exception as exc:
             self.skip_logger(sample.id, exc)
             return None
@@ -74,7 +70,7 @@ def build_tokenized_dataset(
     processor,
     image_root: str,
     skip_logger: Callable[[Any, Exception], None],
-    debug_recorder: Optional[DebugRecorder] = None,
+    debug_recorder: DebugRecorder,
 ):
     preprocessor = ChatTemplatePreprocessor()
     dataset_cls = TokenizedIterableDataset if getattr(adapter, "streaming", False) else TokenizedMapDataset

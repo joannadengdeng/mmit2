@@ -24,7 +24,7 @@ class _FakeProcessor:
         }
 
 
-def test_chat_template_debug_sink_receives_rendered_prompt():
+def test_chat_template_tokenize_includes_rendered_prompt_preview():
     sample = CanonicalSample(
         id="sample-1",
         image_path="",
@@ -33,17 +33,14 @@ def test_chat_template_debug_sink_receives_rendered_prompt():
             Turn(role="assistant", content="Answer."),
         ],
     )
-    records = []
 
     result = ChatTemplatePreprocessor().tokenize(
         sample,
         _FakeProcessor(),
-        debug_sink=records.append,
     )
 
     assert result["input_ids"].tolist() == [11, 12, 13, 14]
-    assert len(records) == 1
-    assert records[0]["sample_id"] == "sample-1"
-    assert records[0]["full_text"] == "FULL"
-    assert records[0]["prompt_text"] == "PROMPT"
-    assert records[0]["has_image"] is False
+    assert result["prompt_preview"]["sample_id"] == "sample-1"
+    assert result["prompt_preview"]["full_text"] == "FULL"
+    assert result["prompt_preview"]["prompt_text"] == "PROMPT"
+    assert result["prompt_preview"]["has_image"] is False

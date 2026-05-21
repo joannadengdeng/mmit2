@@ -74,27 +74,51 @@ def parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
     return model_path, train_config
 
 
-def create_experiment_tracker(config: dict, model_path: str, train_config: TrainerConfig) -> ExperimentTracker:
+def create_experiment_tracker(config: dict, train_config: TrainerConfig) -> ExperimentTracker:
     experiment_cfg = config.get("experiment", {}) or {}
-    exp_name = str(experiment_cfg.get("name", "")).strip() or None
-    base_dir = str(experiment_cfg.get("base_dir", "")).strip() or train_config.output_dir
-    data_cfg = train_config.data_config or {}
-    dataset_name = (
-        str(data_cfg.get("data_path", "")).strip()
-        or str(data_cfg.get("dataset_name", "")).strip()
-    )
-    num_samples = int(data_cfg.get("max_samples", 0) or 0)
+    exp_name = str(experiment_cfg.get("name", "")).strip()
+    if not exp_name:
+        raise ValueError("experiment.name is required")
+    base_dir = str(experiment_cfg.get("base_dir", "")).strip() or "experiments"
     tracker = ExperimentTracker.create(
+        exp_name=exp_name,
         base_dir=base_dir,
-        method=train_config.training_method,
-        model=model_path,
-        dataset=dataset_name,
-        num_samples=num_samples,
-        config=config,
-        exp_id=exp_name,
     )
-    train_config.output_dir = tracker.meta.exp_dir
+    train_config.output_dir = tracker.get_train_dir()
     return tracker
+
+
+def write_failed_train_summary(
+    tracker: ExperimentTracker | None,
+    model_path: str,
+    train_config: TrainerConfig | None,
+    error: Exception,
+) -> None:
+    if tracker is None or train_config is None:
+        return
+    tracker.write_train_summary(
+        {
+            "experiment_name": tracker.exp_name,
+            "model_path": model_path,
+            "training_method": train_config.training_method,
+            "training_params": {
+                "num_epochs": train_config.num_epochs,
+                "per_device_batch_size": train_config.per_device_batch_size,
+                "gradient_accumulation_steps": train_config.gradient_accumulation_steps,
+                "learning_rate": train_config.learning_rate,
+                "warmup_ratio": train_config.warmup_ratio,
+                "weight_decay": train_config.weight_decay,
+                "max_grad_norm": train_config.max_grad_norm,
+                "save_steps": train_config.save_steps,
+                "method_params": dict(train_config.method_params),
+            },
+            "data": dict(train_config.data_config),
+            "result": {
+                "status": "failed",
+                "error": str(error),
+            },
+        }
+    )
 
 
 def main():
@@ -122,6 +146,8 @@ def main():
         parser.error("Either --config or --config-json is required")
 
     tracker = None
+    model_path = ""
+    train_config = None
     try:
         if "data" not in config:
             emit("error", {"message": "config must contain 'data' key"})
@@ -133,27 +159,32 @@ def main():
             emit("error", {"message": "model.model_path is required"})
             sys.exit(1)
 
-        tracker = create_experiment_tracker(config, model_path, train_config)
-        emit(
-            "log",
-            {
-                "message": (
-                    f"Experiment: {tracker.meta.exp_id} "
-                    f"(dir={tracker.meta.exp_dir})"
-                ),
-                "level": "INFO",
-            },
-        )
+        tracker = create_experiment_tracker(config, train_config)
+        with tracker.capture_train_log():
+            try:
+                emit(
+                    "log",
+                    {
+                        "message": (
+                            f"Experiment: {tracker.exp_name} "
+                            f"(dir={tracker.exp_dir})"
+                        ),
+                        "level": "INFO",
+                    },
+                )
 
-        trainer = Trainer(model_path, experiment_tracker=tracker)
-        trainer.train(train_config)
-        tracker.finalize(status="completed")
+                trainer = Trainer(model_path, experiment_tracker=tracker)
+                trainer.train(train_config)
+            except Exception as e:
+                write_failed_train_summary(tracker, model_path, train_config, e)
+                emit("error", {"message": str(e), "traceback": traceback.format_exc()})
+                emit("status", {"status": "failed"})
+                raise
 
     except Exception as e:
-        if tracker is not None:
-            tracker.fail(str(e))
-        emit("error", {"message": str(e), "traceback": traceback.format_exc()})
-        emit("status", {"status": "failed"})
+        if tracker is None:
+            emit("error", {"message": str(e), "traceback": traceback.format_exc()})
+            emit("status", {"status": "failed"})
         sys.exit(1)
 
 

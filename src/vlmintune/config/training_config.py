@@ -53,7 +53,7 @@ class TrainingParams:
 @dataclass
 class ExperimentConfig:
     name: str = ""
-    base_dir: str = ""
+    base_dir: str = "experiments"
     setup_dir: str = ""
 
 
@@ -104,7 +104,7 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
         ),
         experiment=ExperimentConfig(
             name=str(raw_experiment.get("name", "")).strip(),
-            base_dir=str(raw_experiment.get("base_dir", "")).strip(),
+            base_dir=str(raw_experiment.get("base_dir", "experiments")).strip() or "experiments",
             setup_dir=str(raw_experiment.get("setup_dir", "")).strip(),
         ),
         data=DataConfig(
@@ -179,6 +179,9 @@ def validate(cfg: TrainingConfig) -> None:
 
     if not cfg.data.data_path:
         errors.append("data.data_path: required field is empty")
+
+    if not cfg.experiment.name:
+        errors.append("experiment.name: required field is empty")
 
     available = list_training_methods()
     if available and cfg.training.ft_method not in available:

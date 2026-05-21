@@ -1,10 +1,10 @@
-"""Initial local-only evaluation flow."""
+"""Local-only evaluation flow under a single experiment folder."""
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
-from datetime import datetime
+import traceback
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, Optional
 
 from vlmintune.training.experiment import ExperimentTracker
@@ -18,6 +18,7 @@ class EvalTarget:
     name: str
     dataset_name: str
     split: str
+    source: str
     max_new_tokens: int = 16
     temperature: float = 0.0
     max_samples: Optional[int] = None
@@ -37,6 +38,10 @@ class EvalSource:
 
 SUPPORTED_EVAL_DATASETS = {
     "lmms-lab/textvqa",
+}
+SUPPORTED_EVAL_SOURCES = {
+    "trained",
+    "base",
 }
 
 
@@ -84,22 +89,33 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
             f"Unsupported eval.dataset_name '{dataset_name}'. "
             f"Supported: {sorted(SUPPORTED_EVAL_DATASETS)}"
         )
+
     split = str(raw.get("split", "")).strip()
     if not split:
         raise ValueError("eval.split is required")
 
-    name = str(raw.get("name", "")).strip() or default_eval_name(dataset_name, split)
+    raw_source = raw.get("source")
+    if not isinstance(raw_source, str):
+        raise ValueError("eval.source is required and must be a string")
+    if raw_source not in SUPPORTED_EVAL_SOURCES:
+        raise ValueError(
+            f"eval.source must be exactly one of {sorted(SUPPORTED_EVAL_SOURCES)}"
+        )
+
     raw_metric = raw.get("metric")
     if not isinstance(raw_metric, str):
         raise ValueError("eval.metric is required and must be a string")
     metric = validate_metric(raw_metric)
+
     max_samples_raw = raw.get("max_samples")
     max_samples = int(max_samples_raw) if max_samples_raw not in (None, "", 0) else None
+    name = str(raw.get("name", "")).strip() or default_eval_name(dataset_name, split)
 
     return EvalTarget(
         name=name,
         dataset_name=dataset_name,
         split=split,
+        source=raw_source,
         max_new_tokens=int(raw.get("max_new_tokens", raw_eval.get("max_new_tokens", 16))),
         temperature=float(raw.get("temperature", raw_eval.get("temperature", 0.0))),
         max_samples=max_samples,
@@ -108,30 +124,17 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
     )
 
 
-def create_eval_output_dir(
-    *,
-    base_dir: str = "eval_outputs",
-    model_path: str,
-    dataset_name: str,
-    explicit_dir: str = "",
-) -> str:
-    if explicit_dir:
-        os.makedirs(explicit_dir, exist_ok=True)
-        return explicit_dir
-
-    model_short = os.path.basename(model_path.rstrip("/")) or "model"
-    dataset_short = os.path.basename(dataset_name.rstrip("/")) or "dataset"
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(base_dir, f"{model_short}_{dataset_short}_{ts}")
+def prediction_path(output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
-    return output_dir
+    return os.path.join(output_dir, "predictions.jsonl")
 
 
-def prediction_path(output_dir: str, target_name: str) -> str:
-    pred_dir = os.path.join(output_dir, "eval_predictions")
-    os.makedirs(pred_dir, exist_ok=True)
-    safe_name = target_name.replace("/", "_").replace(" ", "_")
-    return os.path.join(pred_dir, f"{safe_name}.jsonl")
+def emit_eval_debug_examples(records: list[dict[str, Any]]) -> None:
+    if not records:
+        return
+    print()
+    print("First 5 eval examples")
+    print(json.dumps(records, indent=2, ensure_ascii=False))
 
 
 def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
@@ -146,10 +149,11 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
         load_images=True,
     )
     total = len(adapter) if len(adapter) >= 0 else None
-    prediction_file = prediction_path(output_dir, target.name)
+    prediction_file = prediction_path(output_dir)
 
     metric_sums: Dict[str, float] = {}
     num_predictions = 0
+    debug_records: list[dict[str, Any]] = []
 
     with open(prediction_file, "w", encoding="utf-8") as f:
         for sample in iter_with_progress(adapter, total, f"Evaluating {target.name}"):
@@ -182,8 +186,12 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
                 "ground_truth": ground_truth,
                 "scores": scores,
             }
+            if len(debug_records) < 5:
+                debug_records.append(record)
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             num_predictions += 1
+
+    emit_eval_debug_examples(debug_records)
 
     metrics = {
         metric_name: round(100.0 * total_value / max(1, num_predictions), 2)
@@ -198,142 +206,122 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
     }
 
 
+def load_checkpoint_meta(checkpoint_path: str) -> Dict[str, Any]:
+    meta_path = os.path.join(checkpoint_path, "vlmintune_meta.json")
+    if not os.path.isfile(meta_path):
+        raise FileNotFoundError(f"Checkpoint metadata not found: {meta_path}")
+    with open(meta_path, "r", encoding="utf-8") as f:
+        return json.load(f) or {}
+
+
 def resolve_experiment_source(
     raw_cfg: Dict[str, Any],
+    target: EvalTarget,
 ) -> tuple[EvalSource, ExperimentTracker]:
     experiment_cfg = raw_cfg.get("experiment", {}) or {}
     experiment_name = str(experiment_cfg.get("name", "")).strip()
-    base_dir = str(experiment_cfg.get("base_dir", "")).strip()
+    base_dir = str(experiment_cfg.get("base_dir", "")).strip() or "experiments"
     if not experiment_name:
-        raise ValueError("experiment.name is required when evaluating a saved experiment")
-    if not base_dir:
-        raise ValueError("experiment.base_dir is required when evaluating a saved experiment")
+        raise ValueError("experiment.name is required for evaluation")
 
     tracker = ExperimentTracker.load_by_name(base_dir, experiment_name)
-    base_model_id = (
-        str((raw_cfg.get("model", {}) or {}).get("model_path", "")).strip()
-        or tracker.meta.model
-    )
+    model_cfg = raw_cfg.get("model", {}) or {}
+    base_model_id = str(model_cfg.get("model_path", "")).strip()
+    checkpoint_path = tracker.get_checkpoint_dir()
+
+    checkpoint_meta: Dict[str, Any] = {}
+    if os.path.isdir(checkpoint_path):
+        try:
+            checkpoint_meta = load_checkpoint_meta(checkpoint_path)
+        except FileNotFoundError:
+            checkpoint_meta = {}
+
+    base_model_id = base_model_id or str(checkpoint_meta.get("base_model", "")).strip()
     if not base_model_id:
         raise ValueError(
             "Could not determine base model id. Set model.model_path in the eval config "
-            "or ensure the experiment summary contains it."
+            "or ensure the experiment checkpoint has vlmintune_meta.json."
         )
 
+    if target.source == "trained":
+        if not os.path.isdir(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        ft_method = str(checkpoint_meta.get("ft_method", "")).strip()
+        if not ft_method:
+            raise ValueError(
+                f"Could not determine ft_method for checkpoint: {checkpoint_path}"
+            )
+        source = EvalSource(
+            kind="trained",
+            base_model_id=base_model_id,
+            output_dir=tracker.get_eval_dir("trained"),
+            checkpoint_path=checkpoint_path,
+            ft_method=ft_method,
+            experiment_name=tracker.exp_name,
+        )
+        return source, tracker
+
     source = EvalSource(
-        kind="experiment",
+        kind="base",
         base_model_id=base_model_id,
-        output_dir=tracker.meta.exp_dir,
-        checkpoint_path=tracker.resolve_checkpoint_path(),
-        ft_method=tracker.meta.method,
-        experiment_name=tracker.meta.exp_id,
+        output_dir=tracker.get_eval_dir("base"),
+        checkpoint_path="",
+        ft_method="",
+        experiment_name=tracker.exp_name,
     )
     return source, tracker
 
 
-def resolve_baseline_source(raw_cfg: Dict[str, Any], dataset_name: str) -> EvalSource:
-    model_cfg = raw_cfg.get("model", {}) or {}
-    base_model_id = str(model_cfg.get("model_path", "")).strip()
-    if not base_model_id:
-        raise ValueError(
-            "Set experiment.name to evaluate a saved run, or set model.model_path "
-            "to evaluate a base-model baseline"
-        )
-    if str(model_cfg.get("checkpoint_path", "")).strip():
-        raise ValueError(
-            "Baseline eval only supports an unfine-tuned base model. "
-            "Use experiment.name / experiment.base_dir to evaluate a trained run."
-        )
-    if str(model_cfg.get("ft_method", "")).strip():
-        raise ValueError(
-            "Baseline eval does not accept model.ft_method. "
-            "Use experiment.name / experiment.base_dir to evaluate a trained run."
-        )
-    if model_cfg.get("method_params"):
-        raise ValueError(
-            "Baseline eval does not accept model.method_params. "
-            "Use experiment.name / experiment.base_dir to evaluate a trained run."
-        )
-
-    eval_cfg = raw_cfg.get("eval", {}) or {}
-    output_dir = create_eval_output_dir(
-        base_dir=str(eval_cfg.get("base_dir", "eval_outputs")).strip() or "eval_outputs",
-        model_path=base_model_id,
-        dataset_name=dataset_name,
-        explicit_dir=str(eval_cfg.get("output_dir", "")).strip(),
-    )
-    return EvalSource(
-        kind="baseline",
-        base_model_id=base_model_id,
-        output_dir=output_dir,
-    )
-
-
 def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
     eval_target = parse_eval_target(raw_cfg.get("eval", {}))
-    experiment_name = str((raw_cfg.get("experiment", {}) or {}).get("name", "")).strip()
-    tracker = None
-    if experiment_name:
-        source, tracker = resolve_experiment_source(raw_cfg)
-        if source.checkpoint_path and not os.path.isdir(source.checkpoint_path):
-            raise FileNotFoundError(f"Checkpoint not found: {source.checkpoint_path}")
-    else:
-        source = resolve_baseline_source(raw_cfg, eval_target.dataset_name)
+    source, tracker = resolve_experiment_source(raw_cfg, eval_target)
 
-    print("=" * 80)
-    print("vlmintune Eval Run")
-    print("=" * 80)
-    if source.kind == "experiment":
-        assert tracker is not None
-        print("Source: experiment")
-        print(f"Experiment: {source.experiment_name}")
-        print(f"Experiment dir: {source.output_dir}")
-    else:
-        print("Source: baseline")
-        print(f"Output dir: {source.output_dir}")
-    print(f"Model: {source.base_model_id}")
-    print(f"Checkpoint: {source.checkpoint_path or '<base model only>'}")
-    print(f"Eval dataset: {eval_target.dataset_name} ({eval_target.split})")
-    print()
+    with tracker.capture_eval_log(source.kind):
+        try:
+            print("=" * 80)
+            print("vlmintune Eval Run")
+            print("=" * 80)
+            print(f"Source: {source.kind}")
+            print(f"Experiment: {source.experiment_name}")
+            print(f"Output dir: {source.output_dir}")
+            print(f"Model: {source.base_model_id}")
+            print(f"Checkpoint: {source.checkpoint_path or '<base model only>'}")
+            print(f"Eval dataset: {eval_target.dataset_name} ({eval_target.split})")
+            print()
 
-    if source.kind == "experiment":
-        method = LocalMethod.from_checkpoint(
-            base_model_id=source.base_model_id,
-            checkpoint_path=source.checkpoint_path,
-            ft_method=source.ft_method,
-        )
-    else:
-        method = LocalMethod.from_base_model(source.base_model_id)
+            if source.kind == "trained":
+                method = LocalMethod.from_checkpoint(
+                    base_model_id=source.base_model_id,
+                    checkpoint_path=source.checkpoint_path,
+                    ft_method=source.ft_method,
+                )
+            else:
+                method = LocalMethod.from_base_model(source.base_model_id)
 
-    eval_result = evaluate_vqa_dataset(method, eval_target, source.output_dir)
-    if tracker is not None:
-        tracker.log_eval(eval_target.name, eval_result["metrics"])
-    print(json.dumps(eval_result["metrics"], indent=2, ensure_ascii=False))
+            eval_result = evaluate_vqa_dataset(method, eval_target, source.output_dir)
+            summary = {
+                "experiment_name": source.experiment_name,
+                "source": source.kind,
+                "model_path": source.base_model_id,
+                "dataset_name": eval_result["dataset_name"],
+                "split": eval_result["split"],
+                "metric": eval_target.metric,
+                "num_predictions": eval_result["num_predictions"],
+                "metrics": eval_result["metrics"],
+            }
+            tracker.write_eval_summary(source.kind, summary)
 
-    summary = {
-        "source": {
-            "kind": source.kind,
-            "experiment_name": source.experiment_name,
-            "output_dir": source.output_dir,
-            "checkpoint": source.checkpoint_path,
-        },
-        "model": {
-            "model_path": source.base_model_id,
-            "ft_method": source.ft_method,
-        },
-        "eval_target": asdict(eval_target),
-        "eval_result": eval_result,
-    }
-    summary_path = os.path.join(source.output_dir, "eval_summary.json")
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
-
-    print()
-    print("=" * 80)
-    print("Eval Summary")
-    print("=" * 80)
-    print(f"Summary JSON: {summary_path}")
-    return summary
+            print(json.dumps(eval_result["metrics"], indent=2, ensure_ascii=False))
+            print()
+            print("=" * 80)
+            print("Eval Summary")
+            print("=" * 80)
+            print(f"Summary JSON: {tracker.get_eval_summary_path(source.kind)}")
+            print(f"Predictions: {tracker.get_predictions_path(source.kind)}")
+            return summary
+        except Exception:
+            print(traceback.format_exc())
+            raise
 
 
 __all__ = [
@@ -341,7 +329,6 @@ __all__ = [
     "EvalTarget",
     "evaluate_vqa_dataset",
     "parse_eval_target",
-    "resolve_baseline_source",
     "resolve_experiment_source",
     "run_eval_config",
 ]

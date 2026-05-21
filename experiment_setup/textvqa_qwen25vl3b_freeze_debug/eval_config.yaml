@@ -12,6 +12,7 @@ experiment:
 
 eval:
   name: "textvqa_validation_debug20"
+  source: "trained"
   dataset_name: "lmms-lab/textvqa"
   split: validation
   metric: "vqa_accuracy"

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from dataclasses import asdict
 from typing import Any, Callable, Dict
 
@@ -11,6 +10,8 @@ import torch
 from torch.optim.lr_scheduler import LambdaLR
 
 from vlmintune.data.hf_datasets import HFDatasetsAdapter
+
+DEBUG_EXAMPLE_LIMIT = 5
 
 
 # Event helpers
@@ -106,13 +107,7 @@ def build_dataset(config: Any):
     return adapter, dataset_len
 
 
-def resolve_debug_dir(config: Any, tracker: Any) -> str:
-    if tracker is not None:
-        return os.path.join(tracker.meta.exp_dir, "debug")
-    return os.path.join(config.output_dir, "debug")
-
-
-# Debug artifact helpers
+# Debug helpers
 
 def json_safe(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -122,11 +117,6 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [json_safe(item) for item in value]
     return str(value)
-
-
-def write_json(path: str, payload: Any) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
 def sample_debug_record(sample) -> Dict[str, Any]:
@@ -140,38 +130,51 @@ def sample_debug_record(sample) -> Dict[str, Any]:
 class DebugRecorder:
     """Capture a tiny debug snapshot of the training input pipeline."""
 
-    def __init__(self, limit: int = 5) -> None:
-        self.limit = limit
+    def __init__(self) -> None:
         self.samples = []
         self.prompts = []
         self.total_skipped = 0
         self.skip_examples = []
 
     def record_sample(self, sample) -> None:
-        if len(self.samples) < self.limit:
+        if len(self.samples) < DEBUG_EXAMPLE_LIMIT:
             self.samples.append(sample_debug_record(sample))
 
     def record_prompt(self, preview: Dict[str, Any]) -> None:
-        if len(self.prompts) < self.limit:
+        if len(self.prompts) < DEBUG_EXAMPLE_LIMIT:
             self.prompts.append(json_safe(preview))
 
     def record_skip(self, sample_id: Any, exc: Exception) -> None:
         self.total_skipped += 1
-        if len(self.skip_examples) < self.limit:
+        if len(self.skip_examples) < DEBUG_EXAMPLE_LIMIT:
             self.skip_examples.append({
                 "sample_id": str(sample_id),
                 "error": str(exc),
             })
 
-    def flush(self, debug_dir: str) -> None:
-        os.makedirs(debug_dir, exist_ok=True)
+    def emit_run_log(self) -> None:
         if self.samples:
-            write_json(os.path.join(debug_dir, "first_5_canonical_samples.json"), self.samples)
+            emit(
+                "debug",
+                {
+                    "kind": "canonical_samples",
+                    "limit": DEBUG_EXAMPLE_LIMIT,
+                    "examples": self.samples,
+                },
+            )
         if self.prompts:
-            write_json(os.path.join(debug_dir, "first_5_rendered_prompts.json"), self.prompts)
-        write_json(
-            os.path.join(debug_dir, "skip_summary.json"),
+            emit(
+                "debug",
+                {
+                    "kind": "rendered_prompts",
+                    "limit": DEBUG_EXAMPLE_LIMIT,
+                    "examples": self.prompts,
+                },
+            )
+        emit(
+            "debug",
             {
+                "kind": "skip_summary",
                 "total_skipped": self.total_skipped,
                 "first_errors": self.skip_examples,
             },

@@ -59,9 +59,13 @@ def test_eval_cli_runs_local_yaml(monkeypatch, tmp_path):
     config_path = tmp_path / "eval_config.yaml"
     config_path.write_text(
         """
+experiment:
+  name: "demo_exp"
+  base_dir: "experiments"
 model:
   model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
 eval:
+  source: "base"
   dataset_name: "lmms-lab/textvqa"
   split: validation
   metric: "vqa_accuracy"
@@ -80,3 +84,4 @@ eval:
     run_eval_from_config(str(config_path))
 
     assert captured["cfg"]["eval"]["split"] == "validation"
+    assert captured["cfg"]["eval"]["source"] == "base"

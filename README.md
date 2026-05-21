@@ -78,7 +78,7 @@ All training flows are config-driven. Each experiment keeps its own YAML configs
 
 ### Local training
 
-To run one experiment through the SSH runner:
+To run one experiment:
 
 ```bash
 python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml
@@ -101,23 +101,41 @@ Notes:
 - Run the commands on the machine that actually has the model weights, GPU, and dependencies installed.
 - Training dataset selection lives under `data.data_path`.
 - Training sample count lives under `data.max_samples`. Set it to `0` or omit it for the full split.
-- Each training run creates an experiment directory with a saved `summary.json`, checkpoint path, config snapshot, and train summary.
-- The loaded training config automatically records its parent `experiment_setup/<experiment_name>/` directory in the saved experiment summary, so bundling can copy the exact setup files used for the run.
+- `experiment.name` is required and becomes the experiment folder name under `experiment.base_dir` (default `experiments/`).
+- Training writes into one fixed experiment layout:
+
+```text
+experiments/<experiment_name>/
+  checkpoint/
+  train/
+    train_summary.json
+    run.log
+  eval_trained/
+    eval.json
+    predictions.jsonl
+    run.log
+  eval_base/
+    eval.json
+    predictions.jsonl
+    run.log
+```
+
 - The trainer emits a small amount of runtime information by design, including dataset resolution, estimated training plan, and the first batch tensor shapes.
+- The first 5 debug examples are written into `run.log`; there is no separate `debug/` folder.
 - There is no separate `fullrun` command in the initial release. Training the full dataset is just a normal training run with `data.max_samples` omitted or set to `0`.
 - Use the experiment-local wrappers in `experiment_setup/<experiment_name>/` when you want one-command train / eval runs.
-- If you want to archive setup files into `experiment_results/`, copy them there manually after the run.
 
 ## Evaluation
 
 The intended workflow is:
 
 1. Run `python -m vlmintune.training --config ...`
-2. Run `python -m vlmintune.eval --config ...`
+2. Run `python -m vlmintune.eval --config ...` for the trained checkpoint
+3. Run `python -m vlmintune.eval --config ...` for the base-model comparison
 
 ### Evaluate A Saved Experiment
 
-To evaluate a previously saved experiment without retraining:
+To evaluate the trained checkpoint inside an experiment folder:
 
 ```bash
 python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/eval_config.yaml
@@ -126,7 +144,8 @@ python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/
 In that config:
 
 - `experiment.name` selects the saved experiment
-- `experiment.base_dir` points at the experiment root directory
+- `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
+- `eval.source` is required and must be `"trained"`
 - `eval.dataset_name` selects the eval dataset
 - `eval.split` is required
 - `eval.metric` is required and must be `"vqa_accuracy"`
@@ -134,7 +153,7 @@ In that config:
 
 ### Evaluate A Base-Model Baseline
 
-To evaluate an unfine-tuned Hugging Face base model as a baseline:
+To evaluate the corresponding unfine-tuned base model under the same experiment folder:
 
 ```bash
 python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/base_eval_config.yaml
@@ -142,12 +161,14 @@ python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/
 
 In that config:
 
+- `experiment.name` is required
+- `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
 - `model.model_path` is required
+- `eval.source` is required and must be `"base"`
 - `eval.dataset_name` selects the eval dataset
 - `eval.split` is required
 - `eval.metric` is required and must be `"vqa_accuracy"`
 - `eval.max_samples` limits the eval sample count
-- `eval.output_dir` controls where the summary and predictions are written
 
 This initial release intentionally evaluates one dataset per run. If you want multiple eval datasets, run `vlmintune.eval` multiple times with different configs.
 
@@ -155,7 +176,7 @@ This initial release intentionally evaluates one dataset per run. If you want mu
 
 No pre-trained or fine-tuned checkpoints are currently published from this repository.
 
-Produced adapters and checkpoints are written to the configured `output_dir` on the current machine.
+Produced adapters and checkpoints are written to `experiments/<experiment_name>/checkpoint/` on the current machine.
 
 ## Results
 

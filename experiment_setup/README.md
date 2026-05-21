@@ -18,6 +18,5 @@ Workflow:
 
 1. Create one setup directory for the experiment.
 2. Put that experiment's config files and run scripts there.
-3. Run training and evaluation from that setup directory on the SSH machine, for example `./run_train.sh`.
-4. If you want to archive the setup, manually copy it into `experiment_results/`
-   together with the experiment artifacts you want to keep.
+3. Run training, trained-model eval, and base-model eval on the machine with the GPU and dependencies installed.
+4. All three commands write into the same experiment folder under `experiments/<experiment_name>/`.

@@ -18,7 +18,6 @@ from vlmintune.training.trainer.helpers import (
     cosine_schedule,
     describe_batch,
     emit,
-    resolve_debug_dir,
     to_device,
 )
 from vlmintune.training.trainer.tokenization import build_tokenized_dataset, safe_collate
@@ -200,10 +199,8 @@ class Trainer:
                         "step": global_step,
                     })
 
-        # 5. Persist debug artifacts, final weights, and train summary.
-        debug_dir = resolve_debug_dir(config, self.tracker)
-        debug_recorder.flush(debug_dir)
-        emit("log", {"message": f"Debug artifacts saved to {debug_dir}", "level": "INFO"})
+        # 5. Emit debug samples, final weights, and train summary.
+        debug_recorder.emit_run_log()
 
         final_path = os.path.join(config.output_dir, "final")
         if self.tracker is not None:
@@ -218,14 +215,34 @@ class Trainer:
         if self.tracker is not None:
             trainable = sum(param.numel() for param in self.model.parameters() if param.requires_grad)
             total_params = sum(param.numel() for param in self.model.parameters())
-            self.tracker.log_train_summary(
-                avg_loss=avg_loss,
-                total_steps=global_step,
-                train_time_s=time.time() - start_time,
-                trainable_params=trainable,
-                total_params=total_params,
+            self.tracker.write_train_summary(
+                {
+                    "experiment_name": self.tracker.exp_name,
+                    "model_path": self.model_path,
+                    "training_method": config.training_method,
+                    "training_params": {
+                        "num_epochs": config.num_epochs,
+                        "per_device_batch_size": config.per_device_batch_size,
+                        "gradient_accumulation_steps": config.gradient_accumulation_steps,
+                        "learning_rate": config.learning_rate,
+                        "warmup_ratio": config.warmup_ratio,
+                        "weight_decay": config.weight_decay,
+                        "max_grad_norm": config.max_grad_norm,
+                        "save_steps": config.save_steps,
+                        "method_params": dict(config.method_params),
+                    },
+                    "data": dict(config.data_config),
+                    "result": {
+                        "status": "completed",
+                        "avg_loss": avg_loss,
+                        "total_steps": global_step,
+                        "train_time_s": round(time.time() - start_time, 1),
+                        "trainable_params": trainable,
+                        "total_params": total_params,
+                        "trainable_pct": round(100 * trainable / max(1, total_params), 4),
+                    },
+                }
             )
-            self.tracker.set_checkpoint_path(final_path)
 
         emit("status", {
             "status": "completed",

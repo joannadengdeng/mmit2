@@ -11,6 +11,7 @@ experiment:
   base_dir: "experiments"
 
 eval:
+  source: "trained"
   dataset_name: "lmms-lab/textvqa"
   split: validation
   metric: "vqa_accuracy"

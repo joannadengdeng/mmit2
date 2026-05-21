@@ -2,15 +2,15 @@
 
 This setup directory contains one complete experiment definition:
 
-- `train_config.yaml`: SSH training config
-- `eval_config.yaml`: evaluate the trained checkpoint
-- `base_eval_config.yaml`: evaluate the unfine-tuned base model
+- `train_config.yaml`: train into `experiments/<experiment_name>/train/` and `checkpoint/`
+- `eval_config.yaml`: evaluate the trained checkpoint into `experiments/<experiment_name>/eval_trained/`
+- `base_eval_config.yaml`: evaluate the unfine-tuned base model into `experiments/<experiment_name>/eval_base/`
 - `run_*.sh`: thin wrappers to run the configs
 
-Adjust the SSH section and any model/dataset/training values here when cloning
-this setup into a new experiment directory.
+Adjust the model, dataset, and training values here when cloning this setup into
+a new experiment directory.
 
-Run on the SSH machine:
+Run on the machine with the GPU and dependencies installed:
 
 - `./run_train.sh`
 - `./run_eval_trained.sh`

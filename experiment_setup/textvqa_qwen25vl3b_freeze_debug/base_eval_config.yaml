@@ -6,12 +6,16 @@
 model:
   model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
 
+experiment:
+  name: "textvqa_qwen25vl3b_freeze_debug"
+  base_dir: "experiments"
+
 eval:
   name: "textvqa_validation_debug20"
+  source: "base"
   dataset_name: "lmms-lab/textvqa"
   split: validation
   metric: "vqa_accuracy"
   max_samples: 20
   max_new_tokens: 16
   temperature: 0.0
-  output_dir: "eval_outputs/textvqa_qwen25vl3b_freeze_debug_base"
