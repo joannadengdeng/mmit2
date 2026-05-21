@@ -12,8 +12,8 @@ from vlmintune.config.model_layouts import (
     list_model_layouts,
     resolve_transformer_layers,
 )
-from vlmintune.training.losses.ce_loss import CrossEntropyLoss
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
+from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
 _ce_loss = CrossEntropyLoss()
 _GRAD_DTYPES = (torch.float32, torch.float16, torch.bfloat16)

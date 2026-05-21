@@ -1,4 +1,4 @@
-"""Evaluation execution flow for the initial release."""
+"""Initial local-only evaluation flow."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,9 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, Iterator, Optional
 
 from vlmintune.training.experiment import ExperimentTracker
-from vlmintune.training.peft_env import ensure_peft_runtime_compatible
+
+from vlmintune.eval.method import LocalMethod
+from vlmintune.eval.vqa import score_textvqa_prediction, validate_metric
 
 
 @dataclass(frozen=True)
@@ -61,8 +63,6 @@ def default_eval_name(dataset_name: str, split: str) -> str:
 
 
 def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
-    from vlmintune.eval.metrics.vqa import validate_metric
-
     raw_eval = raw_eval or {}
     if "targets" in raw_eval:
         raw_targets = raw_eval.get("targets", [])
@@ -135,9 +135,9 @@ def prediction_path(output_dir: str, target_name: str) -> str:
 
 
 def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
-    from vlmintune.data.adapters.hf_datasets import HFDatasetsAdapter
+    from vlmintune.data.hf_datasets import HFDatasetsAdapter
     from vlmintune.data.types import EvalSample
-    from vlmintune.eval.metrics.vqa import score_textvqa_prediction
+
     adapter = HFDatasetsAdapter(
         dataset_name=target.dataset_name,
         split=target.split,
@@ -220,13 +220,6 @@ def resolve_experiment_source(
             "or ensure the experiment summary contains it."
         )
 
-    tracker_training_cfg = tracker.meta.config.get("training", {}) or {}
-    tracker_method_params = (
-        tracker.meta.config.get("method_params", {})
-        or tracker_training_cfg.get("params", {})
-        or {}
-    )
-    ensure_peft_runtime_compatible(tracker.meta.method, tracker_method_params)
     source = EvalSource(
         kind="experiment",
         base_model_id=base_model_id,
@@ -277,8 +270,6 @@ def resolve_baseline_source(raw_cfg: Dict[str, Any], dataset_name: str) -> EvalS
 
 
 def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
-    from vlmintune.eval.methods.local_method import LocalMethod
-
     eval_target = parse_eval_target(raw_cfg.get("eval", {}))
     experiment_name = str((raw_cfg.get("experiment", {}) or {}).get("name", "")).strip()
     tracker = None
@@ -348,6 +339,9 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
 __all__ = [
     "EvalSource",
     "EvalTarget",
+    "evaluate_vqa_dataset",
     "parse_eval_target",
+    "resolve_baseline_source",
+    "resolve_experiment_source",
     "run_eval_config",
 ]

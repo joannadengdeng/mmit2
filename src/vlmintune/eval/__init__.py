@@ -5,8 +5,7 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "Method": ("vlmintune.eval.methods.base", "Method"),
-    "LocalMethod": ("vlmintune.eval.methods.local_method", "LocalMethod"),
+    "LocalMethod": ("vlmintune.eval.method", "LocalMethod"),
     "EvalTarget": ("vlmintune.eval.run", "EvalTarget"),
     "parse_eval_target": ("vlmintune.eval.run", "parse_eval_target"),
     "run_eval_config": ("vlmintune.eval.run", "run_eval_config"),

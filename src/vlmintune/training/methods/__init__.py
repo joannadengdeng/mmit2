@@ -5,12 +5,15 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
+    "build_training_method": ("vlmintune.training.methods.registry", "build_training_method"),
+    "get_training_method_cls": ("vlmintune.training.methods.registry", "get_training_method_cls"),
+    "get_training_method_defaults": ("vlmintune.training.methods.registry", "get_training_method_defaults"),
+    "list_training_methods": ("vlmintune.training.methods.registry", "list_training_methods"),
     "QLoRAMethod": ("vlmintune.training.methods.lora", "QLoRAMethod"),
     "LoRAMethod": ("vlmintune.training.methods.lora", "LoRAMethod"),
     "DoRAMethod": ("vlmintune.training.methods.dora", "DoRAMethod"),
     "FreezeTuningMethod": ("vlmintune.training.methods.freeze", "FreezeTuningMethod"),
     "L2TMethod": ("vlmintune.training.methods.l2t", "L2TMethod"),
-    "MoReSMethod": ("vlmintune.training.methods.mores", "MoReSMethod"),
 }
 
 __all__ = list(_EXPORTS)

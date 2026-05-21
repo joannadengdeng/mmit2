@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vlmintune.data.adapters.hf_datasets import HFDatasetsAdapter
+from vlmintune.data.hf_datasets import HFDatasetsAdapter
 
 
 def test_limited_sample_training_prefers_streaming(monkeypatch):

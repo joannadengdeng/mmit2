@@ -8,20 +8,19 @@ version = "0.1.0"
 description = "Multimodal Instruction Tuning library v2 — pluggable training, inference, and evaluation for VLMs"
 requires-python = ">=3.9"
 dependencies = [
-    "torch>=2.0",
-    "torchvision>=0.15",
-    "transformers>=4.37",
+    "torch~=2.11.0",
+    "torchvision~=0.26.0",
+    "transformers~=5.7.0",
     "pillow>=9.0",
-    "peft>=0.7",
-    "accelerate>=0.21",
+    "peft~=0.19.1",
+    "accelerate~=1.13.0",
     "datasets>=2.14",
     "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]
-finetune = ["bitsandbytes>=0.41"]
-remote = ["paramiko>=3.0"]
+finetune = ["bitsandbytes~=0.49.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

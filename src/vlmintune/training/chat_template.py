@@ -8,10 +8,11 @@ import torch
 from PIL import Image
 
 from vlmintune.data.types import CanonicalSample
-from vlmintune.training.preprocessors.base import IGNORE_INDEX, Preprocessor
+
+IGNORE_INDEX = -100
 
 
-def _load_image(sample: CanonicalSample, image_root: str = "") -> Optional[Image.Image]:
+def load_image(sample: CanonicalSample, image_root: str = "") -> Optional[Image.Image]:
     if not sample.image_path:
         return None
     pil_image = sample.metadata.get("_pil_image") if sample.metadata else None
@@ -23,7 +24,7 @@ def _load_image(sample: CanonicalSample, image_root: str = "") -> Optional[Image
     return Image.open(img_path).convert("RGB")
 
 
-def _build_messages(sample: CanonicalSample, has_image: bool) -> List[Dict[str, Any]]:
+def build_messages(sample: CanonicalSample, has_image: bool) -> List[Dict[str, Any]]:
     messages: List[Dict[str, Any]] = []
     for turn in sample.turns:
         role = "user" if turn.role == "human" else "assistant"
@@ -35,7 +36,7 @@ def _build_messages(sample: CanonicalSample, has_image: bool) -> List[Dict[str, 
     return messages
 
 
-def _build_prompt_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def build_prompt_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     last_assistant_idx = -1
     for idx in range(len(messages) - 1, -1, -1):
         if messages[idx]["role"] == "assistant":
@@ -44,7 +45,7 @@ def _build_prompt_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any
     return messages if last_assistant_idx < 0 else messages[:last_assistant_idx]
 
 
-class ChatTemplatePreprocessor(Preprocessor):
+class ChatTemplatePreprocessor:
     def tokenize(
         self,
         sample: CanonicalSample,
@@ -55,8 +56,8 @@ class ChatTemplatePreprocessor(Preprocessor):
     ) -> Dict[str, Any]:
         # `processor` must be a Hugging Face multimodal processor that supports
         # both `apply_chat_template(...)` and `processor(text=..., images=...)`.
-        image = _load_image(sample, image_root)
-        messages = _build_messages(sample, image is not None)
+        image = load_image(sample, image_root)
+        messages = build_messages(sample, image is not None)
         if not messages:
             raise ValueError(f"Sample {sample.id} has no turns")
 
@@ -64,7 +65,7 @@ class ChatTemplatePreprocessor(Preprocessor):
             messages, tokenize=False, add_generation_prompt=False,
         )
 
-        prompt_messages = _build_prompt_messages(messages)
+        prompt_messages = build_prompt_messages(messages)
         prompt_text = ""
         if prompt_messages:
             prompt_text = processor.apply_chat_template(
@@ -175,3 +176,12 @@ class ChatTemplatePreprocessor(Preprocessor):
                     batch[key] = vals
 
         return batch
+
+
+__all__ = [
+    "ChatTemplatePreprocessor",
+    "IGNORE_INDEX",
+    "load_image",
+    "build_messages",
+    "build_prompt_messages",
+]

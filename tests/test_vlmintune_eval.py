@@ -8,15 +8,18 @@ import torch.nn as nn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vlmintune.data.adapters.hf_datasets import HFDatasetsAdapter
+from vlmintune.data.hf_datasets import HFDatasetsAdapter
 from vlmintune.data.types import EvalSample
-from vlmintune.eval.methods.local_method import LocalMethod
+from vlmintune.eval.method import (
+    LocalMethod,
+)
 from vlmintune.eval.run import (
     EvalTarget,
     evaluate_vqa_dataset,
     resolve_baseline_source,
     parse_eval_target,
 )
+from vlmintune.eval.vqa import normalize_answer, vqa_accuracy
 
 
 def test_parse_eval_target_requires_explicit_split():
@@ -113,6 +116,20 @@ def test_parse_eval_target_rejects_multi_target_legacy_config():
         )
 
 
+def test_normalize_answer_matches_official_vqa_processing():
+    assert normalize_answer("The two, cats.") == "2 cats"
+    assert normalize_answer("dont") == "don't"
+    assert normalize_answer("2:50 pm") == "2:50 pm"
+
+
+def test_vqa_accuracy_matches_official_leave_one_out_scoring():
+    assert vqa_accuracy("cat", ["cat"] * 10) == 1.0
+    assert vqa_accuracy("cat", ["cat"] + ["dog"] * 9) == 0.3
+    assert vqa_accuracy("cat", ["cat"] * 2 + ["dog"] * 8) == 0.6
+    assert vqa_accuracy("cat", ["cat"] * 3 + ["dog"] * 7) == 0.9
+    assert vqa_accuracy("cat", ["cat"] * 4 + ["dog"] * 6) == 1.0
+
+
 def test_resolve_baseline_source_uses_base_model_only(tmp_path):
     source = resolve_baseline_source(
         {
@@ -206,7 +223,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
         str(tmp_path),
     )
 
-    assert result["metrics"]["vqa_accuracy"] == 100.0
+    assert result["metrics"]["vqa_accuracy"] == 90.0
 
     with open(result["prediction_file"], "r", encoding="utf-8") as f:
         record = json.loads(f.readline())

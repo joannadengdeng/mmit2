@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict
 import torch
 from torch.optim.lr_scheduler import LambdaLR
 
-from vlmintune.data.adapters.hf_datasets import HFDatasetsAdapter
+from vlmintune.data.hf_datasets import HFDatasetsAdapter
 
 
 # Event helpers
@@ -71,13 +71,8 @@ def describe_batch(batch: Dict[str, Any]) -> str:
 
 def build_dataset(config: Any):
     data_cfg = dict(config.data_config)
-    adapter_name = data_cfg.pop("adapter", "hf_datasets")
     max_samples = int(data_cfg.pop("max_samples", 0) or 0)
     data_cfg.pop("image_root", None)
-    if adapter_name != "hf_datasets":
-        raise ValueError(
-            f"Unsupported data adapter '{adapter_name}'. Only 'hf_datasets' is supported."
-        )
 
     if "dataset_name" not in data_cfg:
         if "data_path" in data_cfg:

@@ -11,7 +11,6 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from vlmintune.training.methods.base import load_processor, load_vlm
-from vlmintune.training.registry import build_training_method
 from vlmintune.training.trainer.helpers import (
     build_dataset,
     build_skip_logger,
@@ -69,6 +68,8 @@ class Trainer:
         emit("status", {"status": "loading"})
 
         # 1. Resolve the tuning method and load the base model.
+        from vlmintune.training.methods.registry import build_training_method
+
         method_obj = build_training_method(config.training_method)
         method_config = {**method_obj.default_config(), **config.method_params}
 

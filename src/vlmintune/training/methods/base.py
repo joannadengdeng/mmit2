@@ -6,7 +6,6 @@ Built-in methods:
   - QLoRA, LoRA, DoRA          — parameter-efficient LoRA variants
   - FreezeTuning               — train selected modules only
   - L2T                        — instruction-aware loss masking (Zhou et al. 2025)
-  - MoReS                      — low-rank steering on visual token representations
 """
 from __future__ import annotations
 

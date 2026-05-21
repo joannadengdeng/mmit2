@@ -13,7 +13,6 @@ Usage::
 from __future__ import annotations
 
 import os
-import re
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
@@ -21,15 +20,12 @@ from typing import Any, Dict, List
 import yaml
 
 from vlmintune.config.model_layouts import list_model_layouts
-from vlmintune.config.runtime import RuntimeConfig, SSHConfig
-from vlmintune.training.registry import (
+from vlmintune.training.methods.registry import (
     get_training_method_defaults,
     list_training_methods,
 )
 
 _LORA_FAMILY_METHODS = {"lora", "qlora", "dora"}
-_MORES_FIRST_LAST_PATTERN = re.compile(r"^f\d+\+l\d+$")
-_MORES_UNIFORM_PATTERN = re.compile(r"^uniform\d+$")
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────
@@ -63,7 +59,6 @@ class ExperimentConfig:
 
 @dataclass
 class DataConfig:
-    adapter: str = "hf_datasets"
     data_path: str = ""
     split: str = "train"
     image_root: str = ""
@@ -72,7 +67,6 @@ class DataConfig:
 
 @dataclass
 class TrainingConfig:
-    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingParams = field(default_factory=TrainingParams)
     experiment: ExperimentConfig = field(default_factory=ExperimentConfig)
@@ -81,46 +75,8 @@ class TrainingConfig:
 
 # ── YAML loading ─────────────────────────────────────────────────────
 
-def _parse_ssh(raw: dict) -> SSHConfig:
-    if not raw:
-        return SSHConfig()
-    return SSHConfig(
-        host=str(raw.get("host", "")),
-        port=int(raw.get("port", 22)),
-        username=str(raw.get("username", "")),
-        key_path=str(raw.get("key_path", "")),
-        password=str(raw.get("password", "")),
-        conda_env=str(raw.get("conda_env", "")),
-    )
 
-
-def _raw_ssh_section(raw: Dict[str, Any]) -> Dict[str, Any]:
-    if isinstance(raw.get("ssh"), dict):
-        return raw.get("ssh") or {}
-
-    raw_runtime = raw.get("runtime", {})
-    if isinstance(raw_runtime, dict) and isinstance(raw_runtime.get("ssh"), dict):
-        return raw_runtime.get("ssh") or {}
-
-    return {}
-
-
-def load_runtime_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> RuntimeConfig:
-    """Parse just the runtime section from an in-memory config mapping."""
-    raw = raw or {}
-    raw_runtime = raw.get("runtime", {})
-    runtime_mode = "ssh"
-    if isinstance(raw_runtime, dict):
-        runtime_mode = str(raw_runtime.get("mode", "ssh") or "ssh")
-    runtime = RuntimeConfig(
-        mode=runtime_mode,
-        ssh=_parse_ssh(_raw_ssh_section(raw)),
-    )
-    _validate_runtime(runtime, require_host=require_host)
-    return runtime
-
-
-def load_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> TrainingConfig:
+def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
     """Load and validate a training config from an in-memory mapping."""
     raw = raw or {}
 
@@ -130,7 +86,6 @@ def load_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> Train
     raw_data = raw.get("data", {})
 
     cfg = TrainingConfig(
-        runtime=load_runtime_config_dict(raw, require_host=require_host),
         model=ModelConfig(
             model_path=str(raw_model.get("model_path", "")),
         ),
@@ -153,7 +108,6 @@ def load_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> Train
             setup_dir=str(raw_experiment.get("setup_dir", "")).strip(),
         ),
         data=DataConfig(
-            adapter=str(raw_data.get("adapter", "hf_datasets")),
             data_path=str(raw_data.get("data_path", "")),
             split=str(raw_data.get("split", "train")),
             image_root=str(raw_data.get("image_root", "")),
@@ -161,12 +115,12 @@ def load_config_dict(raw: Dict[str, Any], *, require_host: bool = True) -> Train
         ),
     )
 
-    _validate(cfg, require_host=require_host)
-    _merge_method_defaults(cfg)
+    validate(cfg)
+    merge_method_defaults(cfg)
     return cfg
 
 
-def load_config(path: str, *, require_host: bool = True) -> TrainingConfig:
+def load_config(path: str) -> TrainingConfig:
     """Load and validate a YAML training config file.
 
     Parameters
@@ -192,13 +146,13 @@ def load_config(path: str, *, require_host: bool = True) -> TrainingConfig:
 
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    cfg = load_config_dict(raw, require_host=require_host)
+    cfg = load_config_dict(raw)
     if not cfg.experiment.setup_dir:
-        cfg.experiment.setup_dir = _infer_setup_dir_from_config_path(path)
+        cfg.experiment.setup_dir = infer_setup_dir_from_config_path(path)
     return cfg
 
 
-def _infer_setup_dir_from_config_path(path: str) -> str:
+def infer_setup_dir_from_config_path(path: str) -> str:
     config_dir = os.path.dirname(os.path.normpath(path))
     if not config_dir:
         return ""
@@ -216,18 +170,7 @@ def _infer_setup_dir_from_config_path(path: str) -> str:
     return config_dir
 
 
-def _validate_runtime(runtime: RuntimeConfig, *, require_host: bool = True) -> None:
-    if runtime.mode != "ssh":
-        raise ValueError(
-            f"runtime.mode: '{runtime.mode}' is not supported. Only 'ssh' mode is supported."
-        )
-    if require_host and not runtime.ssh.host:
-        raise ValueError("runtime.ssh.host: required")
-    if not runtime.ssh.username:
-        raise ValueError("runtime.ssh.username: required")
-
-
-def _validate(cfg: TrainingConfig, *, require_host: bool = True) -> None:
+def validate(cfg: TrainingConfig) -> None:
     """Validate config fields; raise ValueError with all issues at once."""
     errors: List[str] = []
 
@@ -236,17 +179,6 @@ def _validate(cfg: TrainingConfig, *, require_host: bool = True) -> None:
 
     if not cfg.data.data_path:
         errors.append("data.data_path: required field is empty")
-
-    if cfg.data.adapter != "hf_datasets":
-        errors.append(
-            f"data.adapter: '{cfg.data.adapter}' is not supported. "
-            "Only 'hf_datasets' is supported."
-        )
-
-    try:
-        _validate_runtime(cfg.runtime, require_host=require_host)
-    except ValueError as exc:
-        errors.append(str(exc))
 
     available = list_training_methods()
     if available and cfg.training.ft_method not in available:
@@ -267,35 +199,18 @@ def _validate(cfg: TrainingConfig, *, require_host: bool = True) -> None:
             f"method '{method_name}'"
         )
 
-    if method_name in {"freeze", "mores"} and not str(method_params.get("model_layout", "")).strip():
+    if method_name == "freeze" and not str(method_params.get("model_layout", "")).strip():
         errors.append(
             "training.params.model_layout: required non-empty string for method "
             f"'{method_name}'. Available: {list_model_layouts()}"
         )
-
-    if method_name == "mores" and int(method_params.get("hidden_size", 0) or 0) <= 0:
-        errors.append(
-            "training.params.hidden_size: required positive integer for method 'mores'"
-        )
-    if method_name == "mores":
-        intervention_positions = str(
-            method_params.get("intervention_positions", "f4+l5")
-        ).strip().lower()
-        if not (
-            _MORES_FIRST_LAST_PATTERN.fullmatch(intervention_positions)
-            or _MORES_UNIFORM_PATTERN.fullmatch(intervention_positions)
-        ):
-            errors.append(
-                "training.params.intervention_positions: expected 'f4+l5' or "
-                "'uniform9' for method 'mores'"
-            )
 
     if errors:
         msg = "Config validation errors:\n" + "\n".join(f"  - {e}" for e in errors)
         raise ValueError(msg)
 
 
-def _merge_method_defaults(cfg: TrainingConfig) -> None:
+def merge_method_defaults(cfg: TrainingConfig) -> None:
     """Merge method default params into cfg.training.params."""
     defaults = get_training_method_defaults(cfg.training.ft_method)
     unknown = set(cfg.training.params) - set(defaults)
@@ -313,7 +228,6 @@ def _merge_method_defaults(cfg: TrainingConfig) -> None:
 def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
     """Convert TrainingConfig to the trainer dict format expected by __main__.py."""
     data_config = {
-        "adapter": cfg.data.adapter,
         "data_path": cfg.data.data_path,
         "split": cfg.data.split,
         "image_root": cfg.data.image_root,

@@ -1,22 +1,24 @@
 # vlmintune
 
-This repository is the official implementation of **vlmintune**, a compact multimodal instruction tuning toolkit for vision-language models. The project is organized around reproducible fine-tuning, evaluation, and SSH-based runtime orchestration rather than a single monolithic training script.
+This repository is the official implementation of **vlmintune**, a compact multimodal instruction tuning toolkit for vision-language models. The project is organized around reproducible local fine-tuning and evaluation rather than a single monolithic training script.
 
-`vlmintune` currently supports LoRA-family fine-tuning, freeze tuning, label-to-target (L2T) composition, Hugging Face VQA-style datasets, and a small SSH-based experiment workflow for training and evaluation.
+`vlmintune` currently supports LoRA-family fine-tuning, freeze tuning, label-to-target (L2T) composition, Hugging Face VQA-style datasets, and a small experiment workflow for training and evaluation.
 
 ## Requirements
 
 - Python `>=3.9`
 - A CUDA-capable GPU for practical training and evaluation
 - Core dependencies:
-  - `torch>=2.0`
-  - `torchvision>=0.15`
-  - `transformers>=4.37`
-  - `peft>=0.7`
-  - `accelerate>=0.21`
+  - `torch~=2.11.0`
+  - `torchvision~=0.26.0`
+  - `transformers~=5.7.0`
+  - `peft~=0.19.1`
+  - `accelerate~=1.13.0`
   - `datasets>=2.14`
   - `pillow>=9.0`
   - `pyyaml>=6.0`
+
+The package pins the tested LoRA-family stack directly, and `qlora` additionally expects `bitsandbytes~=0.49.2`. This repository does not depend on `torchao`.
 
 To install the package in editable mode:
 
@@ -36,12 +38,6 @@ To install development extras:
 pip install -e ".[dev]"
 ```
 
-To install SSH / remote execution extras:
-
-```bash
-pip install -e ".[remote]"
-```
-
 ## What Is Included
 
 ### Training methods
@@ -58,23 +54,19 @@ Built-in dataset specs currently cover:
 
 - `lmms-lab/textvqa`
 
-Training uses the Hugging Face adapter path in `src/vlmintune/data/adapters/hf_datasets.py`. The example training configs default to `lmms-lab/textvqa` because it exposes a `train` split on Hugging Face.
+Training uses the built-in Hugging Face dataset loader in `src/vlmintune/data/hf_datasets.py`. The example training configs default to `lmms-lab/textvqa` because it exposes a `train` split on Hugging Face.
 
 ### Evaluation support
 
 - `TextVQA`
 
-### Runtime mode
-
-- `ssh`
-
 ## Repository Layout
 
 ```text
 src/vlmintune/
-  training/      fine-tuning methods, trainer, runtime runner
+  training/      fine-tuning methods, trainer, local CLI entry point
   eval/          inference methods and scoring helpers
-  data/          dataset specs, adapters, canonical sample types
+  data/          dataset specs, Hugging Face dataset loader, canonical sample types
 experiment_setup/
   <experiment>/  per-experiment configs and run scripts
 tests/           lightweight regression tests
@@ -84,7 +76,7 @@ tests/           lightweight regression tests
 
 All training flows are config-driven. Each experiment keeps its own YAML configs and run scripts under `experiment_setup/<experiment_name>/`.
 
-### SSH training
+### Local training
 
 To run one experiment through the SSH runner:
 
@@ -106,10 +98,7 @@ experiment_setup/<experiment_name>/
 
 Notes:
 
-- The local machine only needs the SSH client-side dependency path, for example `pip install -e ".[remote]"`.
-- The remote machine needs the actual training dependencies, for example `pip install -e ".[finetune]"`.
-- If you run directly on the SSH machine, the example setup YAMLs work as-is with `python -m vlmintune.training --config ...` or the local `run_*.sh` wrappers.
-- If you want local-to-remote SSH dispatch from another machine, add `runtime.ssh.host` to the YAML first.
+- Run the commands on the machine that actually has the model weights, GPU, and dependencies installed.
 - Training dataset selection lives under `data.data_path`.
 - Training sample count lives under `data.max_samples`. Set it to `0` or omit it for the full split.
 - Each training run creates an experiment directory with a saved `summary.json`, checkpoint path, config snapshot, and train summary.
@@ -166,7 +155,7 @@ This initial release intentionally evaluates one dataset per run. If you want mu
 
 No pre-trained or fine-tuned checkpoints are currently published from this repository.
 
-Produced adapters and checkpoints are written to the configured `output_dir` on the remote machine.
+Produced adapters and checkpoints are written to the configured `output_dir` on the current machine.
 
 ## Results
 
@@ -189,7 +178,7 @@ pip install -e ".[dev]"
 python -m pytest tests
 ```
 
-If you change training, runtime, or serialization behavior, please run an appropriate targeted validation command and include the result in your PR description.
+If you change training or serialization behavior, please run an appropriate targeted validation command and include the result in your PR description.
 
 ## Project Status
 

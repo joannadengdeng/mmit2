@@ -6,7 +6,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.data.types import CanonicalSample, Turn
-from vlmintune.training.preprocessors.chat_template import ChatTemplatePreprocessor
+from vlmintune.training.chat_template import ChatTemplatePreprocessor
 
 
 class _FakeProcessor:

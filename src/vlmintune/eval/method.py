@@ -1,16 +1,4 @@
-"""LocalMethod — run inference with a locally loaded model (base or PEFT checkpoint).
-
-Used for evaluating trained models on TextVQA-style runs.
-
-Usage:
-    method = LocalMethod.from_checkpoint(
-        base_model_id="llava-hf/llava-1.5-7b-hf",
-        checkpoint_path="output/qlora/final",
-        ft_method="qlora",
-    )
-    # Or just a base model:
-    method = LocalMethod(model, processor)
-"""
+"""Initial local-only model invocation for evaluation."""
 from __future__ import annotations
 
 import json
@@ -21,9 +9,8 @@ import torch
 from PIL import Image
 
 from vlmintune.data.types import CanonicalSample, EvalSample, Turn
-from vlmintune.eval.methods.base import Method
 from vlmintune.training.methods.base import load_processor, load_vlm
-from vlmintune.training.registry import build_training_method
+from vlmintune.training.methods.registry import build_training_method
 
 _SHORT_ANSWER_INSTRUCTION = "Answer with a single short answer only. Do not use a full sentence."
 
@@ -33,11 +20,8 @@ def build_eval_question(question: str) -> str:
     return f"{question}\n{_SHORT_ANSWER_INSTRUCTION}"
 
 
-class LocalMethod(Method):
-    """Inference with a locally loaded VLM model.
-
-    Optimized for eval: short max_new_tokens, greedy decoding.
-    """
+class LocalMethod:
+    """Inference with a locally loaded VLM model."""
 
     def __init__(self, model, processor, device=None):
         self.model = model
@@ -51,7 +35,6 @@ class LocalMethod(Method):
         base_model_id: str,
         quantize_4bit: bool = True,
     ) -> "LocalMethod":
-        """Load an unfine-tuned base model for baseline evaluation."""
         processor = load_processor(base_model_id)
         model = load_vlm(
             base_model_id,
@@ -70,7 +53,6 @@ class LocalMethod(Method):
         quantize_4bit: bool = True,
         **kwargs,
     ) -> "LocalMethod":
-        """Load a base model + optional PEFT checkpoint."""
         if checkpoint_path and os.path.isdir(checkpoint_path):
             if not ft_method:
                 meta_path = os.path.join(checkpoint_path, "vlmintune_meta.json")
@@ -115,7 +97,6 @@ class LocalMethod(Method):
         sample: CanonicalSample,
         image_root: str = "",
     ) -> Dict[str, Any]:
-        """Prepare input for generation."""
         image = None
         if sample.image_path:
             pil = (sample.metadata or {}).get("_pil_image")
@@ -149,8 +130,10 @@ class LocalMethod(Method):
         )
         images = [image] if image is not None else None
         inputs = self.processor(text=text, images=images, return_tensors="pt")
-        return {k: v.to(self.device) if isinstance(v, torch.Tensor) else v
-                for k, v in inputs.items()}
+        return {
+            key: value.to(self.device) if isinstance(value, torch.Tensor) else value
+            for key, value in inputs.items()
+        }
 
     def generate(
         self,
@@ -158,7 +141,6 @@ class LocalMethod(Method):
         max_new_tokens: int = 32,
         temperature: float = 0.0,
     ) -> str:
-        """Generate a response. Default max_new_tokens=32 for short VQA answers."""
         with torch.no_grad():
             output = self.model.generate(
                 **prepared,
@@ -170,3 +152,9 @@ class LocalMethod(Method):
             output[0][prompt_len:], skip_special_tokens=True,
         )
         return response.strip()
+
+
+__all__ = [
+    "LocalMethod",
+    "build_eval_question",
+]

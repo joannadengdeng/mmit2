@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from torch.utils.data import Dataset, IterableDataset
 
-from vlmintune.training.preprocessors.chat_template import ChatTemplatePreprocessor
+from vlmintune.training.chat_template import ChatTemplatePreprocessor
 from vlmintune.training.trainer.helpers import DebugRecorder
 
 

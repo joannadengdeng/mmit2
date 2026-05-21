@@ -12,7 +12,6 @@ _ADAPTER_PATH = os.path.join(
     "src",
     "vlmintune",
     "data",
-    "adapters",
     "hf_datasets.py",
 )
 
@@ -21,7 +20,6 @@ def _load_adapter_module():
     saved_modules = {}
     module_names = [
         "datasets",
-        "vlmintune.data.adapters.base",
         "vlmintune.data.datasets",
         "vlmintune.data.types",
         "vlmintune_test_hf_adapter",
@@ -30,9 +28,6 @@ def _load_adapter_module():
         saved_modules[name] = sys.modules.get(name)
 
     datasets_mod = types.ModuleType("datasets")
-
-    base_mod = types.ModuleType("vlmintune.data.adapters.base")
-    base_mod.DatasetAdapter = object
 
     data_datasets_mod = types.ModuleType("vlmintune.data.datasets")
     data_datasets_mod.DATASET_SPECS = {}
@@ -45,7 +40,6 @@ def _load_adapter_module():
     data_types_mod.CanonicalSample = object
 
     sys.modules["datasets"] = datasets_mod
-    sys.modules["vlmintune.data.adapters.base"] = base_mod
     sys.modules["vlmintune.data.datasets"] = data_datasets_mod
     sys.modules["vlmintune.data.types"] = data_types_mod
 

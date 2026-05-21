@@ -1,4 +1,4 @@
-"""CLI entry point for evaluation."""
+"""CLI entry point for local evaluation."""
 from __future__ import annotations
 
 import argparse
@@ -8,8 +8,6 @@ from typing import Any, Dict
 
 import yaml
 
-from vlmintune.config.runtime import run_remote_module
-from vlmintune.config.training_config import load_runtime_config_dict
 from vlmintune.eval.run import run_eval_config
 
 
@@ -30,16 +28,7 @@ def apply_hf_token(token: str | None, token_file: str | None) -> None:
 
 def run(config_path: str) -> None:
     raw_cfg = load_raw_config(config_path)
-    runtime = load_runtime_config_dict(raw_cfg, require_host=False)
-    if not runtime.ssh.host:
-        run_eval_config(raw_cfg)
-        return
-    run_remote_module(
-        runtime.ssh,
-        module_name="vlmintune.eval",
-        payload=raw_cfg,
-        task_label="evaluation",
-    )
+    run_eval_config(raw_cfg)
 
 
 def main() -> None:

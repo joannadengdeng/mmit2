@@ -1,13 +1,8 @@
-"""Minimal VQA metrics for the initial TextVQA release.
-
-References:
-  - VQA v2: https://visualqa.org/evaluation.html
-"""
+"""Official VQA v2-style metric helpers for the initial TextVQA release."""
 from __future__ import annotations
 
 import re
 from typing import Dict, List
-
 
 _CONTRACTIONS = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve": "could've",
@@ -51,43 +46,63 @@ _CONTRACTIONS = {
 }
 
 _ARTICLES = {"a", "an", "the"}
-_PUNCT = set(r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~""")
+_MANUAL_NUMBER_MAP = {
+    "none": "0",
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+}
+_PUNCT_TO_PROCESS = [
+    ";", "/", "[", "]", '"', "{", "}", "(", ")", "=", "+", "\\", "_", "-",
+    ">", "<", "@", "`", ",", "?", "!",
+]
+_PERIOD_STRIP = re.compile(r"(?<!\d)\.(?!\d)")
+_COMMA_STRIP = re.compile(r"(\d)(,)(\d)")
 
 
-# 1. Validate the configured metric.
 def validate_metric(raw_metric: str) -> str:
-    """Validate the explicit metric for the current release."""
     if raw_metric != "vqa_accuracy":
         raise ValueError("eval.metric must be exactly 'vqa_accuracy'.")
     return raw_metric
 
 
-# 2. Normalize a single answer string before comparison.
 def normalize_answer(answer: str) -> str:
-    """Apply VQA v2 standard normalisation to an answer string."""
-    answer = answer.lower()
+    answer = answer.replace("\n", " ").replace("\t", " ").strip()
 
-    # Expand contractions
-    words = answer.split()
-    words = [_CONTRACTIONS.get(w, w) for w in words]
-    answer = " ".join(words)
+    processed = answer
+    for punct in _PUNCT_TO_PROCESS:
+        if (
+            f"{punct} " in answer
+            or f" {punct}" in answer
+            or _COMMA_STRIP.search(answer) is not None
+        ):
+            processed = processed.replace(punct, "")
+        else:
+            processed = processed.replace(punct, " ")
+    processed = _PERIOD_STRIP.sub("", processed, re.UNICODE)
 
-    # Remove punctuation
-    answer = "".join(ch for ch in answer if ch not in _PUNCT)
+    normalized_words = []
+    for word in processed.lower().split():
+        word = _MANUAL_NUMBER_MAP.get(word, word)
+        if word not in _ARTICLES:
+            normalized_words.append(word)
 
-    # Remove articles
-    words = answer.split()
-    words = [w for w in words if w not in _ARTICLES]
-    answer = " ".join(words)
+    for idx, word in enumerate(normalized_words):
+        if word in _CONTRACTIONS:
+            normalized_words[idx] = _CONTRACTIONS[word]
 
-    # Normalise whitespace + trailing/leading spaces
-    answer = re.sub(r"\s+", " ", answer).strip()
-    return answer
+    return " ".join(normalized_words)
 
 
-# 3. Coerce the raw ground truth into answer strings.
 def coerce_ground_truths(ground_truth: object) -> List[str]:
-    """Convert raw ground truth into a non-empty list of answer strings."""
     if ground_truth is None or ground_truth == "":
         return []
     if isinstance(ground_truth, list):
@@ -95,27 +110,40 @@ def coerce_ground_truths(ground_truth: object) -> List[str]:
     return [str(ground_truth)]
 
 
-# 4. Compute VQA accuracy from the normalized prediction and ground truths.
 def vqa_accuracy(
     prediction: str,
     ground_truths: List[str],
 ) -> float:
-    """Compute soft VQA accuracy for a single prediction.
-
-    VQA v2 metric: min(#humans_agreeing / 3, 1.0) for exact-match.
-    ``ground_truths`` is the list of up to 10 human answers.
-    """
     norm_pred = normalize_answer(prediction)
-    count = sum(1 for gt in ground_truths if normalize_answer(gt) == norm_pred)
-    return min(count / 3.0, 1.0)
+    norm_ground_truths = [normalize_answer(gt) for gt in ground_truths]
+    if not norm_ground_truths:
+        return 0.0
+
+    scores = []
+    for idx, _ in enumerate(norm_ground_truths):
+        matches = sum(
+            1
+            for other_idx, ground_truth in enumerate(norm_ground_truths)
+            if other_idx != idx and ground_truth == norm_pred
+        )
+        scores.append(min(1.0, matches / 3.0))
+    return sum(scores) / len(scores)
 
 
 def score_textvqa_prediction(
     prediction: str,
     ground_truth: object,
 ) -> Dict[str, float]:
-    """Score one TextVQA prediction with the single supported metric."""
     ground_truths = coerce_ground_truths(ground_truth)
     if not ground_truths:
         return {}
     return {"vqa_accuracy": vqa_accuracy(prediction, ground_truths)}
+
+
+__all__ = [
+    "coerce_ground_truths",
+    "normalize_answer",
+    "score_textvqa_prediction",
+    "validate_metric",
+    "vqa_accuracy",
+]

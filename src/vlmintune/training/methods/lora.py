@@ -12,7 +12,7 @@ import torch
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
-from vlmintune.training.losses.ce_loss import CrossEntropyLoss
+from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
 IGNORE_INDEX = -100
 

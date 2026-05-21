@@ -9,22 +9,20 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str | None]] = {
-    "registry": ("vlmintune.training.registry", None),
-    "Method": ("vlmintune.eval.methods.base", "Method"),
-    "LocalMethod": ("vlmintune.eval.methods.local_method", "LocalMethod"),
+    "registry": ("vlmintune.training.methods.registry", None),
+    "LocalMethod": ("vlmintune.eval.method", "LocalMethod"),
     "CanonicalSample": ("vlmintune.data.types", "CanonicalSample"),
     "EvalSample": ("vlmintune.data.types", "EvalSample"),
     "Turn": ("vlmintune.data.types", "Turn"),
-    "HFDatasetsAdapter": ("vlmintune.data.adapters.hf_datasets", "HFDatasetsAdapter"),
-    "DatasetProfile": ("vlmintune.data.adapters.hf_datasets", "DatasetProfile"),
+    "HFDatasetsAdapter": ("vlmintune.data.hf_datasets", "HFDatasetsAdapter"),
+    "DatasetProfile": ("vlmintune.data.hf_datasets", "DatasetProfile"),
     "QLoRAMethod": ("vlmintune.training.methods.lora", "QLoRAMethod"),
     "LoRAMethod": ("vlmintune.training.methods.lora", "LoRAMethod"),
     "DoRAMethod": ("vlmintune.training.methods.dora", "DoRAMethod"),
     "FreezeTuningMethod": ("vlmintune.training.methods.freeze", "FreezeTuningMethod"),
     "L2TMethod": ("vlmintune.training.methods.l2t", "L2TMethod"),
-    "MoReSMethod": ("vlmintune.training.methods.mores", "MoReSMethod"),
     "ChatTemplatePreprocessor": (
-        "vlmintune.training.preprocessors.chat_template",
+        "vlmintune.training.chat_template",
         "ChatTemplatePreprocessor",
     ),
 }

@@ -6,14 +6,10 @@ from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "TrainingConfig": ("vlmintune.config.training_config", "TrainingConfig"),
-    "RuntimeConfig": ("vlmintune.config.runtime", "RuntimeConfig"),
-    "SSHConfig": ("vlmintune.config.runtime", "SSHConfig"),
     "ModelConfig": ("vlmintune.config.training_config", "ModelConfig"),
     "TrainingParams": ("vlmintune.config.training_config", "TrainingParams"),
     "ExperimentConfig": ("vlmintune.config.training_config", "ExperimentConfig"),
     "DataConfig": ("vlmintune.config.training_config", "DataConfig"),
-    "run_remote_module": ("vlmintune.config.runtime", "run_remote_module"),
-    "load_runtime_config_dict": ("vlmintune.config.training_config", "load_runtime_config_dict"),
     "load_config": ("vlmintune.config.training_config", "load_config"),
     "load_config_dict": ("vlmintune.config.training_config", "load_config_dict"),
     "config_to_trainer_dict": ("vlmintune.config.training_config", "config_to_trainer_dict"),

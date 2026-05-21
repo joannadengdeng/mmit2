@@ -2,7 +2,6 @@
 
 Usage::
 
-    # YAML config on the current machine:
     python -m vlmintune.training --config experiment_setup/my_experiment/train_config.yaml
 
     # JSON config (used internally after YAML normalization):
@@ -13,7 +12,6 @@ Config schema::
     model:
       model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
     data:
-      adapter: "hf_datasets"
       data_path: "..."
       split: "train"
     training_method: "qlora"
@@ -99,17 +97,6 @@ def create_experiment_tracker(config: dict, model_path: str, train_config: Train
     return tracker
 
 
-def load_config_or_dispatch(config_path: str) -> dict | None:
-    """Load a YAML config locally, or dispatch over SSH if it includes a host."""
-    cfg = load_config(config_path, require_host=False)
-    if cfg.runtime.ssh.host:
-        from vlmintune.training.runner import run as run_over_ssh
-
-        run_over_ssh(config_path)
-        return None
-    return config_to_trainer_dict(cfg)
-
-
 def main():
     parser = argparse.ArgumentParser(description="vlmintune headless trainer")
     parser.add_argument(
@@ -130,10 +117,7 @@ def main():
     if args.config_json:
         config = json.loads(args.config_json)
     elif args.config:
-        loaded = load_config_or_dispatch(args.config)
-        if loaded is None:
-            return
-        config = loaded
+        config = config_to_trainer_dict(load_config(args.config))
     else:
         parser.error("Either --config or --config-json is required")
 

@@ -1,11 +1,10 @@
-"""HuggingFace dataset adapter backed by per-dataset VQA specs."""
+"""Hugging Face dataset loader backed by per-dataset VQA specs."""
 from __future__ import annotations
 
 from typing import Dict, Iterator, List, Optional
 
 import datasets
 
-from vlmintune.data.adapters.base import DatasetAdapter
 from vlmintune.data.datasets import (
     DATASET_SPECS,
     ColumnMapping,
@@ -18,7 +17,7 @@ from vlmintune.data.types import CanonicalSample
 DatasetProfile = HFDatasetSpec
 
 
-class HFDatasetsAdapter(DatasetAdapter):
+class HFDatasetsAdapter:
     """Load a HuggingFace VQA dataset and yield ``CanonicalSample`` rows."""
 
     def __init__(
@@ -194,3 +193,6 @@ class HFDatasetsAdapter(DatasetAdapter):
     @property
     def profile(self) -> HFDatasetSpec:
         return self._spec
+
+
+__all__ = ["DatasetProfile", "HFDatasetsAdapter"]
