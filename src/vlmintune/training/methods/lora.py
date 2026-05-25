@@ -33,7 +33,7 @@ class LoRAMethod(TrainingMethod):
             "target_modules": [],
         }
 
-    def _lora_kwargs(self) -> dict:
+    def lora_kwargs(self) -> dict:
         """Extra kwargs for LoraConfig. Override in subclasses."""
         return {}
 
@@ -51,7 +51,7 @@ class LoRAMethod(TrainingMethod):
             r=r, lora_alpha=alpha, lora_dropout=dropout,
             target_modules=targets,
             task_type=TaskType.CAUSAL_LM,
-            **self._lora_kwargs(),
+            **self.lora_kwargs(),
         )
         peft_model = get_peft_model(model, lora_config)
 

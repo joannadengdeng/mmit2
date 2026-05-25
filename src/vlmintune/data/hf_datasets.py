@@ -49,7 +49,7 @@ class HFDatasetsAdapter:
             streaming = True
             self.streaming = True
 
-        self._hf_dataset = self._load_dataset(
+        self._hf_dataset = self.load_dataset(
             datasets,
             load_pos,
             split,
@@ -58,7 +58,7 @@ class HFDatasetsAdapter:
         )
 
         if not self.load_images and not self.streaming:
-            self._disable_eager_image_decode(datasets)
+            self.disable_eager_image_decode(datasets)
 
         if max_samples is not None and not self.streaming:
             self._hf_dataset = self._hf_dataset.select(range(min(max_samples, len(self._hf_dataset))))
@@ -78,7 +78,7 @@ class HFDatasetsAdapter:
                 f"Built-ins: {sorted(DATASET_SPECS)}"
             )
 
-    def _load_dataset(
+    def load_dataset(
         self,
         datasets_mod,
         load_pos: tuple,
@@ -145,7 +145,7 @@ class HFDatasetsAdapter:
             f"(streaming={streaming})."
         )
 
-    def _disable_eager_image_decode(self, datasets_mod) -> None:
+    def disable_eager_image_decode(self, datasets_mod) -> None:
         try:
             for col_name in self._hf_dataset.column_names:
                 feat = self._hf_dataset.features.get(col_name)

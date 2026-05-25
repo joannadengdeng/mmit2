@@ -19,7 +19,7 @@ def test_limited_sample_training_prefers_streaming(monkeypatch):
         )
         return []
 
-    monkeypatch.setattr(HFDatasetsAdapter, "_load_dataset", fake_load_dataset)
+    monkeypatch.setattr(HFDatasetsAdapter, "load_dataset", fake_load_dataset)
 
     adapter = HFDatasetsAdapter(
         dataset_name="lmms-lab/textvqa",

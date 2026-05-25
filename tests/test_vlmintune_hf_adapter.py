@@ -6,7 +6,7 @@ import types
 import pytest
 
 
-_ADAPTER_PATH = os.path.join(
+ADAPTER_PATH = os.path.join(
     os.path.dirname(__file__),
     "..",
     "src",
@@ -16,7 +16,7 @@ _ADAPTER_PATH = os.path.join(
 )
 
 
-def _load_adapter_module():
+def load_adapter_module():
     saved_modules = {}
     module_names = [
         "datasets",
@@ -43,7 +43,7 @@ def _load_adapter_module():
     sys.modules["vlmintune.data.datasets"] = data_datasets_mod
     sys.modules["vlmintune.data.types"] = data_types_mod
 
-    spec = importlib.util.spec_from_file_location("vlmintune_test_hf_adapter", _ADAPTER_PATH)
+    spec = importlib.util.spec_from_file_location("vlmintune_test_hf_adapter", ADAPTER_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -51,7 +51,7 @@ def _load_adapter_module():
     return module, saved_modules
 
 
-def _restore_modules(saved_modules):
+def restore_modules(saved_modules):
     for name, module in saved_modules.items():
         if module is None:
             sys.modules.pop(name, None)
@@ -60,24 +60,24 @@ def _restore_modules(saved_modules):
 
 
 def test_rejects_unavailable_requested_split():
-    module, saved_modules = _load_adapter_module()
+    module, saved_modules = load_adapter_module()
 
-    class _SplitInfo:
+    class SplitInfo:
         def __init__(self, num_examples):
             self.num_examples = num_examples
 
-    class _Builder:
+    class Builder:
         info = types.SimpleNamespace(
             splits={
-                "validation": _SplitInfo(214354),
-                "test": _SplitInfo(447793),
+                "validation": SplitInfo(214354),
+                "test": SplitInfo(447793),
             }
         )
 
-    class _DatasetsMod:
+    class DatasetsMod:
         @staticmethod
         def load_dataset_builder(*args):
-            return _Builder()
+            return Builder()
 
         @staticmethod
         def load_dataset(*args, **kwargs):
@@ -87,32 +87,32 @@ def test_rejects_unavailable_requested_split():
         adapter = module.HFDatasetsAdapter.__new__(module.HFDatasetsAdapter)
         adapter.dataset_name = "lmms-lab/textvqa"
         with pytest.raises(ValueError, match="Requested split 'train'"):
-            adapter._load_dataset(_DatasetsMod, ("lmms-lab/textvqa",), "train", True, True)
+            adapter.load_dataset(DatasetsMod, ("lmms-lab/textvqa",), "train", True, True)
     finally:
-        _restore_modules(saved_modules)
+        restore_modules(saved_modules)
 
 
 def test_does_not_fallback_to_other_split_when_requested_split_fails():
-    module, saved_modules = _load_adapter_module()
+    module, saved_modules = load_adapter_module()
 
-    class _SplitInfo:
+    class SplitInfo:
         def __init__(self, num_examples):
             self.num_examples = num_examples
 
-    class _Builder:
+    class Builder:
         info = types.SimpleNamespace(
             splits={
-                "train": _SplitInfo(443757),
-                "validation": _SplitInfo(214354),
+                "train": SplitInfo(443757),
+                "validation": SplitInfo(214354),
             }
         )
 
     calls = []
 
-    class _DatasetsMod:
+    class DatasetsMod:
         @staticmethod
         def load_dataset_builder(*args):
-            return _Builder()
+            return Builder()
 
         @staticmethod
         def load_dataset(*args, **kwargs):
@@ -123,8 +123,8 @@ def test_does_not_fallback_to_other_split_when_requested_split_fails():
         adapter = module.HFDatasetsAdapter.__new__(module.HFDatasetsAdapter)
         adapter.dataset_name = "lmms-lab/textvqa"
         with pytest.raises(RuntimeError, match="Failed to load dataset 'lmms-lab/textvqa' split 'train'"):
-            adapter._load_dataset(_DatasetsMod, ("lmms-lab/textvqa",), "train", True, True)
+            adapter.load_dataset(DatasetsMod, ("lmms-lab/textvqa",), "train", True, True)
         assert calls
         assert set(calls) == {"train"}
     finally:
-        _restore_modules(saved_modules)
+        restore_modules(saved_modules)

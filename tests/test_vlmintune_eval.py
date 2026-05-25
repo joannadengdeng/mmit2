@@ -267,7 +267,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
         self._num_examples = len(rows)
         return rows
 
-    monkeypatch.setattr(HFDatasetsAdapter, "_load_dataset", fake_load_dataset)
+    monkeypatch.setattr(HFDatasetsAdapter, "load_dataset", fake_load_dataset)
 
     result = evaluate_vqa_dataset(
         _DummyMethod(),

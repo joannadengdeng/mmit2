@@ -6,7 +6,7 @@ import types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
-def _load_modeling_with_stubs():
+def load_modeling_with_stubs():
     calls = {
         "processor_loads": [],
         "model_loads": [],
@@ -47,7 +47,7 @@ def _load_modeling_with_stubs():
     return modeling, calls, saved_modules
 
 
-def _restore_modules(saved_modules):
+def restore_modules(saved_modules):
     for name, module in saved_modules.items():
         if module is None:
             sys.modules.pop(name, None)
@@ -56,7 +56,7 @@ def _restore_modules(saved_modules):
 
 
 def test_load_processor_uses_trust_remote_code():
-    modeling, calls, saved_modules = _load_modeling_with_stubs()
+    modeling, calls, saved_modules = load_modeling_with_stubs()
 
     try:
         processor = modeling.load_processor("fake/model")
@@ -66,11 +66,11 @@ def test_load_processor_uses_trust_remote_code():
         assert args == ("fake/model",)
         assert kwargs["trust_remote_code"] is True
     finally:
-        _restore_modules(saved_modules)
+        restore_modules(saved_modules)
 
 
 def test_load_vlm_builds_quantized_kwargs():
-    modeling, calls, saved_modules = _load_modeling_with_stubs()
+    modeling, calls, saved_modules = load_modeling_with_stubs()
 
     try:
         model = modeling.load_vlm("fake/model", quantize_4bit=True)
@@ -82,4 +82,4 @@ def test_load_vlm_builds_quantized_kwargs():
         assert isinstance(kwargs["quantization_config"], dict)
         assert kwargs["quantization_config"]["load_in_4bit"] is True
     finally:
-        _restore_modules(saved_modules)
+        restore_modules(saved_modules)

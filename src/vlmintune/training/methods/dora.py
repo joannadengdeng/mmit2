@@ -18,5 +18,5 @@ class DoRAMethod(LoRAMethod):
     name = "dora"
     display_name = "DoRA"
 
-    def _lora_kwargs(self):
+    def lora_kwargs(self):
         return {"use_dora": True}

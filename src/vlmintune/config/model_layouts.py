@@ -21,13 +21,13 @@ class ModelLayout:
 TransformerLayerResolver = Callable[[nn.Module, ModelLayout], Sequence[nn.Module]]
 
 
-def _iter_strs(values: Iterable[Any] | None) -> tuple[str, ...]:
+def iter_strs(values: Iterable[Any] | None) -> tuple[str, ...]:
     if not values:
         return ()
     return tuple(str(value).strip() for value in values if str(value).strip())
 
 
-def _load_layouts() -> dict[str, ModelLayout]:
+def load_layouts() -> dict[str, ModelLayout]:
     layout_path = resources.files("vlmintune.config").joinpath("model_layouts.yaml")
     raw = yaml.safe_load(layout_path.read_text(encoding="utf-8")) or {}
     raw_layouts: Dict[str, Dict[str, Any]] = raw.get("layouts", {})
@@ -37,14 +37,14 @@ def _load_layouts() -> dict[str, ModelLayout]:
         layouts[name] = ModelLayout(
             name=name,
             description=str(item.get("description", "")).strip(),
-            model_ids=_iter_strs(matches.get("model_ids")),
-            model_types=_iter_strs(matches.get("model_types")),
+            model_ids=iter_strs(matches.get("model_ids")),
+            model_types=iter_strs(matches.get("model_types")),
             transformer_layer_path=str(item["transformer_layer_path"]).strip(),
         )
     return layouts
 
 
-_MODEL_LAYOUTS = _load_layouts()
+_MODEL_LAYOUTS = load_layouts()
 
 
 def list_model_layouts() -> list[str]:

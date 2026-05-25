@@ -25,7 +25,7 @@ from vlmintune.training.methods.registry import (
     list_training_methods,
 )
 
-_LORA_FAMILY_METHODS = {"lora", "qlora", "dora"}
+_LORA_FAMILY_METHODS = {"lora", "qlora", "dora", "l2t"}
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────
@@ -193,9 +193,6 @@ def validate(cfg: TrainingConfig) -> None:
     method_name = cfg.training.ft_method
     method_params = cfg.training.params
     requires_targets = method_name in _LORA_FAMILY_METHODS
-    if method_name == "l2t":
-        base_method = method_params.get("base_method", "lora")
-        requires_targets = base_method in _LORA_FAMILY_METHODS
     if requires_targets and not method_params.get("target_modules"):
         errors.append(
             "training.params.target_modules: required non-empty list for "
