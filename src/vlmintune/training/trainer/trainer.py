@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from vlmintune.training.methods.base import load_processor, load_vlm
 from vlmintune.training.trainer.helpers import (
+    build_label_supervision_debug,
     build_dataset,
     build_skip_logger,
     DebugRecorder,
@@ -26,7 +27,6 @@ NON_FORWARD_BATCH_KEYS = {
     "prompt_mask",
     "instruction_supervision_mask",
 }
-
 
 @dataclass
 class TrainerConfig:
@@ -144,13 +144,24 @@ class Trainer:
             for step, batch in enumerate(loader):
                 if not batch:
                     continue
-                if not logged_first_batch:
-                    emit("log", {"message": describe_batch(batch), "level": "INFO"})
-                    logged_first_batch = True
                 batch = to_device(batch, device)
+                labels_before = batch["labels"].clone() if not logged_first_batch else None
                 batch["labels"] = method_obj.preprocess_labels(
                     batch["input_ids"], batch["labels"], batch_meta=batch,
                 )
+                if not logged_first_batch:
+                    emit("log", {"message": describe_batch(batch), "level": "INFO"})
+                    emit(
+                        "debug",
+                        build_label_supervision_debug(
+                            self.processor,
+                            batch["input_ids"],
+                            labels_before,
+                            batch["labels"],
+                            batch.get("instruction_supervision_mask"),
+                        ),
+                    )
+                    logged_first_batch = True
 
                 forward_batch = {
                     key: value for key, value in batch.items() if key not in NON_FORWARD_BATCH_KEYS

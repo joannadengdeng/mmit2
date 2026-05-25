@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List, Optional
 
 import torch
 from torch.optim.lr_scheduler import LambdaLR
@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from vlmintune.data.hf_datasets import HFDatasetsAdapter
 
 DEBUG_EXAMPLE_LIMIT = 5
+IGNORE_INDEX = -100
 
 
 # Event helpers
@@ -66,6 +67,96 @@ def describe_batch(batch: Dict[str, Any]) -> str:
         if key in batch:
             parts.append(f"{key}={shape_str(batch[key])}")
     return "First batch shapes: " + ", ".join(parts)
+
+
+def decode_debug_tokens(processor: Any, token_ids: List[int]) -> str:
+    if not token_ids:
+        return ""
+    if hasattr(processor, "decode"):
+        return str(
+            processor.decode(
+                token_ids,
+                skip_special_tokens=False,
+                clean_up_tokenization_spaces=False,
+            )
+        )
+    tokenizer = getattr(processor, "tokenizer", processor)
+    if hasattr(tokenizer, "decode"):
+        return str(
+            tokenizer.decode(
+                token_ids,
+                skip_special_tokens=False,
+                clean_up_tokenization_spaces=False,
+            )
+        )
+    return " ".join(str(token_id) for token_id in token_ids)
+
+
+def build_supervised_span_preview(
+    processor: Any,
+    input_ids: torch.Tensor,
+    supervised_mask: torch.Tensor,
+) -> List[Dict[str, Any]]:
+    token_ids = input_ids.detach().cpu().tolist()
+    mask_list = supervised_mask.detach().cpu().tolist()
+    previews: List[Dict[str, Any]] = []
+    span_start: Optional[int] = None
+
+    for idx, is_selected in enumerate(mask_list + [False]):
+        if is_selected and span_start is None:
+            span_start = idx
+        if not is_selected and span_start is not None:
+            span_token_ids = token_ids[span_start:idx]
+            previews.append(
+                {
+                    "start": span_start,
+                    "end": idx,
+                    "token_count": len(span_token_ids),
+                    "text": decode_debug_tokens(processor, span_token_ids),
+                }
+            )
+            span_start = None
+
+    return previews
+
+
+def build_label_supervision_debug(
+    processor: Any,
+    input_ids: torch.Tensor,
+    labels_before: torch.Tensor,
+    labels_after: torch.Tensor,
+    instruction_mask: Optional[torch.Tensor] = None,
+) -> Dict[str, Any]:
+    restored_mask = (labels_before == IGNORE_INDEX) & (labels_after != IGNORE_INDEX)
+    debug: Dict[str, Any] = {
+        "kind": "label_supervision",
+        "supervised_tokens_before": int((labels_before != IGNORE_INDEX).sum().item()),
+        "supervised_tokens_after": int((labels_after != IGNORE_INDEX).sum().item()),
+        "restored_tokens_into_loss": int(restored_mask.sum().item()),
+        "first_sample_supervised_spans_before": build_supervised_span_preview(
+            processor,
+            input_ids[0],
+            labels_before[0] != IGNORE_INDEX,
+        ),
+        "first_sample_supervised_spans_after": build_supervised_span_preview(
+            processor,
+            input_ids[0],
+            labels_after[0] != IGNORE_INDEX,
+        ),
+        "first_sample_restored_spans": build_supervised_span_preview(
+            processor,
+            input_ids[0],
+            restored_mask[0],
+        ),
+    }
+    if instruction_mask is not None:
+        debug["instruction_mask_tokens"] = int(instruction_mask.sum().item())
+        debug["first_sample_instruction_spans"] = build_supervised_span_preview(
+            processor,
+            input_ids[0],
+            instruction_mask[0],
+        )
+    return debug
 
 
 # Dataset helpers
