@@ -8,13 +8,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from vlmintune.training.methods.l2t import L2TMethod
 
 
-def test_l2t_unmasks_prompt_only():
+def test_l2t_unmasks_instruction_only():
     method = L2TMethod()
-    method.special_token_ids = {12}
     input_ids = torch.tensor([[11, 12, 13, 14, 0]])
     labels = torch.tensor([[-100, -100, -100, 14, -100]])
     batch_meta = {
-        "prompt_mask": torch.tensor([[1, 1, 1, 0, 0]], dtype=torch.bool),
+        "instruction_supervision_mask": torch.tensor([[1, 0, 1, 0, 0]], dtype=torch.bool),
         "attention_mask": torch.tensor([[1, 1, 1, 1, 0]]),
     }
 

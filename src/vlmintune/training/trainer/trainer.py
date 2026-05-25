@@ -24,6 +24,7 @@ from vlmintune.training.trainer.tokenization import build_tokenized_dataset, saf
 
 NON_FORWARD_BATCH_KEYS = {
     "prompt_mask",
+    "instruction_supervision_mask",
 }
 
 
