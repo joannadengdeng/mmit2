@@ -6,6 +6,7 @@ SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
+HF_TOKEN_FILE="${HF_TOKEN_FILE:-$ROOT_DIR/.hf_token}"
 
 cd "$ROOT_DIR"
 
@@ -25,5 +26,9 @@ if [[ "$SKIP_INSTALL" != "1" ]]; then
   python -m pip install -e ".[finetune]"
 fi
 
-python -m vlmintune.eval --config "$SETUP_DIR/eval_config.yaml" "$@"
+HF_TOKEN_ARGS=()
+if [[ -s "$HF_TOKEN_FILE" ]]; then
+  HF_TOKEN_ARGS=(--hf-token-file "$HF_TOKEN_FILE")
+fi
 
+python -m vlmintune.eval "${HF_TOKEN_ARGS[@]}" --config "$SETUP_DIR/eval_config.yaml" "$@"

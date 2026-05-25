@@ -1,6 +1,7 @@
 .DS_Store
 .pytest_cache/
 .venv/
+.hf_token
 __pycache__/
 *.pyc
 build/
