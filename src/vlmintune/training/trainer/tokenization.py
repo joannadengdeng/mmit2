@@ -16,6 +16,7 @@ class TokenizedDatasetBase:
         preprocessor,
         processor,
         image_root: str,
+        max_length: int,
         skip_logger: Callable[[Any, Exception], None],
         debug_recorder: DebugRecorder,
     ) -> None:
@@ -23,6 +24,7 @@ class TokenizedDatasetBase:
         self.preprocessor = preprocessor
         self.processor = processor
         self.image_root = image_root
+        self.max_length = max_length
         self.skip_logger = skip_logger
         self.debug_recorder = debug_recorder
 
@@ -33,7 +35,7 @@ class TokenizedDatasetBase:
                 sample,
                 self.processor,
                 image_root=self.image_root,
-                max_length=2048,
+                max_length=self.max_length,
             )
             self.debug_recorder.record_prompt(result.pop("prompt_preview"))
             return result
@@ -69,6 +71,7 @@ def build_tokenized_dataset(
     adapter,
     processor,
     image_root: str,
+    max_length: int,
     skip_logger: Callable[[Any, Exception], None],
     debug_recorder: DebugRecorder,
 ):
@@ -79,6 +82,7 @@ def build_tokenized_dataset(
         preprocessor,
         processor,
         image_root,
+        max_length,
         skip_logger,
         debug_recorder,
     )

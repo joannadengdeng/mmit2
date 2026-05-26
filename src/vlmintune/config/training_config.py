@@ -41,6 +41,10 @@ class TrainingParams:
     num_epochs: int = 3
     per_device_batch_size: int = 4
     gradient_accumulation_steps: int = 4
+    max_length: int = 2048
+    dataloader_num_workers: int = 0
+    dataloader_pin_memory: bool = False
+    dataloader_persistent_workers: bool = False
     learning_rate: float = 2e-4
     warmup_ratio: float = 0.03
     weight_decay: float = 0.0
@@ -94,6 +98,10 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
             num_epochs=int(raw_training.get("num_epochs", 3)),
             per_device_batch_size=int(raw_training.get("per_device_batch_size", 4)),
             gradient_accumulation_steps=int(raw_training.get("gradient_accumulation_steps", 4)),
+            max_length=int(raw_training.get("max_length", 2048)),
+            dataloader_num_workers=int(raw_training.get("dataloader_num_workers", 0)),
+            dataloader_pin_memory=bool(raw_training.get("dataloader_pin_memory", False)),
+            dataloader_persistent_workers=bool(raw_training.get("dataloader_persistent_workers", False)),
             learning_rate=float(raw_training.get("learning_rate", 2e-4)),
             warmup_ratio=float(raw_training.get("warmup_ratio", 0.03)),
             weight_decay=float(raw_training.get("weight_decay", 0.0)),
@@ -251,6 +259,10 @@ def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
             "num_epochs": cfg.training.num_epochs,
             "per_device_batch_size": cfg.training.per_device_batch_size,
             "gradient_accumulation_steps": cfg.training.gradient_accumulation_steps,
+            "max_length": cfg.training.max_length,
+            "dataloader_num_workers": cfg.training.dataloader_num_workers,
+            "dataloader_pin_memory": cfg.training.dataloader_pin_memory,
+            "dataloader_persistent_workers": cfg.training.dataloader_persistent_workers,
             "learning_rate": cfg.training.learning_rate,
             "warmup_ratio": cfg.training.warmup_ratio,
             "weight_decay": cfg.training.weight_decay,

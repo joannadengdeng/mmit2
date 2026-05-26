@@ -13,8 +13,12 @@ experiment:
 training:
   ft_method: lora
   num_epochs: 1
-  per_device_batch_size: 1
-  gradient_accumulation_steps: 4
+  per_device_batch_size: 2
+  gradient_accumulation_steps: 2
+  max_length: 1536
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+  dataloader_persistent_workers: true
   learning_rate: 2.0e-4
   warmup_ratio: 0.03
   weight_decay: 0.0

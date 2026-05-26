@@ -38,6 +38,10 @@ class TrainerConfig:
     num_epochs: int = 1
     per_device_batch_size: int = 4
     gradient_accumulation_steps: int = 4
+    max_length: int = 2048
+    dataloader_num_workers: int = 0
+    dataloader_pin_memory: bool = False
+    dataloader_persistent_workers: bool = False
     learning_rate: float = 2e-5
     warmup_ratio: float = 0.03
     weight_decay: float = 0.0
@@ -86,6 +90,7 @@ class Trainer:
             adapter=adapter,
             processor=self.processor,
             image_root=config.data_config.get("image_root", ""),
+            max_length=config.max_length,
             skip_logger=build_skip_logger(debug_recorder),
             debug_recorder=debug_recorder,
         )
@@ -108,6 +113,11 @@ class Trainer:
             shuffle=not getattr(adapter, "streaming", False),
             collate_fn=lambda samples: safe_collate(preprocessor, samples),
             drop_last=True,
+            num_workers=config.dataloader_num_workers,
+            pin_memory=config.dataloader_pin_memory,
+            persistent_workers=(
+                config.dataloader_persistent_workers and config.dataloader_num_workers > 0
+            ),
         )
         batches_per_epoch = max(1, dataset_len // config.per_device_batch_size)
         steps_per_epoch = max(1, batches_per_epoch // config.gradient_accumulation_steps)
@@ -236,6 +246,10 @@ class Trainer:
                         "num_epochs": config.num_epochs,
                         "per_device_batch_size": config.per_device_batch_size,
                         "gradient_accumulation_steps": config.gradient_accumulation_steps,
+                        "max_length": config.max_length,
+                        "dataloader_num_workers": config.dataloader_num_workers,
+                        "dataloader_pin_memory": config.dataloader_pin_memory,
+                        "dataloader_persistent_workers": config.dataloader_persistent_workers,
                         "learning_rate": config.learning_rate,
                         "warmup_ratio": config.warmup_ratio,
                         "weight_decay": config.weight_decay,
