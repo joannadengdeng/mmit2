@@ -130,6 +130,15 @@ class TrainingMethod(ABC):
         """
         return labels
 
+    def build_forward_batch(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        """Select the subset of batch keys passed into model(...).
+
+        Most methods only need the standard tensors. Methods with extra runtime
+        metadata can override this to stash metadata and/or drop unsupported keys.
+        """
+        excluded_keys = {"instruction_supervision_mask"}
+        return {key: value for key, value in batch.items() if key not in excluded_keys}
+
     @abstractmethod
     def compute_loss(
         self,

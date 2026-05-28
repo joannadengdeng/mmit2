@@ -5,11 +5,12 @@ import json
 import pytest
 import torch
 import torch.nn as nn
+from PIL import Image
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.data.hf_datasets import HFDatasetsAdapter
-from vlmintune.data.types import EvalSample
+from vlmintune.data.types import CanonicalSample, EvalSample, Turn
 from vlmintune.eval.method import (
     LocalMethod,
 )
@@ -231,10 +232,13 @@ class _DummyMethod:
 class _FakeEvalModel(nn.Module):
     def __init__(self):
         super().__init__()
+        self.config = type("Config", (), {"image_token_id": 99})()
         self.dummy = nn.Parameter(torch.zeros(1))
 
 
 class _FakeEvalProcessor:
+    image_token_id = 99
+
     def __init__(self):
         self.last_text = ""
 
@@ -244,6 +248,11 @@ class _FakeEvalProcessor:
 
     def __call__(self, text, images=None, return_tensors="pt"):
         self.last_text = text
+        if images is not None:
+            return {
+                "input_ids": torch.tensor([[99, 99, 1]]),
+                "attention_mask": torch.tensor([[1, 1, 1]]),
+            }
         return {
             "input_ids": torch.tensor([[1]]),
             "attention_mask": torch.tensor([[1]]),
@@ -307,3 +316,22 @@ def test_local_method_eval_prompt_requests_short_answer():
 
     assert "single short answer only" in processor.last_text.lower()
     assert "do not use a full sentence" in processor.last_text.lower()
+
+
+def test_local_method_prepare_input_adds_intervention_mask_for_mores_models():
+    processor = _FakeEvalProcessor()
+    model = _FakeEvalModel()
+    model.mores_adapters = nn.ModuleList()
+    method = LocalMethod(model, processor)
+
+    prepared = method.prepare_input(
+        CanonicalSample(
+            id="1",
+            image_path="cat.png",
+            turns=[Turn(role="user", content="What animal is this?")],
+            metadata={"_pil_image": Image.new("RGB", (4, 4), color="white")},
+        )
+    )
+
+    assert "intervention_mask" in prepared
+    assert prepared["intervention_mask"].tolist() == [[True, True, False]]

@@ -10,6 +10,7 @@ from PIL import Image
 
 from vlmintune.data.types import CanonicalSample, EvalSample, Turn
 from vlmintune.training.methods.base import load_processor, load_vlm
+from vlmintune.training.methods.mores import build_mores_intervention_mask
 from vlmintune.training.methods.registry import build_training_method
 
 _SHORT_ANSWER_INSTRUCTION = "Answer with a single short answer only. Do not use a full sentence."
@@ -87,7 +88,7 @@ class LocalMethod:
         cs = CanonicalSample(
             id=sample.id,
             image_path=sample.image_path,
-            turns=[Turn(role="human", content=build_eval_question(sample.question))],
+            turns=[Turn(role="user", content=build_eval_question(sample.question))],
             metadata=sample.metadata,
         )
         return self.prepare_input(cs, image_root=image_root)
@@ -109,7 +110,7 @@ class LocalMethod:
 
         question = ""
         for turn in sample.turns:
-            if turn.role == "human":
+            if turn.role == "user":
                 question = turn.content
                 break
         if not question:
@@ -130,6 +131,12 @@ class LocalMethod:
         )
         images = [image] if image is not None else None
         inputs = self.processor(text=text, images=images, return_tensors="pt")
+        if hasattr(self.model, "mores_adapters"):
+            intervention_mask = build_mores_intervention_mask(
+                self.model.config,
+                inputs["input_ids"].squeeze(0),
+            )
+            inputs["intervention_mask"] = intervention_mask.unsqueeze(0)
         return {
             key: value.to(self.device) if isinstance(value, torch.Tensor) else value
             for key, value in inputs.items()

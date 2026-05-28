@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class Turn:
-    role: str     # "human" | "assistant"
+    role: str     # "user" | "assistant"
     content: str
 
 
@@ -25,7 +25,7 @@ class CanonicalSample:
     @property
     def first_question(self) -> str:
         for t in self.turns:
-            if t.role == "human":
+            if t.role == "user":
                 return t.content
         return ""
 

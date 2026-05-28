@@ -47,6 +47,7 @@ pip install -e ".[dev]"
 - `dora`
 - `freeze`
 - `l2t`
+- `mores`
 
 ### Dataset support
 

@@ -1,4 +1,4 @@
-"""Chat-template preprocessor with explicit prompt masking."""
+"""Chat-template preprocessor for single-sample tokenization and batch collation."""
 from __future__ import annotations
 
 import os
@@ -27,7 +27,12 @@ def load_image(sample: CanonicalSample, image_root: str = "") -> Optional[Image.
 def build_messages(sample: CanonicalSample, has_image: bool) -> List[Dict[str, Any]]:
     messages: List[Dict[str, Any]] = []
     for turn in sample.turns:
-        role = "user" if turn.role == "human" else "assistant"
+        if turn.role == "user":
+            role = "user"
+        elif turn.role == "assistant":
+            role = "assistant"
+        else:
+            raise ValueError(f"Unsupported turn role for chat template: {turn.role}")
         if role == "user" and has_image and not messages:
             content = [{"type": "image"}, {"type": "text", "text": turn.content}]
         else:
@@ -44,111 +49,20 @@ def build_prompt_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
             break
     return messages if last_assistant_idx < 0 else messages[:last_assistant_idx]
 
-
-def extract_instruction_texts(sample: CanonicalSample) -> List[str]:
-    return [
-        turn.content.strip()
-        for turn in sample.turns
-        if turn.role == "human" and turn.content.strip()
-    ]
-
-
-def build_instruction_supervision_mask(
-    processor: Any,
-    sample: CanonicalSample,
-    input_ids: torch.Tensor,
-    attention_mask: torch.Tensor,
-    prompt_len: int,
-    max_length: int,
-) -> torch.Tensor:
-    mask = torch.zeros_like(input_ids, dtype=torch.bool)
-    if prompt_len <= 0:
-        return mask
-
-    instruction_texts = extract_instruction_texts(sample)
-    prompt_ids = input_ids[:prompt_len].tolist()
-    tokenizer = getattr(processor, "tokenizer", processor)
-    cursor = 0
-    for text in instruction_texts:
-        tokenized = tokenizer(
-            text,
-            add_special_tokens=False,
-            return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
-        )
-        text_ids = tokenized["input_ids"]
-        if text_ids.dim() > 1:
-            text_ids = text_ids.squeeze(0)
-        text_ids_list = text_ids.tolist()
-        if not text_ids_list:
-            continue
-
-        limit = len(prompt_ids) - len(text_ids_list) + 1
-        start_idx = -1
-        for idx in range(max(0, cursor), max(0, limit)):
-            if prompt_ids[idx:idx + len(text_ids_list)] == text_ids_list:
-                start_idx = idx
-                break
-        if start_idx < 0:
-            continue
-
-        end_idx = start_idx + len(text_ids_list)
-        mask[start_idx:end_idx] = True
-        cursor = end_idx
-
-    mask &= attention_mask.bool()
-    return mask
-
-
-def decode_token_ids(processor: Any, token_ids: List[int]) -> str:
-    if not token_ids:
-        return ""
-    tokenizer = getattr(processor, "tokenizer", processor)
-    if hasattr(tokenizer, "decode"):
-        return str(
-            tokenizer.decode(
-                token_ids,
-                skip_special_tokens=False,
-                clean_up_tokenization_spaces=False,
-            )
-        )
-    return " ".join(str(token_id) for token_id in token_ids)
-
-
-def build_instruction_debug_preview(
-    processor: Any,
-    input_ids: torch.Tensor,
-    instruction_supervision_mask: torch.Tensor,
-) -> List[Dict[str, Any]]:
-    previews: List[Dict[str, Any]] = []
-    span_start: Optional[int] = None
-    mask_list = instruction_supervision_mask.tolist()
-    token_ids = input_ids.tolist()
-
-    for idx, is_selected in enumerate(mask_list + [False]):
-        if is_selected and span_start is None:
-            span_start = idx
-        if not is_selected and span_start is not None:
-            span_token_ids = token_ids[span_start:idx]
-            previews.append(
-                {
-                    "start": span_start,
-                    "end": idx,
-                    "token_count": len(span_token_ids),
-                    "text": decode_token_ids(processor, span_token_ids),
-                }
-            )
-            span_start = None
-
-    return previews
-
-
 class ChatTemplatePreprocessor:
+    def __init__(
+        self,
+        enable_instruction_supervision: bool = False,
+        enable_mores_intervention: bool = False,
+    ) -> None:
+        self.enable_instruction_supervision = enable_instruction_supervision
+        self.enable_mores_intervention = enable_mores_intervention
+
     def tokenize(
         self,
         sample: CanonicalSample,
         processor: Any,
+        model_config: Any,
         image_root: str = "",
         max_length: int = 2048,
     ) -> Dict[str, Any]:
@@ -188,9 +102,6 @@ class ChatTemplatePreprocessor:
         )
 
         input_ids = full_inputs["input_ids"].squeeze(0)
-        attention_mask = full_inputs.get("attention_mask", torch.ones_like(input_ids))
-        if attention_mask.dim() > 1:
-            attention_mask = attention_mask.squeeze(0)
 
         labels = input_ids.clone()
         prompt_len = 0
@@ -205,33 +116,43 @@ class ChatTemplatePreprocessor:
             prompt_len = min(prompt_inputs["input_ids"].shape[1], input_ids.size(0))
             labels[:prompt_len] = IGNORE_INDEX
 
-        prompt_mask = torch.zeros_like(input_ids, dtype=torch.bool)
-        if prompt_len:
-            prompt_mask[:prompt_len] = True
-        prompt_mask &= attention_mask.bool()
-        instruction_supervision_mask = build_instruction_supervision_mask(
-            processor=processor,
-            sample=sample,
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            prompt_len=prompt_len,
-            max_length=max_length,
-        )
-        prompt_preview["instruction_texts"] = extract_instruction_texts(sample)
-        prompt_preview["instruction_supervision_spans"] = build_instruction_debug_preview(
-            processor=processor,
-            input_ids=input_ids,
-            instruction_supervision_mask=instruction_supervision_mask,
-        )
-
         result: Dict[str, Any] = {
             "input_ids": input_ids,
             "labels": labels,
-            "attention_mask": attention_mask,
-            "prompt_mask": prompt_mask,
-            "instruction_supervision_mask": instruction_supervision_mask,
             "prompt_preview": prompt_preview,
         }
+
+        if self.enable_mores_intervention:
+            from vlmintune.training.methods.mores import build_mores_intervention_mask
+
+            intervention_mask = build_mores_intervention_mask(
+                model_config=model_config,
+                input_ids=input_ids,
+            )
+            prompt_preview["intervention_mask"] = intervention_mask.tolist()
+            result["intervention_mask"] = intervention_mask
+
+        if self.enable_instruction_supervision:
+            from vlmintune.training.methods.l2t import (
+                build_instruction_debug_preview,
+                build_instruction_supervision_mask,
+                extract_instruction_texts,
+            )
+
+            instruction_supervision_mask = build_instruction_supervision_mask(
+                processor=processor,
+                sample=sample,
+                input_ids=input_ids,
+                prompt_len=prompt_len,
+                max_length=max_length,
+            )
+            prompt_preview["instruction_texts"] = extract_instruction_texts(sample)
+            prompt_preview["instruction_supervision_spans"] = build_instruction_debug_preview(
+                processor=processor,
+                input_ids=input_ids,
+                instruction_supervision_mask=instruction_supervision_mask,
+            )
+            result["instruction_supervision_mask"] = instruction_supervision_mask
 
         if "pixel_values" in full_inputs:
             pv = full_inputs["pixel_values"]
@@ -254,24 +175,41 @@ class ChatTemplatePreprocessor:
         batch_ids = torch.zeros(batch_size, max_len, dtype=torch.long)
         batch_labels = torch.full((batch_size, max_len), IGNORE_INDEX, dtype=torch.long)
         batch_mask = torch.zeros(batch_size, max_len, dtype=torch.long)
-        batch_prompt = torch.zeros(batch_size, max_len, dtype=torch.bool)
-        batch_instruction = torch.zeros(batch_size, max_len, dtype=torch.bool)
 
         for i, sample in enumerate(samples):
             seq_len = sample["input_ids"].size(0)
             batch_ids[i, :seq_len] = sample["input_ids"]
             batch_labels[i, :seq_len] = sample["labels"]
-            batch_mask[i, :seq_len] = sample["attention_mask"]
-            batch_prompt[i, :seq_len] = sample["prompt_mask"]
-            batch_instruction[i, :seq_len] = sample["instruction_supervision_mask"]
+            batch_mask[i, :seq_len] = 1
 
         batch: Dict[str, Any] = {
             "input_ids": batch_ids,
             "labels": batch_labels,
             "attention_mask": batch_mask,
-            "prompt_mask": batch_prompt,
-            "instruction_supervision_mask": batch_instruction,
         }
+
+        if all("instruction_supervision_mask" in sample for sample in samples):
+            batch_instruction = torch.zeros(batch_size, max_len, dtype=torch.bool)
+            for i, sample in enumerate(samples):
+                seq_len = sample["instruction_supervision_mask"].size(0)
+                batch_instruction[i, :seq_len] = sample["instruction_supervision_mask"]
+            batch["instruction_supervision_mask"] = batch_instruction
+
+        if all("intervention_mask" in sample for sample in samples):
+            batch_intervention_mask = torch.zeros(
+                (batch_size, max_len),
+                dtype=torch.bool,
+            )
+            for sample_idx, sample in enumerate(samples):
+                intervention_mask = sample["intervention_mask"]
+                if intervention_mask.dim() != 1:
+                    raise ValueError(
+                        "MoReS expects per-sample intervention_mask to have shape [seq_len]."
+                    )
+                batch_intervention_mask[sample_idx, :intervention_mask.size(0)] = (
+                    intervention_mask.to(dtype=torch.bool)
+                )
+            batch["intervention_mask"] = batch_intervention_mask
 
         if "pixel_values" in samples[0]:
             pvs = [s["pixel_values"] for s in samples]

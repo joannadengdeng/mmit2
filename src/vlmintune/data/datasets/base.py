@@ -92,7 +92,7 @@ class HFDatasetSpec:
 
         turns = []
         if question:
-            turns.append(Turn(role="human", content=question))
+            turns.append(Turn(role="user", content=question))
         if answer:
             turns.append(Turn(role="assistant", content=answer))
 

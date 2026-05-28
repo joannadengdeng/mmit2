@@ -15,6 +15,7 @@ class TokenizedDatasetBase:
         adapter,
         preprocessor,
         processor,
+        model_config,
         image_root: str,
         max_length: int,
         skip_logger: Callable[[Any, Exception], None],
@@ -23,6 +24,7 @@ class TokenizedDatasetBase:
         self.adapter = adapter
         self.preprocessor = preprocessor
         self.processor = processor
+        self.model_config = model_config
         self.image_root = image_root
         self.max_length = max_length
         self.skip_logger = skip_logger
@@ -34,6 +36,7 @@ class TokenizedDatasetBase:
             result = self.preprocessor.tokenize(
                 sample,
                 self.processor,
+                self.model_config,
                 image_root=self.image_root,
                 max_length=self.max_length,
             )
@@ -70,17 +73,24 @@ def build_tokenized_dataset(
     *,
     adapter,
     processor,
+    model_config,
+    enable_instruction_supervision: bool = False,
+    enable_mores_intervention: bool = False,
     image_root: str,
     max_length: int,
     skip_logger: Callable[[Any, Exception], None],
     debug_recorder: DebugRecorder,
 ):
-    preprocessor = ChatTemplatePreprocessor()
+    preprocessor = ChatTemplatePreprocessor(
+        enable_instruction_supervision=enable_instruction_supervision,
+        enable_mores_intervention=enable_mores_intervention,
+    )
     dataset_cls = TokenizedIterableDataset if getattr(adapter, "streaming", False) else TokenizedMapDataset
     dataset = dataset_cls(
         adapter,
         preprocessor,
         processor,
+        model_config,
         image_root,
         max_length,
         skip_logger,

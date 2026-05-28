@@ -23,11 +23,6 @@ from vlmintune.training.trainer.helpers import (
 )
 from vlmintune.training.trainer.tokenization import build_tokenized_dataset, safe_collate
 
-NON_FORWARD_BATCH_KEYS = {
-    "prompt_mask",
-    "instruction_supervision_mask",
-}
-
 @dataclass
 class TrainerConfig:
     """Configuration for a single training run."""
@@ -89,6 +84,9 @@ class Trainer:
         tokenized_dataset, preprocessor = build_tokenized_dataset(
             adapter=adapter,
             processor=self.processor,
+            model_config=self.model.config,
+            enable_instruction_supervision=config.training_method == "l2t",
+            enable_mores_intervention=config.training_method == "mores",
             image_root=config.data_config.get("image_root", ""),
             max_length=config.max_length,
             skip_logger=build_skip_logger(debug_recorder),
@@ -173,10 +171,7 @@ class Trainer:
                     )
                     logged_first_batch = True
 
-                forward_batch = {
-                    key: value for key, value in batch.items() if key not in NON_FORWARD_BATCH_KEYS
-                }
-
+                forward_batch = method_obj.build_forward_batch(batch)
                 outputs = self.model(**forward_batch)
                 loss, metrics = method_obj.compute_loss(self.model, batch, outputs)
                 loss = loss / config.gradient_accumulation_steps
