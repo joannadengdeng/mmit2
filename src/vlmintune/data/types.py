@@ -2,46 +2,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
-
-@dataclass
-class Turn:
-    role: str     # "user" | "assistant"
-    content: str
+from typing import Any, Dict, List
 
 
 @dataclass
 class CanonicalSample:
-    """Unified training/inference sample used throughout vlmintune.
-
-    image_path is relative to an ``image_root`` supplied at load time.
-    """
+    """Unified training/inference sample used throughout vlmintune."""
     id: str
     image_path: str
-    turns: List[Turn]
+    question: str
+    train_answer: str = ""
+    eval_answers: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def first_question(self) -> str:
-        for t in self.turns:
-            if t.role == "user":
-                return t.content
-        return ""
-
-    @property
-    def first_answer(self) -> str:
-        for t in self.turns:
-            if t.role == "assistant":
-                return t.content
-        return ""
 
 
 @dataclass
 class EvalSample:
-    """A single benchmark question, optionally with ground-truth for scoring."""
+    """A single benchmark question plus eval-time answer strings for scoring."""
     id: str
     image_path: str
     question: str
-    ground_truth: Optional[Any] = None   # list of answers (VQA) or letter (MCQ)
+    eval_answers: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)

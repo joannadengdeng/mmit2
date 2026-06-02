@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>MoReS / Transformer Hook 图解讲义</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--mono:'SF Mono','Fira Code','Consolas',monospace;--sans:-apple-system,'Helvetica Neue',sans-serif}
+body{background:#fff;color:#111;font-family:var(--sans);font-size:9pt;line-height:1.55;padding:12px 24px 12px 228px;max-width:1260px;margin:0 auto}
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  body{padding:10px 12px;max-width:none;font-size:8.2pt;line-height:1.42}
+  .sidebar{display:none!important}
+  .print-hint{display:none!important}
+  .print-columns{column-count:1;column-gap:0}
+  .section{break-inside:auto;page-break-inside:auto;margin-bottom:12px}
+  .section-intro,.vis,.note,.deep,.graph,.codecard{display:inline-block;width:100%;break-inside:avoid;page-break-inside:avoid}
+  pre.code,table{break-inside:auto;page-break-inside:auto}
+  th,td{padding:3px 4px;font-size:7pt;overflow-wrap:anywhere;word-break:break-word}
+  pre.code,.graph{font-size:7.1pt;line-height:1.34;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+  .grid-2,.grid-3{display:block!important}
+  .grid-2>*,.grid-3>*{display:block!important;width:100%!important}
+  h1,h2,h3{page-break-after:avoid;break-after:avoid}
+  h1 + main,
+  h2 + p, h2 + div, h2 + pre, h2 + table, h2 + ul, h2 + ol,
+  h3 + p, h3 + div, h3 + pre, h3 + table, h3 + ul, h3 + ol{
+    page-break-before:avoid;
+    break-before:avoid;
+  }
+}
+.sidebar{position:fixed;left:0;top:0;width:210px;height:100vh;overflow-y:auto;background:#fafafa;border-right:1.5px solid #ddd;padding:10px 8px;font-size:7pt;z-index:100}
+.sidebar h3{font-size:7.5pt;margin:8px 0 3px;color:#666;font-weight:700}
+.sidebar a{display:block;padding:2px 6px;margin:1px 0;color:#333;text-decoration:none;border-radius:3px;line-height:1.4;font-size:6.5pt}
+.sidebar a:hover{background:#e8e8e8}
+.sidebar .logo{font-size:9pt;font-weight:700;margin-bottom:6px;padding:4px 6px;border-bottom:1.5px solid #777}
+.sidebar .back-top{display:block;text-align:center;margin-top:8px;padding:4px;font-size:6.5pt;color:#888;border-top:1px solid #ddd}
+h1{font-size:13pt;font-weight:700;border-bottom:1.5px solid #666;padding-bottom:3px;margin-bottom:4px}
+.subtitle{font-size:8pt;color:#444;font-style:italic;margin-bottom:8px}
+h2{font-size:10.5pt;font-weight:700;margin:10px 0 5px;padding:3px 0;border-bottom:1px solid #777;color:#111}
+h3{font-size:9pt;font-weight:700;margin:6px 0 3px;border-bottom:1px solid #ccc;padding-bottom:1px;color:#222}
+p{margin:4px 0;font-size:8pt}
+ul,ol{margin:4px 0 4px 18px}
+li{margin:2px 0;font-size:8pt}
+pre.code{background:#fbfbfb;border:1px solid #bbb;border-radius:2px;padding:5px 8px;font-family:var(--mono);font-size:7.5pt;line-height:1.42;margin:4px 0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.code .cm{color:#666;font-style:italic}.code .kw{color:#a00050;font-weight:600}.code .fn{color:#0040a0;font-weight:600}.code .str{color:#006400}.code .num{color:#a04000}
+.vis{border:1px solid #bbb;border-radius:3px;padding:6px 10px;margin:5px 0;background:#fcfcfc}
+.vis .vis-title{font-weight:700;font-size:9pt;margin-bottom:4px;color:#8b0000}
+.vis-row{display:flex;align-items:stretch;gap:5px;flex-wrap:wrap;margin:3px 0;font-family:var(--mono);font-size:7.5pt}
+.vis-box{border:1px solid #aaa;padding:4px 8px;border-radius:2px;background:#fff;text-align:center;min-width:58px;font-size:7pt}
+.vis-box.input{background:#fff8e0;border-color:#806000}
+.vis-box.param{background:#fff0f0;border-color:#a00000;font-weight:700}
+.vis-box.act{background:#eef7ff;border-color:#0040a0}
+.vis-box.state{background:#f4fff2;border-color:#2d7a2d}
+.vis-box.warn{background:#fff3f3;border-color:#aa4a4a}
+.vis-box.hook{background:#fcecff;border-color:#a00060;font-weight:700}
+.vis-arrow{font-size:12pt;font-weight:700;color:#000;align-self:center}
+.vis-label{font-size:6.5pt;color:#666;font-style:italic}
+.note{background:#fffdf4;border-left:2px solid #b08d2f;padding:4px 8px;margin:5px 0;font-size:7.5pt}
+.note b{color:#806000}
+.deep{background:#f7fbff;border:1px solid #a8bfdc;border-radius:3px;padding:6px 10px;margin:6px 0;font-size:7.5pt}
+.deep b{color:#0040a0}
+.deep .deep-title{font-weight:700;font-size:8pt;color:#0040a0;margin-bottom:3px}
+.graph{font-family:var(--mono);font-size:7pt;line-height:1.24;white-space:pre-wrap;background:#fbfbfb;border:1px solid #bbb;padding:5px 8px;margin:4px 0;border-radius:2px;word-break:break-word;overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-size:7pt;margin:5px 0}
+th,td{padding:4px 5px;border:1px solid #aaa;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+th{background:#f3f3f3;color:#111}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.card{border:1px solid #bbb;border-radius:3px;background:#fff;padding:6px 8px}
+.card strong{display:block;font-size:8pt;margin-bottom:4px}
+.print-hint{background:#fffbe0;border:1.5px solid #806000;padding:6px 8px;margin:6px 0 10px;font-size:7.5pt;border-radius:2px}
+.section{margin-bottom:14px}
+.codecard{border:1px solid #9eb2d9;border-radius:3px;background:#f8f9ff;padding:6px 8px;margin:5px 0}
+.codecard .title{font-weight:700;color:#0040a0;font-size:8pt;margin-bottom:3px}
+.keep-together{break-inside:avoid;page-break-inside:avoid}
+@media (max-width:900px){
+  body{padding:12px 16px;max-width:none}
+  .sidebar{display:none}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+<div class="logo">MoReS 图解</div>
+<h3>总览</h3>
+<a href="#bigmap">1. 整体大图</a>
+<a href="#e2e-mores">1.1 MoReS E2E 大例子</a>
+<a href="#block">2. 单层 Transformer</a>
+<a href="#hookpoint">3. Hook 注入点</a>
+<a href="#prehook">4. forward_pre_hook</a>
+<a href="#adapter">5. Adapter 数学</a>
+<a href="#prepare">6. prepare_model_impl</a>
+<a href="#runtime">7. 运行时一条样本</a>
+<a href="#save">8. 保存和推理</a>
+<a href="#top" class="back-top">↑ 回到顶部</a>
+</nav>
+
+<span id="top"></span>
+<h1>MoReS / Transformer Hook 图解讲义</h1>
+
+<main class="print-columns">
+
+<section class="section" id="bigmap">
+<h2>1. 先看整体大图</h2>
+<div class="grid-2 keep-together">
+<div class="card">
+<strong>总图：共享 preprocessor + MoReS / L2T 两条分支</strong>
+<div class="graph">┌── 一张大图看共享 preprocessor + MoReS / L2T 两条分支 ───────────────────────────┐
+│                                                                                 │
+│  [A] 单条样本进入 ChatTemplatePreprocessor.tokenize(...)                         │
+│                                                                                 │
+│  sample = {image, turns=[user, assistant]}                                      │
+│      │                                                                          │
+│      ├─ load_image(sample)                                                      │
+│      ├─ build_messages(sample, has_image)                                       │
+│      ├─ full_text = processor.apply_chat_template(                              │
+│      │      messages, tokenize=False, add_generation_prompt=False)              │
+│      ├─ prompt_messages = build_prompt_messages(messages)                       │
+│      ├─ prompt_text = processor.apply_chat_template(                            │
+│      │      prompt_messages, tokenize=False, add_generation_prompt=True)        │
+│      ├─ full_inputs = processor(text=full_text, images=images, ...)             │
+│      │      -> input_ids [S]                                                    │
+│      │      -> pixel_values / image_grid_thw / ...                              │
+│      ├─ prompt_inputs = processor(text=prompt_text, images=images, ...)         │
+│      │      -> prompt_len                                                       │
+│      ├─ labels = input_ids.clone()                                              │
+│      ├─ labels[:prompt_len] = IGNORE_INDEX                                      │
+│      └─ result(单条 sample dict)                                                │
+│             {"input_ids","labels",...}                                          │
+│                                                                                 │
+│  [B] 方法专属字段按开关生成                                                      │
+│                                                                                 │
+│  enable_mores_intervention=True:                                                │
+│      build_mores_intervention_mask(model.config, input_ids)                     │
+│      -> intervention_mask [S]                                                   │
+│                                                                                 │
+│  enable_instruction_supervision=True:                                           │
+│      build_instruction_supervision_mask(                                        │
+│          processor, sample, input_ids, prompt_len, max_length)                  │
+│      -> instruction_supervision_mask [S]                                        │
+│                                                                                 │
+│  [C] TokenizedDatasetBase.tokenize_sample(...)                                   │
+│      result = preprocessor.tokenize(...)                                        │
+│      debug_recorder.record_prompt(result.pop("prompt_preview"))                 │
+│      训练真正留下来的只有 tensor 字段                                            │
+│                                                                                 │
+│  [D] ChatTemplatePreprocessor.collate(...)                                       │
+│      input_ids                     [B, S]                                       │
+│      labels                        [B, S]                                       │
+│      attention_mask                [B, S]   这里才统一生成                      │
+│      intervention_mask             [B, S]   (只有 MoReS 才有)                   │
+│      instruction_supervision_mask  [B, S]   (只有 L2T 才有)                     │
+│                                                                                 │
+│  [E] trainer 训练循环                                                            │
+│      batch["labels"] = method_obj.preprocess_labels(...)                        │
+│      forward_batch = method_obj.build_forward_batch(batch)                      │
+│      默认只会丢掉 instruction_supervision_mask                                  │
+│      所以模型 forward 真正吃的是 input_ids / labels / attention_mask ...        │
+│      以及 MoReS 才需要的 intervention_mask                                      │
+│                                                                                 │
+│  [F] 只有 MoReS 才会在 runtime 再多走一条 hook 链                                │
+│      model.register_forward_pre_hook(self.forward_pre_hook, with_kwargs=True)   │
+│      -> 读 intervention_mask [B,S]                                              │
+│      -> 检查它和 input_ids.shape[:2] 一致                                       │
+│      -> self.current_intervention_mask = intervention_mask                      │
+│                                                                                 │
+│      每个 decoder layer 后的 layer_hook(adapter):                               │
+│      output shape = [B, S, D]                                                   │
+│      output[intervention_mask] -> [N_selected, D]                               │
+│      updated[intervention_mask] = adapter(...)                                  │
+│                                                                                 │
+│  [G] 最后 loss                                                                   │
+│      MoReS / L2T 都还是普通 CrossEntropy                                        │
+│      区别只在于 MoReS 改 runtime hidden states；L2T 改 labels。                  │
+└─────────────────────────────────────────────────────────────────────────────────┘</div>
+</div>
+
+<div class="card">
+<strong>两个样本：共享 tokenize 主干 + collate 成一个 batch</strong>
+<pre class="code">sample 0:
+  image = 一张猫的照片
+  user = "What animal is this?"
+  assistant = "cat"
+
+sample 1:
+  image = 一张狗的照片
+  user = "What animal is this?"
+  assistant = "dog"
+
+[A] 共享 tokenize 主干
+对应 function:
+  ChatTemplatePreprocessor.tokenize(...)
+  build_messages(...)
+  build_prompt_messages(...)
+  processor.apply_chat_template(...)
+  processor(...)
+
+sample 0 的 messages =
+[
+  {
+    "role": "user",
+    "content": [
+      {"type": "image"},
+      {"type": "text", "text": "What animal is this?"}
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {"type": "text", "text": "cat"}
+    ]
+  }
+]
+
+sample 0 的 prompt_messages =
+[
+  {
+    "role": "user",
+    "content": [
+      {"type": "image"},
+      {"type": "text", "text": "What animal is this?"}
+    ]
+  }
+]
+
+full_text =
+  apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+
+prompt_text =
+  apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
+
+按 Qwen2.5-VL 模板风格写齐就是:
+
+  full_text =
+  <|im_start|>system
+  You are a helpful assistant.<|im_end|>
+  <|im_start|>user
+  <|vision_start|><|image_pad|><|vision_end|>What animal is this?<|im_end|>
+  <|im_start|>assistant
+  cat<|im_end|>
+
+  prompt_text =
+  <|im_start|>system
+  You are a helpful assistant.<|im_end|>
+  <|im_start|>user
+  <|vision_start|><|image_pad|><|vision_end|>What animal is this?<|im_end|>
+  <|im_start|>assistant
+
+假设 sample 0 经过 processor(text=full_text, images=images, ...) 之后:
+  sample0.input_ids shape = [21]
+  sample0.input_ids =
+  [99,99,99,99,99,99,99,99,99,99,99,99, 10,11,12,13,14,15,16, 20,21]
+
+  含义:
+    0..11  = 12 个 visual tokens
+    12..16 = "What animal is this ?"
+    17..18 = assistant 起始头
+    19..20 = "cat" 的 answer token
+
+再假设 sample 0 的 prompt_inputs["input_ids"].shape[1] = 19
+所以 sample0.prompt_len = 19
+
+于是 tokenize(...) 里:
+  sample0.labels = sample0.input_ids.clone()
+  sample0.labels[:19] = IGNORE_INDEX
+
+得到:
+  sample0.labels =
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+   -100,-100,-100,-100,-100,-100,-100, 20,21]
+
+为了说明 batch，再给一个更短的 sample 1:
+  sample1.input_ids shape = [17]
+  sample1.input_ids =
+  [99,99,99,99,99,99,99,99, 10,11,12,13,14,15,16, 30,31]
+
+  sample1.prompt_len = 15
+
+  sample1.labels =
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100, 30,31]
+
+[B] 如果这是 MoReS 训练
+对应 function:
+  build_mores_intervention_mask(...)
+
+enable_mores_intervention = True
+
+sample 0:
+  image_token_id = 99
+  visual_token_indices = [0,1,2,3,4,5,6,7,8,9,10,11]
+  前 4 个 = 0,1,2,3
+  后 5 个 = 7,8,9,10,11
+  sample0.intervention_mask =
+  [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F,F]
+
+sample 1:
+  visual_token_indices = [0,1,2,3,4,5,6,7]
+  前 4 个 = 0,1,2,3
+  后 5 个 = 3,4,5,6,7
+  去重后相当于全选
+  sample1.intervention_mask =
+  [T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F]
+
+[C] 如果这是 L2T 训练
+对应 function:
+  extract_instruction_texts(...)
+  build_instruction_supervision_mask(...)
+
+enable_instruction_supervision = True
+
+sample 0:
+  instruction_texts = ["What animal is this?"]
+  prompt_ids = sample0.input_ids[:19]
+            = [99 x12, 10,11,12,13,14,15,16]
+  text_ids   = [10,11,12,13,14]
+  命中位置 = 12..16
+  sample0.instruction_supervision_mask =
+  [F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,F,F,F,F]
+
+sample 1:
+  prompt_ids = sample1.input_ids[:15]
+            = [99 x8, 10,11,12,13,14,15,16]
+  text_ids   = [10,11,12,13,14]
+  命中位置 = 8..12
+  sample1.instruction_supervision_mask =
+  [F,F,F,F,F,F,F,F,T,T,T,T,T,F,F,F,F]
+
+[D] collate 之后 trainer 真正拿到什么
+对应 function:
+  ChatTemplatePreprocessor.collate(...)
+
+现在 batch 里有 sample 0 和 sample 1，所以:
+  batch_size = 2
+  max_len = 21
+
+batch["input_ids"] shape = [2, 21]
+[
+  [99,99,99,99,99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,20,21],
+  [99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,30,31,0,0,0,0]
+]
+
+batch["attention_mask"] shape = [2, 21]
+[
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0]
+]
+
+batch["labels"] shape = [2, 21]
+[
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+   -100,-100,-100,-100,-100,-100,-100,20,21],
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+   -100,-100,-100,30,31,-100,-100,-100,-100]
+]
+
+如果是 MoReS:
+  batch["intervention_mask"] shape = [2, 21]
+  [
+    [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F,F],
+    [T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F]
+  ]
+
+如果是 L2T:
+  batch["instruction_supervision_mask"] shape = [2, 21]
+  [
+    [F,F,F,F,F,F,F,F,F,F,F,F,T,T,T,T,T,F,F,F,F],
+    [F,F,F,F,F,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F]
+  ]
+
+[E] 进入 trainer 之后怎么分叉
+对应 function:
+  method_obj.preprocess_labels(...)
+  method_obj.build_forward_batch(...)
+
+MoReS:
+  preprocess_labels(...) 不改 labels
+  build_forward_batch(batch) 保留 intervention_mask
+  所以 model(**forward_batch) 时会带着:
+    input_ids / labels / attention_mask / intervention_mask / pixel_values / ...
+
+L2T:
+  preprocess_labels(...) 会读 instruction_supervision_mask
+  然后做:
+    updated = labels.clone()
+    updated[instruction_mask] = input_ids[instruction_mask]
+
+  所以 batch 里的 labels 会从上面的 batch["labels"] 变成:
+  [
+    [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+      10,11,12,13,14,-100,-100,20,21],
+    [-100,-100,-100,-100,-100,-100,-100,-100,
+      10,11,12,13,14,30,31,-100,-100,-100,-100]
+  ]
+
+  也就是:
+    两条样本里的 image token 仍然不监督
+    两条样本里的 instruction token 都被重新拿回来监督
+    answer token 继续监督
+
+  但 build_forward_batch(batch) 会把 instruction_supervision_mask 丢掉
+  所以模型 forward 本身并不会看到这个 mask
+
+[F] 只有 MoReS 才有 runtime hook
+对应 function:
+  MoReSMethod.forward_pre_hook(...)
+  MoReSMethod.layer_hook(...)
+  MoReSAdapter.forward(...)
+
+forward_pre_hook 读:
+  input_ids.shape = [2, 21]
+  intervention_mask.shape = [2, 21]
+  self.current_intervention_mask = intervention_mask
+
+某一层 output.shape = [2, 21, D]
+
+对于上面这个 batch:
+  sample 0 选中了 9 个位置:
+    0,1,2,3,7,8,9,10,11
+  sample 1 选中了 8 个位置:
+    0,1,2,3,4,5,6,7
+
+所以 layer_hook 里:
+  output[intervention_mask].shape = [17, D]
+
+再做:
+  updated[intervention_mask] = adapter(output[intervention_mask])
+
+所以:
+  这个 batch 里只有那 17 个 visual token hidden states 会被改
+  两条样本的 text token 都不会被改
+  L2T 改的是训练时哪些 token 参与 label supervision</pre>
+</div>
+</div>
+
+<div class="note"><b>怎么看这两个框：</b>左边是完整流程图，强调 shared preprocessor 和 MoReS / L2T 的分叉点；右边现在用了 <b>两条具体样本</b>，把单样本 tokenize、再到 <code>collate</code> 组成一个 batch、最后到 trainer / hook 的变化全部串了一遍。</div>
+
+<div class="vis">
+<div class="vis-title">一句话总括</div>
+<div class="vis-row">
+  <div class="vis-box input">shared preprocessor<br>先算 full/prompt 两条线</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box state">MoReS 分支<br>生成 intervention_mask</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box hook">L2T 分支<br>生成 instruction_supervision_mask</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box act">MoReS 在 runtime hook 改 hidden states<br>L2T 在 preprocess_labels 改监督范围</div>
+</div>
+</div>
+
+<div class="deep">
+<div class="deep-title">补一块最容易混的：preprocessor 和 tokenized_dataset 到底是什么关系</div>
+<p><code>preprocessor</code> 是“处理规则”，只负责 <code>tokenize(sample)</code> 和 <code>collate(samples)</code>；<code>tokenized_dataset</code> 是“把整个原始 dataset 接上这套规则之后”的懒加载 dataset。也就是：</p>
+<div class="graph">adapter(raw samples)
+    ↓  每次 __getitem__ / __iter__ 取一条原始 sample
+tokenized_dataset
+    ↓  内部调用
+preprocessor.tokenize(sample, processor, model.config, ...)
+    ↓
+单条 tokenized sample dict
+    ↓  DataLoader 收集多条
+preprocessor.collate(samples)
+    ↓
+batch dict</div>
+</div>
+
+<div class="codecard">
+<div class="title">把上面的两个样本，直接写成 tokenized_dataset 视角</div>
+<pre class="code">原始 adapter 里的两条样本大概像这样:
+
+adapter[0] =
+  CanonicalSample(
+    id="cat-1",
+    image_path="cat.jpg",
+    turns=[
+      Turn(role="user", content="What animal is this?"),
+      Turn(role="assistant", content="cat"),
+    ],
+  )
+
+adapter[1] =
+  CanonicalSample(
+    id="dog-1",
+    image_path="dog.jpg",
+    turns=[
+      Turn(role="user", content="What animal is this?"),
+      Turn(role="assistant", content="dog"),
+    ],
+  )
+
+如果 training_method == "mores"，那么 trainer 会创建:
+  preprocessor = ChatTemplatePreprocessor(enable_mores_intervention=True)
+  tokenized_dataset = TokenizedMapDataset(...)   或   TokenizedIterableDataset(...)
+
+这时:
+  tokenized_dataset[0]
+并不是原始 CanonicalSample，而是:
+
+{
+  "input_ids": tensor([99,99,99,99,99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,20,21]),
+  "labels": tensor([
+    -100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+    -100,-100,-100,-100,-100,-100,-100,20,21
+  ]),
+  "intervention_mask": tensor([
+    True,True,True,True,False,False,False,True,True,True,
+    True,True,False,False,False,False,False,False,False,False,False
+  ]),
+  "pixel_values": tensor(...),
+  "image_grid_thw": tensor(...),
+}
+
+同样:
+  tokenized_dataset[1] =
+{
+  "input_ids": tensor([99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,30,31]),
+  "labels": tensor([
+    -100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+    -100,-100,-100,-100,-100,30,31
+  ]),
+  "intervention_mask": tensor([
+    True,True,True,True,True,True,True,True,False,False,
+    False,False,False,False,False,False,False
+  ]),
+  "pixel_values": tensor(...),
+  "image_grid_thw": tensor(...),
+}
+
+如果 training_method == "l2t"，就换成:
+  preprocessor = ChatTemplatePreprocessor(enable_instruction_supervision=True)
+
+这时 tokenized_dataset[0] / [1] 的核心区别是:
+  有 "instruction_supervision_mask"
+  没有 "intervention_mask"
+
+例如 tokenized_dataset[0] 会变成:
+{
+  "input_ids": tensor([...]),
+  "labels": tensor([-100 x19, 20,21]),
+  "instruction_supervision_mask": tensor([
+    False,False,False,False,False,False,False,False,False,False,
+    False,False,True,True,True,True,True,False,False,False,False
+  ]),
+  "pixel_values": tensor(...),
+  "image_grid_thw": tensor(...),
+}
+
+然后 DataLoader 收集两条，再交给:
+  preprocessor.collate([tokenized_dataset[0], tokenized_dataset[1]])
+
+得到 batch:
+{
+  "input_ids": tensor([2, 21]),
+  "labels": tensor([2, 21]),
+  "attention_mask": tensor([2, 21]),
+  "intervention_mask": tensor([2, 21]),              # 只有 MoReS
+  "instruction_supervision_mask": tensor([2, 21]),  # 只有 L2T
+  ...
+}
+
+所以最短理解是:
+  adapter[i]            -> 原始语义样本
+  tokenized_dataset[i]  -> 单条训练张量字典
+  next(iter(loader))    -> 一个 batch 张量字典</pre>
+</div>
+
+<div class="deep" id="e2e-mores">
+<div class="deep-title">只讲 MoReS：一个从原始样本到训练 step 结束的完整 e2e 大例子</div>
+<p>这一块只讲 <code>training_method == "mores"</code>，把前面零散出现过的所有对象串成一条线：<b>原始样本 → preprocessor.tokenize → tokenized_dataset[i] → collate batch → forward_batch → model.forward → pre-hook → layer-hook → loss → backward → optimizer.step</b>。</p>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 0: 原始输入到底是什么</div>
+<pre class="code">trainer 已经做完:
+  method_obj = build_training_method("mores")
+  tokenized_dataset, preprocessor = build_tokenized_dataset(
+      adapter=adapter,
+      processor=self.processor,
+      model_config=self.model.config,
+      enable_mores_intervention=True,
+      enable_instruction_supervision=False,
+      ...
+  )
+
+所以现在:
+  preprocessor = ChatTemplatePreprocessor(enable_mores_intervention=True)
+  tokenized_dataset = TokenizedMapDataset(...) 或 TokenizedIterableDataset(...)
+
+假设原始 adapter 里就两条样本:
+
+adapter[0] =
+  CanonicalSample(
+    id="cat-1",
+    image_path="cat.jpg",
+    turns=[
+      Turn(role="user", content="What animal is this?"),
+      Turn(role="assistant", content="cat"),
+    ],
+  )
+
+adapter[1] =
+  CanonicalSample(
+    id="dog-1",
+    image_path="dog.jpg",
+    turns=[
+      Turn(role="user", content="What animal is this?"),
+      Turn(role="assistant", content="dog"),
+    ],
+  )</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 1: tokenize(sample) 时，sample 0 内部到底发生什么</div>
+<pre class="code">tokenized_dataset[0]
+  -> TokenizedMapDataset.__getitem__(0)
+  -> self.tokenize_sample(self.adapter[0])
+  -> preprocessor.tokenize(sample0, processor, model.config, ...)
+
+sample 0 先变成:
+  messages =
+  [
+    {
+      "role": "user",
+      "content": [
+        {"type": "image"},
+        {"type": "text", "text": "What animal is this?"}
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {"type": "text", "text": "cat"}
+      ]
+    }
+  ]
+
+然后:
+  full_text =
+    processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+
+  prompt_messages =
+    [
+      {
+        "role": "user",
+        "content": [
+          {"type": "image"},
+          {"type": "text", "text": "What animal is this?"}
+        ]
+      }
+    ]
+
+  prompt_text =
+    processor.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
+
+按 Qwen2.5-VL 文档里展示的默认模板风格，这里写齐就是:
+  full_text =
+  <|im_start|>system
+  You are a helpful assistant.<|im_end|>
+  <|im_start|>user
+  <|vision_start|><|image_pad|><|vision_end|>What animal is this?<|im_end|>
+  <|im_start|>assistant
+  cat<|im_end|>
+
+  prompt_text =
+  <|im_start|>system
+  You are a helpful assistant.<|im_end|>
+  <|im_start|>user
+  <|vision_start|><|image_pad|><|vision_end|>What animal is this?<|im_end|>
+  <|im_start|>assistant
+
+再假设 processor(text=full_text, images=...) 之后:
+  sample0.input_ids =
+  [99,99,99,99,99,99,99,99,99,99,99,99, 10,11,12,13,14,15,16, 20,21]
+
+再假设 processor(text=prompt_text, images=...) 之后:
+  sample0.prompt_len = 19
+
+于是:
+  sample0.labels = sample0.input_ids.clone()
+  sample0.labels[:19] = -100
+
+得到:
+  sample0.labels =
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+   -100,-100,-100,-100,-100,-100,-100,20,21]
+
+最后因为 enable_mores_intervention=True:
+  build_mores_intervention_mask(model.config, sample0.input_ids)
+
+  image_token_id = 99
+  visual_token_indices = [0,1,2,3,4,5,6,7,8,9,10,11]
+
+  前 4 个位置设 True:
+    0,1,2,3
+  后 5 个位置设 True:
+    7,8,9,10,11
+
+  sample0.intervention_mask =
+  [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F,F]</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 2: tokenized_dataset[0] / [1] 真正长什么样</div>
+<pre class="code">所以:
+  tokenized_dataset[0] =
+  {
+    "input_ids": tensor([99,99,99,99,99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,20,21]),
+    "labels": tensor([
+      -100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+      -100,-100,-100,-100,-100,-100,-100,20,21
+    ]),
+    "intervention_mask": tensor([
+      True,True,True,True,False,False,False,True,True,True,
+      True,True,False,False,False,False,False,False,False,False,False
+    ]),
+    "pixel_values": tensor(...),
+    "image_grid_thw": tensor(...),
+  }
+
+sample 1 用同样的规则:
+  tokenized_dataset[1] =
+  {
+    "input_ids": tensor([99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,30,31]),
+    "labels": tensor([
+      -100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+      -100,-100,-100,-100,-100,30,31
+    ]),
+    "intervention_mask": tensor([
+      True,True,True,True,True,True,True,True,False,False,
+      False,False,False,False,False,False,False
+    ]),
+    "pixel_values": tensor(...),
+    "image_grid_thw": tensor(...),
+  }</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 3: DataLoader + collate 之后，batch 真正长什么样</div>
+<pre class="code">DataLoader 收集:
+  [tokenized_dataset[0], tokenized_dataset[1]]
+
+然后调用:
+  preprocessor.collate(samples)
+
+因为:
+  sample0 seq_len = 21
+  sample1 seq_len = 17
+所以:
+  batch_size = 2
+  max_len = 21
+
+collate 之后得到:
+
+batch["input_ids"] shape = [2, 21]
+[
+  [99,99,99,99,99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,20,21],
+  [99,99,99,99,99,99,99,99,10,11,12,13,14,15,16,30,31,0,0,0,0]
+]
+
+batch["attention_mask"] shape = [2, 21]
+[
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0]
+]
+
+batch["labels"] shape = [2, 21]
+[
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+   -100,-100,-100,-100,-100,-100,-100,20,21],
+  [-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,
+   -100,-100,-100,30,31,-100,-100,-100,-100]
+]
+
+batch["intervention_mask"] shape = [2, 21]
+[
+  [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F,F],
+  [T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F]
+]
+
+以及:
+  batch["pixel_values"]
+  batch["image_grid_thw"]</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 4: trainer 里，这个 batch 怎么变成 forward_batch</div>
+<pre class="code">trainer.py:
+  batch = to_device(batch, device)
+  batch["labels"] = method_obj.preprocess_labels(...)
+  forward_batch = method_obj.build_forward_batch(batch)
+
+对 MoReS 来说:
+  preprocess_labels(...) 不改 labels
+  build_forward_batch(...) 走 base 默认逻辑
+  只会丢掉 instruction_supervision_mask
+
+所以真正传给模型的是:
+
+forward_batch = {
+  "input_ids": batch["input_ids"],
+  "labels": batch["labels"],
+  "attention_mask": batch["attention_mask"],
+  "intervention_mask": batch["intervention_mask"],
+  "pixel_values": batch["pixel_values"],
+  "image_grid_thw": batch["image_grid_thw"],
+}</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 5: self.model(**forward_batch) 时，前面的字段怎么接上 Qwen forward</div>
+<pre class="code">trainer.py:
+  outputs = self.model(**forward_batch)
+
+这等价于:
+  self.model(
+    input_ids=...,
+    labels=...,
+    attention_mask=...,
+    intervention_mask=...,
+    pixel_values=...,
+    image_grid_thw=...,
+  )
+
+Qwen 顶层 forward(...) 原生就认识:
+  input_ids
+  attention_mask
+  labels
+  pixel_values
+  image_grid_thw
+
+而:
+  intervention_mask
+不是 Qwen 原生参数，而是通过 **kwargs 带进去
+给我们自己注册的 MoReS pre-hook 用的</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 6: forward 开始时，pre-hook 到底读到了什么</div>
+<pre class="code">因为我们在 prepare_model_impl(...) 里做了:
+  model.register_forward_pre_hook(self.forward_pre_hook, with_kwargs=True)
+
+所以真正 forward 开始时，MoReS 的 pre-hook 会先运行:
+
+input_ids = kwargs["input_ids"]
+intervention_mask = kwargs["intervention_mask"].to(
+    device=input_ids.device,
+    dtype=torch.bool,
+)
+
+if intervention_mask.shape != input_ids.shape[:2]:
+    raise ValueError(...)
+
+self.current_intervention_mask = intervention_mask
+
+对上面这个 batch 来说:
+  input_ids.shape = [2, 21]
+  intervention_mask.shape = [2, 21]
+
+所以 pre-hook 结束后:
+  self.current_intervention_mask =
+  [
+    [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F,F],
+    [T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F]
+  ]</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 7: Qwen 内部什么时候把 input_ids 变成 embeddings / hidden states</div>
+<pre class="code">Qwen 内部 language model forward 里会做:
+
+if inputs_embeds is None:
+    inputs_embeds = self.embed_tokens(input_ids)
+
+然后:
+  hidden_states = inputs_embeds
+
+所以:
+  input_ids.shape         = [B, S]
+  inputs_embeds.shape     = [B, S, D]
+  hidden_states.shape     = [B, S, D]
+
+关键点:
+  token 的位置维 [B,S] 没变
+  只是每个位置的内容从整数 token id 变成了向量
+
+也正因为位置没变:
+  intervention_mask [B,S]
+才能在后面的每一层稳定地索引这些 token。</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 8: 某一层结束后，layer_hook 怎么真正只改少量 token</div>
+<pre class="code">假设当前某层输出:
+  output.shape = [2, 21, D]
+
+而:
+  current_intervention_mask =
+  [
+    [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F,F,F,F,F],
+    [T,T,T,T,T,T,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F]
+  ]
+
+所以被选中的位置总数是:
+  sample 0: 9 个
+    0,1,2,3,7,8,9,10,11
+  sample 1: 8 个
+    0,1,2,3,4,5,6,7
+
+于是:
+  output[intervention_mask].shape = [17, D]
+
+layer_hook 里做的就是:
+  updated = output.clone()
+  updated[intervention_mask] = adapter(output[intervention_mask])
+
+也就是说:
+  这个 batch 里只有 17 个 visual token hidden states 被改
+  其余 visual token 不改
+  所有 text token 也都不改</pre>
+</div>
+
+<div class="codecard">
+<div class="title">Stage 9: loss / backward / optimizer.step 最后到底更新谁</div>
+<pre class="code">forward 完成后:
+  loss, metrics = method_obj.compute_loss(self.model, batch, outputs)
+
+MoReS 这里走的是普通 CrossEntropyLoss
+
+然后:
+  loss.backward()
+  optimizer.step()
+
+但因为 prepare_model_impl(...) 最开始已经做了:
+  for param in model.parameters():
+      param.requires_grad = False
+
+所以最后会被更新的不是整个 Qwen，而只有:
+  model.mores_adapters.parameters()
+
+也就是每层 adapter 里的参数。</pre>
+</div>
+
+<div class="note"><b>把这个大例子压成最短一句：</b>MoReS 的训练不是“重新训练整个 Qwen”，而是先把原始样本做成带 <code>intervention_mask</code> 的 tokenized sample 和 batch，再在 <code>model(**forward_batch)</code> 时用 pre-hook 读这张 mask、用每层 layer-hook 只改少量 visual token hidden states，最后只更新 adapters。</div>
+</section>
+
+<section class="section" id="block">
+<div class="keep-together">
+<h2>2. 先把单层 Transformer 画清楚</h2>
+<p>这一节直接把 <code>Qwen2_5_VLDecoderLayer</code> 画完整：上半部分是这个类里有哪些模块，下半部分是 forward 里数据怎么流。</p>
+
+<div class="graph">┌── Qwen2_5_VLDecoderLayer(hidden_size=D, intermediate_size=M) ────────────────┐
+│                                                                               │
+│  __init__:                                                                    │
+│  ┌───────────────────────────────────────────────────────────────────────┐    │
+│  │  input_layernorm = Qwen2RMSNorm(D)                                    │    │
+│  │  self_attn        = Qwen2_5_VLAttention(D)                            │    │
+│  │  │  q_proj = Linear(D→D, no bias)                                     │    │
+│  │  │  k_proj = Linear(D→D, no bias)                                     │    │
+│  │  │  v_proj = Linear(D→D, no bias)                                     │    │
+│  │  │  o_proj = Linear(D→D, no bias)                                     │    │
+│  │  post_attention_layernorm = Qwen2RMSNorm(D)                           │    │
+│  │  mlp = Qwen2MLP(D, M)                                                  │    │
+│  │  │  gate_proj = Linear(D→M, no bias)                                  │    │
+│  │  │  up_proj   = Linear(D→M, no bias)                                  │    │
+│  │  │  down_proj = Linear(M→D, no bias)                                  │    │
+│  └───────────────────────────────────────────────────────────────────────┘    │
+│                                                                               │
+│  forward:                                                                     │
+│                                                                               │
+│         hidden_states x (B, S, D)                                             │
+│              │                                                                │
+│         ┌────┤                                                                │
+│         │    ▼                                                                │
+│         │ input_layernorm                                                     │
+│         │    │                                                                │
+│         │    ▼                                                                │
+│         │ ┌── self_attn ───────────────────────────────────────────────┐      │
+│         │ │  x -> q_proj -> Q                                          │      │
+│         │ │  x -> k_proj -> K                                          │      │
+│         │ │  x -> v_proj -> V                                          │      │
+│         │ │  Q, K -> RoPE                                              │      │
+│         │ │  Q@Kᵀ/√d -> causal mask -> softmax -> @V -> o_proj         │      │
+│         │ │  attn_out = (B, S, D)                                      │      │
+│         │ └─────────────────────────────────────────────────────────────┘      │
+│         │    │                                                                │
+│         └──► + ◄──────        残差连接 x + attn_out                           │
+│              │                                                                │
+│         ┌────┤                                                                │
+│         │    ▼                                                                │
+│         │ post_attention_layernorm                                            │
+│         │    │                                                                │
+│         │    ▼                                                                │
+│         │ ┌── mlp ─────────────────────────────────────────────────────┐      │
+│         │ │  gate = SiLU(gate_proj(x))                                 │      │
+│         │ │  up   = up_proj(x)                                         │      │
+│         │ │  fused = gate * up                                         │      │
+│         │ │  mlp_out = down_proj(fused) -> (B, S, D)                   │      │
+│         │ └─────────────────────────────────────────────────────────────┘      │
+│         │    │                                                                │
+│         └──► + ◄──────        残差连接 x + mlp_out                            │
+│              │                                                                │
+│              ▼                                                                │
+│         output hidden_states (B, S, D)                                        │
+└───────────────────────────────────────────────────────────────────────────────┘</div>
+</div>
+
+<div class="vis">
+<div class="vis-title">为什么 MoReS 选这里注入</div>
+<p>当前实现不是改 <code>q_proj</code> / <code>v_proj</code> 这种内部线性层，而是在整层结束之后，拿到整层的 <code>output hidden_states</code> 再改。这样做的好处是：</p>
+<ul>
+<li>不需要侵入 attention 内部细节</li>
+<li>不需要改模型源码</li>
+<li>只用 hook 就能把 steering 接进去</li>
+</ul>
+</div>
+</section>
+
+<section class="section" id="hookpoint">
+<h2>3. MoReS hook 到底插在哪</h2>
+<p>这部分对应 <code>layer_hook()</code>，位置在 <code>mores.py</code> 里。它是在每个 decoder layer 输出之后运行的。</p>
+
+<div class="graph">┌── Qwen2_5_VLDecoderLayer + MoReS hook ───────────────────────────────────────┐
+│                                                                               │
+│  layer.forward(...)                                                           │
+│     └─ output = residual_2 + mlp_out -> (B, S, D)                            │
+│                              │                                                │
+│                              ▼                                                │
+│  register_forward_hook(layer_hook)                                            │
+│                              │                                                │
+│                              ▼                                                │
+│      intervention_mask = current_intervention_mask.to(output.device)          │
+│      updated = output.clone()                                                 │
+│      updated[intervention_mask] = adapter(output[intervention_mask])          │
+│      return updated                                                           │
+│                                                                               │
+│  所以注入点不是 q_proj / v_proj / mlp 内部，而是整层输出之后。                 │
+└───────────────────────────────────────────────────────────────────────────────┘</div>
+
+<div class="graph">┌── 两层串起来看：Layer 0 → hook 0 → Layer 1 → hook 1 ──────────────────────┐
+│                                                                               │
+│  current_intervention_mask = [T, T, T, T, F, F, F, T, T, T, T, T, F, ...]    │
+│                                                                               │
+│  hidden_states_0 (B, S, D)                                                    │
+│          │                                                                    │
+│          ▼                                                                    │
+│  ┌── Layer 0: Qwen2_5_VLDecoderLayer ────────────────────────────────────┐   │
+│  │  output_0 = layer_0(hidden_states_0)                                  │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+│          │                                                                    │
+│          ▼                                                                    │
+│  ┌── hook 0 / layer_hook(adapter_0) ─────────────────────────────────────┐   │
+│  │  selected_0 = output_0[current_intervention_mask] -> (N_selected, D)  │   │
+│  │  steered_0  = adapter_0(selected_0)                                   │   │
+│  │  updated_0[current_intervention_mask] = steered_0                      │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+│          │                                                                    │
+│          ▼                                                                    │
+│  hidden_states_1 = updated_0                                                  │
+│          │                                                                    │
+│          ▼                                                                    │
+│  ┌── Layer 1: Qwen2_5_VLDecoderLayer ────────────────────────────────────┐   │
+│  │  output_1 = layer_1(hidden_states_1)                                  │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+│          │                                                                    │
+│          ▼                                                                    │
+│  ┌── hook 1 / layer_hook(adapter_1) ─────────────────────────────────────┐   │
+│  │  selected_1 = output_1[current_intervention_mask] -> (N_selected, D)  │   │
+│  │  steered_1  = adapter_1(selected_1)                                   │   │
+│  │  updated_1[current_intervention_mask] = steered_1                      │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+│          │                                                                    │
+│          ▼                                                                    │
+│  hidden_states_2 = updated_1                                                  │
+│                                                                               │
+│  同一份 mask 在每层重复使用；每层都有自己独立的 adapter。                      │
+└───────────────────────────────────────────────────────────────────────────────┘</div>
+
+<div class="graph">┌── 更细一点：hook 只改 output 里的少量视觉 token ───────────────────────┐
+│                                                                         │
+│  output =                                                              │
+│  [ token0, token1, token2, token3, ..., tokenS-1 ]                    │
+│      │       │       │       │                                          │
+│      │       │       │       └─ 文本 token / 未选中的视觉 token          │
+│      │       │       └──────── selected visual token                    │
+│      │       └──────────────── selected visual token                    │
+│      └──────────────────────── selected visual token                    │
+│                                                                         │
+│  intervention_mask = [T, F, T, F, ..., F]                              │
+│                                                                         │
+│  output[intervention_mask]                                              │
+│      └─ 拉平成 (N_selected, D)                                          │
+│                                                                         │
+│  adapter(output[intervention_mask])                                     │
+│      └─ 每个被选中的 token 独立做 h' = h + update                       │
+│                                                                         │
+│  再写回: updated[intervention_mask] = ...                               │
+└─────────────────────────────────────────────────────────────────────────┘</div>
+
+<div class="vis">
+<div class="vis-title">可视化：哪些 token 会被改</div>
+<div class="vis-row">
+  <div class="vis-box input">output<br>(B,S,D)</div>
+  <div class="vis-arrow">+</div>
+  <div class="vis-box state">current_intervention_mask<br>(B,S)</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box warn">text token positions<br>保持不变</div>
+  <div class="vis-box hook">selected visual positions<br>送进 adapter</div>
+</div>
+<div class="vis-label">关键代码就是：<code>updated[intervention_mask] = adapter(output[intervention_mask])</code></div>
+</div>
+
+<div class="codecard">
+<div class="title">这一段代码真正干了什么</div>
+<pre class="code">intervention_mask = self.current_intervention_mask.to(output.device)
+updated = output.clone()
+updated[intervention_mask] = adapter(output[intervention_mask])
+<span class="kw">return</span> updated</pre>
+<p>这里最重要的 PyTorch 技巧不是 hook 本身，而是 <b>布尔索引</b>：<code>output[intervention_mask]</code> 会把所有被选中的 token 拉平成一个二维张量，shape 变成 <code>(N_selected, D)</code>，正好能直接喂给 adapter。</p>
+</div>
+</section>
+
+<section class="section" id="prehook">
+<h2>4. forward_pre_hook 在干什么</h2>
+<p>这部分对应 <code>forward_pre_hook()</code>。它不改 hidden states，它只做一件事：</p>
+<p><b>把 batch 里已经准备好的 <code>intervention_mask</code> 检查一遍，然后缓存成当前 forward 要复用的 <code>current_intervention_mask</code>。</b></p>
+
+<div class="deep">
+<div class="deep-title">现在这条链已经比之前简单了</div>
+<ol>
+<li><code>build_mores_intervention_mask(...)</code>：从 <code>input_ids</code> 里先找出全部视觉 token</li>
+<li>同一个 helper 内部直接取前 4 后 5，然后写成 dense <code>intervention_mask</code></li>
+</ol>
+<p>所以真正的链是：<b><code>input_ids → visual token indices → intervention_mask → current_intervention_mask</code></b>。</p>
+</div>
+
+<div class="graph">┌── 一张图看完：从 pre-hook 到 apply hook，token 是怎么被选中的 ────────────────┐
+│                                                                               │
+│  [预处理阶段]                                                                  │
+│                                                                               │
+│  input_ids =                                                                  │
+│  [IMG, IMG, IMG, IMG, IMG, IMG, IMG, IMG, IMG, IMG, IMG, IMG, txt, txt, ...] │
+│    │                                                                          │
+│    ├─ 用 model.config.image_token_id 找视觉 token                              │
+│    ▼                                                                          │
+│  token_indices = [0,1,2,3,4,5,6,7,8,9,10,11]                                  │
+│    │                                                                          │
+│    ├─ 同一个 helper 里取前 4 个 + 后 5 个                                     │
+│    ▼                                                                          │
+│  intervention_mask = [T,T,T,T,F,F,F,T,T,T,T,T,F,F,...]                        │
+│                                                                               │
+│  [forward_pre_hook]                                                            │
+│                                                                               │
+│  intervention_mask [B,S]                                                       │
+│    │                                                                          │
+│    ├─ shape check: intervention_mask.shape == input_ids.shape[:2]              │
+│    ▼                                                                          │
+│  current_intervention_mask [B,S] =                                             │
+│  [T,T,T,T,F,F,F,T,T,T,T,T,F,F,...]                                            │
+│                                                                               │
+│  [layer_hook / apply hook]                                                     │
+│                                                                               │
+│  某一层输出 output [B,S,D]                                                      │
+│    │                                                                          │
+│    ├─ output[intervention_mask]                                                │
+│    ▼                                                                          │
+│  selected_hidden_states [N_selected, D]                                        │
+│    │                                                                          │
+│    ├─ adapter(selected_hidden_states)                                          │
+│    ▼                                                                          │
+│  steered_hidden_states [N_selected, D]                                         │
+│    │                                                                          │
+│    ├─ updated[intervention_mask] = steered_hidden_states                       │
+│    ▼                                                                          │
+│  updated output [B,S,D]                                                        │
+│                                                                               │
+│  结论：不是在 hook 里“临时判断语义”，而是更早就把要改的位置算成了 dense mask。 │
+└───────────────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>4.1 先看 build_mores_intervention_mask</h3>
+<div class="graph">build_mores_intervention_mask(model_config, input_ids)
+
+image_token_id = int(model_config.image_token_id)
+visual_token_indices = []
+for idx, token_id in enumerate(input_ids.tolist()):
+    if token_id == image_token_id:
+        visual_token_indices.append(idx)
+
+intervention_mask = zeros_like(input_ids, dtype=bool)
+for idx in visual_token_indices[:4]:
+    intervention_mask[idx] = True
+for idx in visual_token_indices[-5:]:
+    intervention_mask[idx] = True
+
+return intervention_mask</div>
+
+<div class="graph">例子：
+
+input_ids =
+[151655,151655,151655,151655,151655,151655,151655,151655,151655,151655,151655,151655,3923,11444,374,576,30]
+
+image_token_id = 151655
+
+第一步: 遍历 input_ids，把所有 image token 的位置记下来
+         ↓
+visual_token_indices = [0,1,2,3,4,5,6,7,8,9,10,11]
+
+第二步: 前 4 个位置设 True
+         ↓
+0,1,2,3
+
+第三步: 后 5 个位置设 True
+         ↓
+7,8,9,10,11
+
+第四步: 写回一张和序列等长的 bool mask
+         ↓
+intervention_mask = [T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F]</div>
+
+<h3>4.2 为什么现在这版写法更贴当前代码</h3>
+<div class="graph">当前实现不再先做:
+  input_ids == image_token_id
+  -> bool visual_mask
+  -> nonzero(...).flatten()
+  -> 拼 selected_visual_token_indices
+
+而是直接走:
+  1. 遍历 input_ids
+  2. 记下所有 image token 的位置
+  3. 前 4 个位置设 True
+  4. 后 5 个位置设 True
+
+也就是说:
+  visual_token_indices 仍然存在
+  但它只是一个普通 Python 列表
+  不再有前面那套 nonzero / flatten / fancy tensor 操作</div>
+
+<div class="vis">
+<div class="vis-title">如果 visual token 很少会怎样</div>
+<div class="vis-row">
+  <div class="vis-box input">visual_token_indices = [0,1,2]</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box state">前 4 个循环会设 0,1,2<br>后 5 个循环也会再设 0,1,2</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box act">最终 mask 仍然只是在 0,1,2 三个位置是 True</div>
+</div>
+<div class="vis-label">也就是说，短视觉序列时可能会“全选”；因为同一个位置重复设 True 没有副作用，所以这版代码也不需要额外去重。</div>
+</div>
+
+<h3>4.3 现在看 forward_pre_hook 自己在做什么</h3>
+
+<div class="graph">kwargs
+├── input_ids
+└── intervention_mask        shape [B, S]
+             │
+             ▼
+forward_pre_hook(...)
+  ├── 读 intervention_mask
+  ├── intervention_mask = intervention_mask.to(input_ids.device, bool)
+  ├── 检查 intervention_mask.shape == input_ids.shape[:2]
+  └── self.current_intervention_mask = intervention_mask
+             │
+             ▼
+current_intervention_mask    shape [B, S], dtype=bool</div>
+
+<div class="vis">
+<div class="vis-title">为什么要 pre-hook</div>
+<p>因为 layer hook 只能看到“某一层的输出”，它看不到原始 batch 里的其它字段。于是当前实现先在模型 forward 开始前把 <code>intervention_mask</code> 缓存成 <code>self.current_intervention_mask</code>，后面每层 hook 都读这个状态。</p>
+</div>
+
+<div class="grid-2">
+<div class="card">
+<strong>输入侧</strong>
+<pre class="code">intervention_mask =
+[[T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F]]</pre>
+</div>
+<div class="card">
+<strong>转成 mask 后</strong>
+<pre class="code">current_intervention_mask =
+[[T,T,T,T,F,F,F,T,T,T,T,T,F,F,...]]</pre>
+</div>
+</div>
+
+<div class="codecard">
+<div class="title">pre-hook 现在真正最重要的几行</div>
+<pre class="code">input_ids = kwargs["input_ids"]
+intervention_mask = kwargs["intervention_mask"].to(
+    device=input_ids.device,
+    dtype=torch.bool,
+)
+if intervention_mask.shape != input_ids.shape[:2]:
+    raise ValueError(...)
+
+self.current_intervention_mask = intervention_mask</pre>
+<p>它现在不再“把位置列表还原成 mask”，而是：<b>直接接收 dense mask，检查形状，再缓存起来。</b></p>
+</div>
+
+<h3>4.4 current_intervention_mask 在 layer_hook 里到底长什么样</h3>
+<div class="graph">如果 batch_size = 1, seq_len = 17
+
+token index:
+  0 1 2 3 4 5 6 7 8 9 10 11 12   13     14  15   16
+
+token type:
+ IMG IMG IMG IMG IMG IMG IMG IMG IMG IMG IMG IMG What animal is this ?
+
+current_intervention_mask:
+  T  T  T  T  F F F T T T  T  T  F    F      F   F    F
+
+在 layer_hook 里:
+output shape = (1, 17, D)
+output[intervention_mask] -> (9, D)
+
+被选中的正是:
+token 0,1,2,3,7,8,9,10,11</div>
+
+<div class="note"><b>注意：</b>当前实现已经去掉 fallback，所以如果没有 <code>intervention_mask</code>，这里会直接报错，而不是自己再从 <code>input_ids</code> 推导。</div>
+</section>
+
+<section class="section" id="adapter">
+<h2>5. Adapter 数学块怎么工作</h2>
+<p>这部分对应 <code>MoReSAdapter</code>。</p>
+
+<div class="graph">MoReSAdapter.forward(hidden_states)
+
+base = hidden_states.float()
+w_down_h = w_down(base)                   # W_down(h), shape (N, r)
+linear_h = linear(base)                   # Linear(h), shape (N, r)
+update = (linear_h - w_down_h) @ w_up
+return base + update</div>
+
+<div class="vis">
+<div class="vis-title">把公式画成块</div>
+<div class="vis-row">
+  <div class="vis-box input">h<br>(N,D)</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box param">w_down<br>W_down</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box act">W_down(h)<br>(N,r)</div>
+</div>
+<div class="vis-row">
+  <div class="vis-box input">h<br>(N,D)</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box param">linear<br>Linear(h)</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box act">Linear(h)<br>(N,r)</div>
+</div>
+<div class="vis-row">
+  <div class="vis-box act">Linear(h) - W_down(h)</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box param">@ w_up<br>W_up</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box hook">update<br>(N,D)</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box state">h + update</div>
+</div>
+</div>
+
+<div class="deep">
+<div class="deep-title">当前代码里的参数名字怎么和公式对应</div>
+<p>现在这版代码里就 3 个公式名字：</p>
+<ul>
+<li><code>w_down</code>：一个 <code>Linear(hidden_size, rank, bias=False)</code></li>
+<li><code>linear</code>：一个 <code>Linear(hidden_size, rank)</code></li>
+<li><code>w_up</code>：不是新参数，只是 <code>w_down.weight</code> 这个共享权重</li>
+</ul>
+<p><code>w_down</code> 会先做正交初始化，再用 <code>torch.nn.utils.parametrizations.orthogonal(...)</code> 约束训练时的权重结构。所以公式里看起来有 <code>W_down</code> 和 <code>W_up</code> 两块，但当前实现里它们共享同一套 <code>w_down.weight</code>。</p>
+</div>
+</section>
+
+<section class="section" id="prepare">
+<h2>6. prepare_model_impl 怎么把方法接到模型上</h2>
+<p>这部分对应 <code>prepare_model_impl()</code>。这是整个文件最重要的入口，也是 MoReS 在“正式开始训练前”真正把普通 Qwen 改装成 MoReS-ready 模型的地方。</p>
+
+<div class="graph">prepare_model_impl(model, processor, config)
+
+1. image_token_id = model.config.image_token_id
+2. 冻结 model.parameters()
+3. hidden_size = model.config.text_config.hidden_size
+4. layers = model.model.language_model.layers
+5. 给每层创建一个 MoReSAdapter
+6. layer.register_forward_hook(self.layer_hook(adapter))
+7. model.register_forward_pre_hook(self.forward_pre_hook, with_kwargs=True)
+8. model.mores_adapters = ModuleList(adapters)</div>
+
+<div class="vis">
+<div class="vis-title">这里真正发生的是“挂钩子”而不是“改模型源码”</div>
+<div class="vis-row">
+  <div class="vis-box input">原始 Qwen model</div>
+  <div class="vis-arrow">+</div>
+  <div class="vis-box hook">1 个 pre-hook</div>
+  <div class="vis-arrow">+</div>
+  <div class="vis-box hook">N 个 layer forward_hook</div>
+  <div class="vis-arrow">+</div>
+  <div class="vis-box param">N 个 adapters</div>
+  <div class="vis-arrow">→</div>
+  <div class="vis-box state">MoReS-ready model</div>
+</div>
+</div>
+
+<div class="note"><b>你前面已经发现了：</b>这个函数里的 <code>processor</code> 现在其实没被用到，因为 image token id 已经改成直接从 <code>model.config</code> 取了。它还留在签名里，主要是因为继承的基类接口就是这个形状。</div>
+
+<div class="deep">
+<div class="deep-title">把“正式开始训练”拆成大步骤</div>
+<ol>
+<li>trainer 调 <code>method_obj.prepare_model(self.model, self.processor, method_config)</code></li>
+<li>MoReS 进入 <code>prepare_model_impl(model, processor, config)</code></li>
+<li>先冻结整个 Qwen backbone：<code>for param in model.parameters(): param.requires_grad = False</code></li>
+<li>再拿到 <code>hidden_size = model.config.text_config.hidden_size</code></li>
+<li>再拿到所有 decoder layers：<code>model.model.language_model.layers</code></li>
+<li>给每一层创建一个独立的 <code>MoReSAdapter(hidden_size, rank=1)</code></li>
+<li>给每一层挂一个 <code>forward_hook</code></li>
+<li>给整个模型挂一个 <code>forward_pre_hook</code></li>
+<li>把所有 adapter 注册成 <code>model.mores_adapters = nn.ModuleList(adapters)</code></li>
+</ol>
+<p>做完这一步之后，模型的状态是：</p>
+<ul>
+<li>Qwen 原参数全冻结</li>
+<li>每层后面都有一个 MoReS hook</li>
+<li>只有 adapters 会被 optimizer 训练</li>
+</ul>
+</div>
+
+<div class="codecard">
+<div class="title">下一步 trainer 怎么只训练 adapters</div>
+<pre class="code">trainer.py:
+  self.model, info_str = method_obj.prepare_model(...)
+  param_groups = method_obj.get_trainable_params(self.model)
+  optimizer = AdamW(param_groups, ...)
+
+mores.py:
+  def get_trainable_params(self, model):
+      adapters = getattr(model, "mores_adapters", None)
+      params = [param for param in adapters.parameters() if param.requires_grad]
+      return [{"params": params}]</pre>
+<p>也就是说，训练开始后 optimizer 不会更新整个 Qwen，只会更新每层 adapter 里的参数。</p>
+</div>
+</section>
+
+<section class="section" id="runtime">
+<h2>7. 用一条具体样本把运行时走一遍</h2>
+<p>我们用你现在的默认策略：<code>f4+l5</code>。</p>
+
+<div class="graph">假设一条样本 tokenization 之后：
+
+input_ids:
+[IMG IMG IMG IMG IMG IMG IMG IMG IMG IMG IMG IMG  What animal is this ?]
+
+visual token positions:
+[0,1,2,3,4,5,6,7,8,9,10,11]
+
+f4+l5 选择:
+前 4 个  = [0,1,2,3]
+后 5 个  = [7,8,9,10,11]
+
+intervention_mask:
+[T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,F]</div>
+
+<div class="graph">forward 开始前:
+current_intervention_mask =
+[[T,T,T,T,F,F,F,T,T,T,T,T,F,F,F,F,...]]
+
+进入某一层后:
+output shape = (1, S, D)
+
+output[intervention_mask]
+    -> shape (9, D)
+    -> adapter(...)
+    -> 再写回 updated[intervention_mask]</div>
+
+<div class="vis">
+<div class="vis-title">最关键的形状变化</div>
+<table>
+<tr><th>对象</th><th>shape</th><th>含义</th></tr>
+<tr><td><code>intervention_mask</code></td><td><code>(B, S)</code></td><td>每条样本哪些位置要被改</td></tr>
+<tr><td><code>current_intervention_mask</code></td><td><code>(B, S)</code></td><td>pre-hook 缓存起来的那张布尔 mask</td></tr>
+<tr><td><code>output</code></td><td><code>(B, S, D)</code></td><td>某一层 decoder 的输出</td></tr>
+<tr><td><code>output[intervention_mask]</code></td><td><code>(N_selected, D)</code></td><td>被选中的那些 token hidden states</td></tr>
+<tr><td><code>adapter(output[intervention_mask])</code></td><td><code>(N_selected, D)</code></td><td>steering 后的结果</td></tr>
+</table>
+</div>
+
+<h3>7.1 trainer 的 forward_batch 到底怎么连到模型的真正 forward</h3>
+<div class="graph">trainer.py:
+
+forward_batch = method_obj.build_forward_batch(batch)
+outputs = self.model(**forward_batch)
+
+假设 forward_batch = {
+  "input_ids":          tensor([B, S]),
+  "attention_mask":     tensor([B, S]),
+  "labels":             tensor([B, S]),
+  "pixel_values":       tensor(...),
+  "image_grid_thw":     tensor(...),
+  "intervention_mask":  tensor([B, S]),
+}
+
+那么:
+  self.model(**forward_batch)
+
+等价于:
+  self.model(
+    input_ids=...,
+    attention_mask=...,
+    labels=...,
+    pixel_values=...,
+    image_grid_thw=...,
+    intervention_mask=...,
+  )</div>
+
+<div class="deep">
+<div class="deep-title">哪些字段是 Qwen 原生就认识的，哪些是 MoReS 自己额外塞进去的</div>
+<p>Qwen2.5-VL 顶层 <code>forward(...)</code> 本来就有这些正式参数：</p>
+<ul>
+<li><code>input_ids</code></li>
+<li><code>attention_mask</code></li>
+<li><code>labels</code></li>
+<li><code>pixel_values</code></li>
+<li><code>image_grid_thw</code></li>
+</ul>
+<p>而 <code>intervention_mask</code> 不在 Qwen 原生签名里，它是通过顶层 <code>forward(..., **kwargs)</code> 这条通道被带进去的，所以它不是给 Qwen 原生逻辑用的，而是给我们自己注册的 <code>forward_pre_hook(...)</code> 用的。</p>
+</div>
+
+<h3>7.2 input_ids 什么时候真正变成 embedding / hidden_states</h3>
+<div class="graph">Qwen 顶层 forward(...)
+    │
+    ├─ 接住 input_ids / attention_mask / labels / pixel_values / ...
+    ├─ intervention_mask 进入 **kwargs
+    │
+    ├─ 先触发 model-level forward_pre_hook(kwargs)
+    │    -> 读 intervention_mask
+    │    -> self.current_intervention_mask = intervention_mask
+    │
+    └─ 再进入内部 self.model(...)
+          │
+          ├─ 如果 inputs_embeds is None:
+          │      inputs_embeds = self.embed_tokens(input_ids)
+          │
+          ├─ hidden_states = inputs_embeds
+          │
+          └─ for decoder_layer in self.layers:
+                hidden_states = decoder_layer(hidden_states, ...)
+                # 每层结束后触发 MoReS layer_hook</div>
+
+<div class="codecard">
+<div class="title">把 “前面的 input” 和 “模型真正的 forward” 连成一句话</div>
+<pre class="code">forward_batch["input_ids"]          -> Qwen 顶层 forward 的 input_ids 参数
+forward_batch["attention_mask"]     -> Qwen 顶层 forward 的 attention_mask 参数
+forward_batch["labels"]             -> Qwen 顶层 forward 的 labels 参数
+forward_batch["pixel_values"]       -> Qwen 顶层 forward 的 pixel_values 参数
+forward_batch["image_grid_thw"]     -> Qwen 顶层 forward 的 image_grid_thw 参数
+forward_batch["intervention_mask"]  -> 进入 **kwargs，被 MoReS pre-hook 读取</pre>
+<p>而 <code>input_ids</code> 在 Qwen 内部会继续走到：<code>inputs_embeds = self.embed_tokens(input_ids)</code>，然后变成 <code>hidden_states [B,S,D]</code>。也正因为 token 的位置维 <code>[B,S]</code> 没变，<code>intervention_mask [B,S]</code> 才能在后面的每一层稳定地索引这些 token。</p>
+</div>
+
+<h3>7.3 一次真正的训练 step，大方向发生什么</h3>
+<div class="graph">1. batch = to_device(batch, device)
+2. batch["labels"] = method_obj.preprocess_labels(...)
+3. forward_batch = method_obj.build_forward_batch(batch)
+4. outputs = self.model(**forward_batch)
+     ├─ pre-hook 先读 intervention_mask
+     ├─ 每层 layer hook 再改 output[intervention_mask]
+     └─ 顶层 Qwen forward 继续产出 logits / loss
+5. loss, metrics = method_obj.compute_loss(self.model, batch, outputs)
+6. loss.backward()
+7. optimizer.step()   # 只更新 mores_adapters</div>
+</section>
+
+<section class="section" id="save">
+<h2>8. 保存和推理怎么接起来</h2>
+<p>这部分对应 <code>save_checkpoint()</code> 和 <code>load_for_inference()</code>。训练结束后，真正被保存的不是整个 Qwen，而只是 MoReS 这套 adapters 的权重。</p>
+
+<div class="graph">训练结束保存:
+model.mores_adapters.state_dict()
+    └─ torch.save(..., "mores_tuned.pt")
+
+同时保存:
+processor.save_pretrained(path)
+vlmintune_meta.json
+
+推理加载:
+1. load_processor(base_model_id)
+2. load_vlm(base_model_id)
+3. prepare_model(...) 重新挂 hooks 和 adapters
+4. load_state_dict("mores_tuned.pt")
+5. model.eval()</div>
+
+<div class="note"><b>关键点：</b>保存的不是整个 base model，而只是 <code>mores_adapters</code> 的权重。这就是参数高效微调的典型思路：基础模型重用，方法自己的小模块单独存。</div>
+</section>
+
+<section class="section" id="apis">
+</section>
+
+</main>
+</body>
+</html>

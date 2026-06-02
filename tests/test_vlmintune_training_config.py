@@ -23,8 +23,7 @@ training:
   params:
     target_modules: ["q_proj", "v_proj"]
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -47,8 +46,7 @@ training:
   params:
     target_modules: ["q_proj", "v_proj"]
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -81,8 +79,7 @@ training:
   params:
     target_modules: ["q_proj", "v_proj"]
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -101,3 +98,4 @@ data:
     assert trainer_dict["training"]["dataloader_num_workers"] == 4
     assert trainer_dict["training"]["dataloader_pin_memory"] is True
     assert trainer_dict["training"]["dataloader_persistent_workers"] is True
+    assert "split" not in trainer_dict["data"]

@@ -13,8 +13,6 @@ experiment:
 eval:
   source: "trained"
   dataset_name: "lmms-lab/textvqa"
-  split: validation
-  metric: "vqa_accuracy"
   max_samples: 100
   max_new_tokens: 16
   temperature: 0.0

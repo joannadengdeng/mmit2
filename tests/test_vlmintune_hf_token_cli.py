@@ -42,8 +42,7 @@ training:
     model_layout: "qwen2_5_vl"
     unfreeze_modules: ["model.language_model.layers.0"]
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -67,8 +66,6 @@ model:
 eval:
   source: "base"
   dataset_name: "lmms-lab/textvqa"
-  split: validation
-  metric: "vqa_accuracy"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -83,5 +80,4 @@ eval:
 
     run_eval_from_config(str(config_path))
 
-    assert captured["cfg"]["eval"]["split"] == "validation"
     assert captured["cfg"]["eval"]["source"] == "base"

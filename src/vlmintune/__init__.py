@@ -13,7 +13,6 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     "LocalMethod": ("vlmintune.eval.method", "LocalMethod"),
     "CanonicalSample": ("vlmintune.data.types", "CanonicalSample"),
     "EvalSample": ("vlmintune.data.types", "EvalSample"),
-    "Turn": ("vlmintune.data.types", "Turn"),
     "HFDatasetsAdapter": ("vlmintune.data.hf_datasets", "HFDatasetsAdapter"),
     "DatasetProfile": ("vlmintune.data.hf_datasets", "DatasetProfile"),
     "QLoRAMethod": ("vlmintune.training.methods.lora", "QLoRAMethod"),

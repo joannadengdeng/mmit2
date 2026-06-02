@@ -106,10 +106,10 @@ def test_mores_only_steers_visual_tokens_during_forward():
 
     adapter = model.mores_adapters[0]
     with torch.no_grad():
-        adapter.projector.projector.weight.zero_()
-        adapter.projector.projector.weight[0, 0] = 1.0
-        adapter.learned_source.weight.zero_()
-        adapter.learned_source.bias.fill_(2.0)
+        adapter.w_down.weight.zero_()
+        adapter.w_down.weight[0, 0] = 1.0
+        adapter.linear.weight.zero_()
+        adapter.linear.bias.fill_(2.0)
 
     batch = {
         "input_ids": torch.tensor([[3, 42, 5, 42]]),
@@ -146,7 +146,7 @@ def test_mores_config_merges_defaults_without_target_modules():
             "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
             "experiment": {"name": "demo"},
             "training": {"ft_method": "mores"},
-            "data": {"data_path": "lmms-lab/textvqa", "split": "train"},
+            "data": {"dataset_name": "lmms-lab/textvqa", "split": "train"},
         }
     )
 
@@ -164,7 +164,7 @@ def test_mores_config_no_longer_requires_method_params():
             "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
             "experiment": {"name": "demo"},
             "training": {"ft_method": "mores", "params": {}},
-            "data": {"data_path": "lmms-lab/textvqa", "split": "train"},
+            "data": {"dataset_name": "lmms-lab/textvqa", "split": "train"},
         }
     )
 

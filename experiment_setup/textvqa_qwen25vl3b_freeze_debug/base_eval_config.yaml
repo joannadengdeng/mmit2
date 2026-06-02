@@ -14,8 +14,6 @@ eval:
   name: "textvqa_validation_debug20"
   source: "base"
   dataset_name: "lmms-lab/textvqa"
-  split: validation
-  metric: "vqa_accuracy"
   max_samples: 20
   max_new_tokens: 16
   temperature: 0.0

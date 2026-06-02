@@ -14,8 +14,6 @@ eval:
   name: "textvqa_validation_full"
   source: "trained"
   dataset_name: "lmms-lab/textvqa"
-  split: validation
-  metric: "vqa_accuracy"
   # Use the full validation split.
   max_samples: 0
   max_new_tokens: 16

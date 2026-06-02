@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MoReS E2E 教学文档</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --ink: #111111;
+      --muted: #555555;
+      --line: #d9d9d9;
+      --soft: #f7f7f7;
+      --soft-2: #fafafa;
+      --accent: #1f4b99;
+      --visual: #e8f3e5;
+      --text: #e9eef8;
+      --loss: #f8e7e7;
+      --steer: #f9efd9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.6;
+    }
+
+    .page {
+      width: min(980px, calc(100vw - 40px));
+      margin: 24px auto 48px;
+      padding: 36px 42px 48px;
+      background: #ffffff;
+      border: 1px solid var(--line);
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 12px;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    h1 {
+      font-size: 34px;
+      letter-spacing: 0.01em;
+    }
+
+    h2 {
+      margin-top: 34px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+
+    h3 {
+      margin-top: 22px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .callout {
+      margin: 16px 0 22px;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 16px 0 18px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--soft-2);
+      padding: 14px 16px;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 15px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: var(--soft);
+      font-weight: 700;
+    }
+
+    code, pre {
+      font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+
+    code {
+      background: #f6f6f6;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+
+    pre {
+      margin: 10px 0 18px;
+      padding: 14px 16px;
+      background: #fafafa;
+      border: 1px solid var(--line);
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .sequence {
+      margin: 14px 0 18px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: #fcfcfc;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 0;
+    }
+
+    .chip {
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 13px;
+    }
+
+    .visual { background: var(--visual); }
+    .text { background: var(--text); }
+    .loss { background: var(--loss); }
+    .steer { background: var(--steer); }
+
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .flow-box {
+      min-width: 132px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fcfcfc;
+    }
+
+    .arrow {
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    ul, ol {
+      margin: 10px 0 18px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .footer {
+      margin-top: 36px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        width: calc(100vw - 16px);
+        margin: 8px auto 18px;
+        padding: 22px 18px 28px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 14mm;
+      }
+
+      body {
+        background: #ffffff;
+      }
+
+      .page {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+
+      h2, h3, table, pre, .card, .callout, .sequence {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>MoReS E2E 教学文档</h1>
+    <p class="lead">
+      这份文档按当前 <code>vlmintune</code> 里的实现，从头到尾讲清楚 MoReS 是怎么工作的。
+      它覆盖你前面已经问过的关键概念：<code>tokenization</code>、<code>input_ids</code>、
+      <code>attention_mask</code>、<code>labels</code>、<code>prompt_mask</code>、
+      <code>instruction_supervision_mask</code>、<code>intervention_locations</code>、
+      <code>visual_mask</code>，并且包含一条完整样本的详细例子。
+    </p>
+
+    <div class="callout">
+      当前代码的实现前提：只支持 <code>Qwen2.5-VL</code>；MoReS 只靠显式
+      <code>intervention_locations</code> 工作，没有 fallback；视觉位置选择策略是
+      <code>f4+l5</code>；backbone 冻结，只训练每层的 MoReS adapter。
+    </div>
+
+    <h2>1. 一页结论</h2>
+    <div class="grid">
+      <div class="card">
+        <strong>MoReS 在做什么</strong>
+        它不是改 loss，也不是改 tokenizer，而是在每个 transformer layer 里，
+        只对少量被选中的视觉 token hidden states 做表示 steering。
+      </div>
+      <div class="card">
+        <strong>当前代码的主路径</strong>
+        preprocess 先生成 <code>intervention_locations</code>，训练或评测时再把它变成
+        <code>visual_mask</code>，最后在每层只改这些位置。
+      </div>
+      <div class="card">
+        <strong>最重要的字段区分</strong>
+        <code>input_ids</code> 说明“整条序列是什么”，<code>attention_mask</code>
+        说明“哪些位置有效”，<code>labels</code> 说明“哪些位置算 loss”，
+        <code>intervention_locations</code> 说明“MoReS 改哪里”。
+      </div>
+      <div class="card">
+        <strong>当前实现的一个关键简化</strong>
+        现在只支持 Qwen2.5-VL，所以很多逻辑已经不再做通用模型兼容，而是直接走
+        Qwen 的固定结构。
+      </div>
+    </div>
+
+    <h2>2. MoReS 的端到端流程</h2>
+    <p>先看总流程，再往下拆每一段。</p>
+    <div class="flow">
+      <div class="flow-box">原始样本<br/>图像 + 对话</div>
+      <div class="arrow">→</div>
+      <div class="flow-box">chat template<br/>拼消息与文本</div>
+      <div class="arrow">→</div>
+      <div class="flow-box">processor<br/>tokenize + 图像展开</div>
+      <div class="arrow">→</div>
+      <div class="flow-box">生成字段<br/><code>input_ids</code> 等</div>
+      <div class="arrow">→</div>
+      <div class="flow-box">生成<br/><code>intervention_locations</code></div>
+      <div class="arrow">→</div>
+      <div class="flow-box">collate 成 batch</div>
+      <div class="arrow">→</div>
+      <div class="flow-box">model forward_pre_hook</div>
+      <div class="arrow">→</div>
+      <div class="flow-box">每层 layer_hook<br/>做 steering</div>
+    </div>
+
+    <p>如果把训练部分单独压缩成一句话，就是：</p>
+    <pre>raw sample
+  -> tokenize()
+  -> input_ids / attention_mask / labels / intervention_locations
+  -> collate()
+  -> batch
+  -> build_forward_batch()
+  -> model(**batch)
+  -> forward_pre_hook() 生成 visual_mask
+  -> layer_hook() 只改 visual_mask 对应位置
+  -> CE loss
+  -> 只更新 mores_adapters</pre>
+
+    <h2>3. 关键概念总表</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>概念</th>
+          <th>它是什么</th>
+          <th>它回答什么问题</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>tokenization</code></td>
+          <td>把文本模板和图像输入变成模型可以处理的 token 序列</td>
+          <td>“模型最终看到的序列是怎么来的？”</td>
+        </tr>
+        <tr>
+          <td><code>input_ids</code></td>
+          <td>整条序列的 token id</td>
+          <td>“这条样本的 token 序列具体是什么？”</td>
+        </tr>
+        <tr>
+          <td><code>attention_mask</code></td>
+          <td>每个位置是否有效，<code>1</code> 有效，<code>0</code> padding</td>
+          <td>“哪些位置是真 token，哪些只是补齐？”</td>
+        </tr>
+        <tr>
+          <td><code>labels</code></td>
+          <td>训练时的目标 token，忽略位置写成 <code>-100</code></td>
+          <td>“哪些位置参与训练 loss？”</td>
+        </tr>
+        <tr>
+          <td><code>prompt_mask</code></td>
+          <td>标记 prompt 区间的布尔 mask</td>
+          <td>“哪些 token 属于 prompt，而不是回答？”</td>
+        </tr>
+        <tr>
+          <td><code>instruction_supervision_mask</code></td>
+          <td>更细粒度地标记 instruction 区间</td>
+          <td>“哪些 instruction token 会参与仓库自己的监督逻辑？”</td>
+        </tr>
+        <tr>
+          <td><code>intervention_locations</code></td>
+          <td>MoReS 这次要干预的显式 token 位置</td>
+          <td>“MoReS 要改哪几个 token？”</td>
+        </tr>
+        <tr>
+          <td><code>visual_mask</code></td>
+          <td>把 <code>intervention_locations</code> 变成布尔 mask 后的结果</td>
+          <td>“在 layer hook 里应该改哪些位置？”</td>
+        </tr>
+        <tr>
+          <td><code>hidden_states</code></td>
+          <td>每个 token 在某一层的表示向量</td>
+          <td>“MoReS 到底在改什么？”</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      最短记忆法：<code>input_ids</code> 看“整条序列是什么”，
+      <code>attention_mask</code> 看“哪些位置有效”，
+      <code>labels</code> 看“哪些位置算 loss”，
+      <code>intervention_locations</code> 看“MoReS 改哪里”。
+    </div>
+
+    <h2>4. 当前实现的硬编码设定</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>项目</th>
+          <th>当前实现</th>
+          <th>含义</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>支持模型</td>
+          <td><code>Qwen2.5-VL</code></td>
+          <td>代码直接假设 <code>model.config.text_config.hidden_size</code> 和 <code>model.model.language_model.layers</code> 存在</td>
+        </tr>
+        <tr>
+          <td>位置策略</td>
+          <td><code>f4+l5</code></td>
+          <td>从视觉 token 里取前 4 个和后 5 个</td>
+        </tr>
+        <tr>
+          <td>秩</td>
+          <td><code>rank = 1</code></td>
+          <td>adapter 是 rank-1 steering</td>
+        </tr>
+        <tr>
+          <td>激活</td>
+          <td>线性</td>
+          <td>当前直接做 <code>Linear(h) - W_down(h)</code>，不额外加非线性</td>
+        </tr>
+        <tr>
+          <td>层选择</td>
+          <td>每一层</td>
+          <td>每个 decoder layer 都挂一个 MoReS adapter</td>
+        </tr>
+        <tr>
+          <td>fallback</td>
+          <td>没有</td>
+          <td>必须显式提供 <code>intervention_locations</code></td>
+        </tr>
+        <tr>
+          <td>训练参数</td>
+          <td>只训练 <code>mores_adapters</code></td>
+          <td>backbone 全冻结</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>5. 一条完整样本的详细例子</h2>
+    <p>下面用一条具体样本，把整个流程从 raw sample 走到 layer hook。</p>
+
+    <h3>5.1 原始样本</h3>
+    <pre>image: 一张猫的照片
+user: "What animal is this?"
+assistant: "A cat."</pre>
+
+    <p>在仓库里，它最开始大致对应一个 <code>CanonicalSample</code>：</p>
+    <pre>{
+  "image_path": ".../cat.jpg",
+  "turns": [
+    {"role": "human", "content": "What animal is this?"},
+    {"role": "assistant", "content": "A cat."}
+  ]
+}</pre>
+
+    <h3>5.2 messages 与模板文本</h3>
+    <p><code>build_messages()</code> 会先整理成 chat messages：</p>
+    <pre>[
+  {
+    "role": "user",
+    "content": [
+      {"type": "image"},
+      {"type": "text", "text": "What animal is this?"}
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {"type": "text", "text": "A cat."}
+    ]
+  }
+]</pre>
+
+    <p>
+      然后 <code>processor.apply_chat_template(..., tokenize=False)</code> 得到完整文本。
+      这一步只知道“这里有图像占位符”，还不知道最终会展开成多少视觉 token。
+    </p>
+
+    <h3>5.3 processor 之后的最终序列</h3>
+    <p>
+      对 Qwen2.5-VL 来说，processor 会把图像占位符展开成多个 image tokens。
+      假设这张图最后展开成 12 个视觉 token，那么概念上序列会像这样：
+    </p>
+
+    <div class="sequence">
+      <strong>最终 token 序列（示意）</strong>
+      <pre>位置:    0    1    2    3    4    5    6    7    8    9    10   11   12      13       14   15    16   17  18   19
+token:  IMG  IMG  IMG  IMG  IMG  IMG  IMG  IMG  IMG  IMG  IMG  IMG  What   animal    is   this   ?    A   cat   .</pre>
+      <div class="chips">
+        <span class="chip visual">visual token</span>
+        <span class="chip text">text token</span>
+      </div>
+    </div>
+
+    <p>所以这时的 <code>input_ids</code> 可以示意成：</p>
+    <pre>input_ids = [
+  IMG_ID, IMG_ID, IMG_ID, IMG_ID, IMG_ID, IMG_ID,
+  IMG_ID, IMG_ID, IMG_ID, IMG_ID, IMG_ID, IMG_ID,
+  3923, 11444, 374, 576, 30, 32, 8415, 13
+]</pre>
+
+    <h3>5.4 attention_mask 是什么</h3>
+    <p>如果这条样本单独看，没有 padding，那么：</p>
+    <pre>attention_mask = [
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+]</pre>
+
+    <p>如果两条长度不同的样本 collate 到一起，就会出现 padding：</p>
+    <pre>batch_input_ids =
+[
+  [a, a, a, a, a],
+  [b, b, b, 0, 0]
+]
+
+attention_mask =
+[
+  [1, 1, 1, 1, 1],
+  [1, 1, 1, 0, 0]
+]</pre>
+
+    <p>所以 <code>attention_mask</code> 只是在回答：哪些位置是真 token，哪些是补齐出来的。</p>
+
+    <h3>5.5 labels、prompt_mask、instruction_supervision_mask</h3>
+    <p>
+      当前训练里，prompt 区间通常不参与 loss，所以 <code>labels</code> 会把那部分设成 <code>-100</code>。
+      假设回答 <code>A cat.</code> 从位置 17 才开始：
+    </p>
+    <pre>labels = [
+  -100, -100, -100, -100, -100, -100,
+  -100, -100, -100, -100, -100, -100,
+  -100, -100, -100, -100, -100,
+   32, 8415, 13
+]</pre>
+
+    <p>同一条样本的 <code>prompt_mask</code> 概念上像这样：</p>
+    <pre>prompt_mask = [
+  True, True, True, True, True, True,
+  True, True, True, True, True, True,
+  True, True, True, True, True,
+  False, False, False
+]</pre>
+
+    <p>
+      <code>instruction_supervision_mask</code> 是仓库自己用的更细粒度 instruction 标记。
+      它不是 MoReS 的算法核心，但它也是当前 batch 里会出现的重要字段。
+    </p>
+
+    <div class="chips">
+      <span class="chip loss">labels 中的 -100 代表忽略 loss</span>
+      <span class="chip text">prompt_mask 标记 prompt</span>
+    </div>
+
+    <h3>5.6 intervention_locations 是怎么来的</h3>
+    <p>
+      当前实现不是在 model 里临时猜，而是在 preprocess 阶段直接显式生成
+      <code>intervention_locations</code>。
+    </p>
+
+    <p>如果视觉 token 是位置 <code>0..11</code>，当前的 <code>f4+l5</code> 会选：</p>
+    <pre>前 4 个: 0, 1, 2, 3
+后 5 个: 7, 8, 9, 10, 11
+
+intervention_locations = [[0, 1, 2, 3, 7, 8, 9, 10, 11]]</pre>
+
+    <p>注意这里单条样本的形状是 <code>[1, K]</code>，不是单纯的一维列表。</p>
+
+    <h3>5.7 collate 之后的 batch</h3>
+    <p>假设 batch 里有两条样本，它们的 intervention 位置分别是：</p>
+    <pre>sample 1: [[0, 1, 2, 3, 7, 8, 9, 10, 11]]
+sample 2: [[0, 1, 2]]</pre>
+
+    <p>当前 <code>collate()</code> 会把它们拼成二维 batch tensor：</p>
+    <pre>batch["intervention_locations"] =
+[
+  [0, 1, 2, 3, 7, 8, 9, 10, 11],
+  [0, 1, 2, -1, -1, -1, -1, -1, -1]
+]</pre>
+
+    <p>
+      这里的 <code>-1</code> 只是 padding 占位，后面生成 <code>visual_mask</code> 时会被过滤掉。
+    </p>
+
+    <h2>6. 这条样本进入 MoReS 之后怎么走</h2>
+
+    <h3>6.1 build_forward_batch()</h3>
+    <p>
+      trainer 会先调用 <code>build_forward_batch()</code>。当前 MoReS 要求 batch 里必须包含
+      <code>intervention_locations</code>，没有就直接报错。
+    </p>
+
+    <pre>forward_batch = {
+  "input_ids": ...,
+  "labels": ...,
+  "attention_mask": ...,
+  "intervention_locations": ...,
+  "pixel_values": ...,
+  ...
+}</pre>
+
+    <p>
+      注意：现在 <code>intervention_locations</code> 会直接跟着 <code>model(**forward_batch)</code>
+      进入 forward，不再先被 stash 到 method 的隐藏状态里。
+    </p>
+
+    <h3>6.2 forward_pre_hook()：位置列表变成 visual_mask</h3>
+    <p>
+      在真正进入每层之前，model 的 <code>forward_pre_hook()</code> 会把二维的
+      <code>intervention_locations</code> 转成二维布尔 mask。
+    </p>
+
+    <p>例如：</p>
+    <pre>intervention_locations =
+[
+  [0, 1, 2, 3, 7, 8, 9, 10, 11]
+]
+
+seq_len = 20</pre>
+
+    <p>会变成：</p>
+    <pre>visual_mask =
+[
+  [T, T, T, T, F, F, F, T, T, T, T, T, F, F, F, F, F, F, F, F]
+]</pre>
+
+    <p>所以从这一刻起，MoReS 已经不再关心“它们原来怎么选出来的”，只关心 mask。</p>
+
+    <h3>6.3 layer_hook()：每一层只改这些位置</h3>
+    <p>当前实现会给每一个 Qwen decoder layer 都注册一个 hook。</p>
+
+    <pre>updated = output.clone()
+updated[visual_mask] = adapter(output[visual_mask])
+return updated</pre>
+
+    <p>这句的含义非常关键：</p>
+    <ul>
+      <li>整层输出先复制一份</li>
+      <li>只有 <code>visual_mask == True</code> 的位置会过 adapter</li>
+      <li>没被选中的视觉 token 不改</li>
+      <li>文本 token 也不改</li>
+    </ul>
+
+    <div class="sequence">
+      <strong>这一层的行为</strong>
+      <pre>selected visual tokens: changed
+other visual tokens: unchanged
+text tokens: unchanged</pre>
+      <div class="chips">
+        <span class="chip steer">only selected visual tokens are steered</span>
+      </div>
+    </div>
+
+    <h3>6.4 MoReSAdapter.forward()：一个 token 是怎么被改的</h3>
+    <p>当前 adapter 的核心公式是：</p>
+    <pre>h_new = h + W_up(Linear(h) - W_down(h))</pre>
+
+    <p>把它拆开看：</p>
+    <ol>
+      <li><code>W_down(h)</code>：先把 hidden state 投影到 rank-1 空间</li>
+      <li><code>Linear(h)</code>：再算一个 learned source</li>
+      <li>两者相减：得到 steering 强度</li>
+      <li><code>W_up(...)</code>：再投回原 hidden space</li>
+      <li>残差加回：<code>h + update</code></li>
+    </ol>
+
+    <h3>6.5 一个数值化的小例子</h3>
+    <p>假设某个被选中的 token，在某一层的 hidden state 是：</p>
+    <pre>h = [2.0, -1.0, 0.5, 3.0]</pre>
+
+    <p>再假设 <code>w_up = w_down.weight</code> 这条共享方向向量是：</p>
+    <pre>r = [0.4, -0.2, 0.1, 0.5]</pre>
+
+    <p>那么：</p>
+    <pre>projected = W_down(h)
+          = h · r
+          = 2.55</pre>
+
+    <p>假设：</p>
+    <pre>Linear(h) = 3.10</pre>
+
+    <p>那 steering 强度就是：</p>
+    <pre>steered = Linear(h) - W_down(h)
+        = 3.10 - 2.55
+        = 0.55</pre>
+
+    <p>再投回原空间：</p>
+    <pre>update = steered * r
+       = 0.55 * [0.4, -0.2, 0.1, 0.5]
+       = [0.22, -0.11, 0.055, 0.275]</pre>
+
+    <p>最后残差加回：</p>
+    <pre>h_new = h + update
+      = [2.22, -1.11, 0.555, 3.275]</pre>
+
+    <p>这就是“MoReS 真正改一个 token”时做的事情。</p>
+
+    <h2>7. 训练时到底更新什么</h2>
+    <p>
+      当前实现会先把整个 backbone 冻住，然后每层挂一个 MoReS adapter。
+      训练时优化器只拿 <code>mores_adapters</code> 的参数。
+    </p>
+
+    <pre>for param in model.parameters():
+    param.requires_grad = False
+
+model.mores_adapters = ModuleList([...])
+optimizer only sees mores_adapters.parameters()</pre>
+
+    <p>所以当前训练的本质是：</p>
+    <ul>
+      <li>base model 负责正常前向</li>
+      <li>MoReS 在每层对少量视觉 token 做 steering</li>
+      <li>只有 steering 模块自己被更新</li>
+    </ul>
+
+    <h2>8. 训练输入和评测输入有什么区别</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>场景</th>
+          <th>谁生成 <code>intervention_locations</code></th>
+          <th>最终形状</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>训练 preprocess</td>
+          <td><code>ChatTemplatePreprocessor.tokenize()</code></td>
+          <td>单样本 <code>[1, K]</code></td>
+        </tr>
+        <tr>
+          <td>训练 collate 后</td>
+          <td><code>ChatTemplatePreprocessor.collate()</code></td>
+          <td>batch <code>[B, K]</code></td>
+        </tr>
+        <tr>
+          <td>评测 / 推理</td>
+          <td><code>LocalMethod.prepare_input()</code></td>
+          <td>单样本 <code>[1, K]</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      这也是为什么当前实现已经没有 fallback：训练和评测都必须显式提供
+      <code>intervention_locations</code>。
+    </p>
+
+    <h2>9. 这份实现里每个重要函数在做什么</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>函数 / 类</th>
+          <th>职责</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>resolve_image_token_id()</code></td>
+          <td>从 Qwen processor 里取出 <code>image_token_id</code></td>
+        </tr>
+        <tr>
+          <td><code>select_f4_l5_token_indices()</code></td>
+          <td>从所有视觉 token 位置里，选前 4 个和后 5 个</td>
+        </tr>
+        <tr>
+          <td><code>build_mores_intervention_locations()</code></td>
+          <td>从单条 tokenized 样本里生成 <code>[1, K]</code> 的显式位置张量</td>
+        </tr>
+        <tr>
+          <td><code>build_visual_mask_from_intervention_locations()</code></td>
+          <td>把 batch 里的位置张量 <code>[B, K]</code> 变成布尔 mask <code>[B, S]</code></td>
+        </tr>
+        <tr>
+          <td><code>ChatTemplatePreprocessor.tokenize()</code></td>
+          <td>生成 <code>input_ids</code>、<code>labels</code>、<code>attention_mask</code>、<code>intervention_locations</code> 等字段</td>
+        </tr>
+        <tr>
+          <td><code>ChatTemplatePreprocessor.collate()</code></td>
+          <td>把多条样本 pad 成训练 batch</td>
+        </tr>
+        <tr>
+          <td><code>MoReSMethod.build_forward_batch()</code></td>
+          <td>确认 batch 里带有 <code>intervention_locations</code>，并筛掉不该传给模型的辅助字段</td>
+        </tr>
+        <tr>
+          <td><code>MoReSMethod.forward_pre_hook()</code></td>
+          <td>把 <code>intervention_locations</code> 转成 <code>visual_mask</code></td>
+        </tr>
+        <tr>
+          <td><code>MoReSMethod.layer_hook()</code></td>
+          <td>在每层只改被选中的视觉 token hidden states</td>
+        </tr>
+        <tr>
+          <td><code>MoReSAdapter.forward()</code></td>
+          <td>真正执行 <code>h + W_up(Linear(h) - W_down(h))</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>10. 如果又混了，就重新问自己这 6 个问题</h2>
+    <ol>
+      <li><code>input_ids</code>：整条序列到底是什么？</li>
+      <li><code>attention_mask</code>：哪些位置是真 token？</li>
+      <li><code>labels</code>：哪些位置参与训练 loss？</li>
+      <li><code>intervention_locations</code>：MoReS 要改哪些位置？</li>
+      <li><code>visual_mask</code>：进入 layer hook 后，哪些位置会被真正索引到？</li>
+      <li><code>adapter</code>：被索引到的 token 到底是怎么被更新的？</li>
+    </ol>
+
+    <h2>11. 一句话收束</h2>
+    <div class="callout">
+      当前这版 MoReS 的完整故事是：
+      preprocess 先把图像和文本变成 tokenized 样本，再显式产出
+      <code>intervention_locations</code>；训练或评测时，它被转换成
+      <code>visual_mask</code>；然后在每个 Qwen transformer layer 里，只对这些被选中的视觉 token
+      hidden states 做 rank-1 residual steering；loss 仍然是普通 CE；backbone 不训练，只训练每层的小 adapter。
+    </div>
+
+    <div class="footer">
+      当前文档描述的是这个工作区里已经简化后的 MoReS 实现：Qwen2.5-VL only、显式
+      <code>intervention_locations</code>、<code>f4+l5</code> 位置策略、无 fallback、白底打印版。
+    </div>
+  </main>
+</body>
+</html>

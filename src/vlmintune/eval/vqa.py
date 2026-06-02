@@ -1,8 +1,13 @@
-"""Official VQA v2-style metric helpers for the initial TextVQA release."""
+"""Local metric helpers for VQA-style evaluation."""
 from __future__ import annotations
 
 import re
-from typing import Dict, List
+from typing import Any, Dict, List
+
+_SUPPORTED_METRICS = {
+    "vqa_accuracy",
+    "normalized_exact_match",
+}
 
 _CONTRACTIONS = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve": "could've",
@@ -66,11 +71,12 @@ _PUNCT_TO_PROCESS = [
 ]
 _PERIOD_STRIP = re.compile(r"(?<!\d)\.(?!\d)")
 _COMMA_STRIP = re.compile(r"(\d)(,)(\d)")
-
-
 def validate_metric(raw_metric: str) -> str:
-    if raw_metric != "vqa_accuracy":
-        raise ValueError("eval.metric must be exactly 'vqa_accuracy'.")
+    if raw_metric not in _SUPPORTED_METRICS:
+        raise ValueError(
+            "metric must be one of "
+            f"{sorted(_SUPPORTED_METRICS)}."
+        )
     return raw_metric
 
 
@@ -102,7 +108,7 @@ def normalize_answer(answer: str) -> str:
     return " ".join(normalized_words)
 
 
-def coerce_ground_truths(ground_truth: object) -> List[str]:
+def coerce_ground_truths(ground_truth: Any) -> List[str]:
     if ground_truth is None or ground_truth == "":
         return []
     if isinstance(ground_truth, list):
@@ -130,20 +136,37 @@ def vqa_accuracy(
     return sum(scores) / len(scores)
 
 
-def score_textvqa_prediction(
-    prediction: str,
-    ground_truth: object,
-) -> Dict[str, float]:
-    ground_truths = coerce_ground_truths(ground_truth)
+def normalized_exact_match(prediction: str, ground_truths: List[str]) -> float:
     if not ground_truths:
-        return {}
-    return {"vqa_accuracy": vqa_accuracy(prediction, ground_truths)}
+        return 0.0
+    norm_pred = normalize_answer(prediction)
+    return 1.0 if any(normalize_answer(gt) == norm_pred for gt in ground_truths) else 0.0
 
+
+def score_prediction(metric: str, prediction: str, ground_truth: Any) -> Dict[str, float]:
+    metric = validate_metric(metric)
+
+    if metric == "vqa_accuracy":
+        ground_truths = coerce_ground_truths(ground_truth)
+        if not ground_truths:
+            return {}
+        return {"vqa_accuracy": vqa_accuracy(prediction, ground_truths)}
+
+    if metric == "normalized_exact_match":
+        ground_truths = coerce_ground_truths(ground_truth)
+        if not ground_truths:
+            return {}
+        return {
+            "normalized_exact_match": normalized_exact_match(prediction, ground_truths)
+        }
+
+    raise ValueError(f"Unsupported metric: {metric}")
 
 __all__ = [
     "coerce_ground_truths",
     "normalize_answer",
-    "score_textvqa_prediction",
+    "normalized_exact_match",
+    "score_prediction",
     "validate_metric",
     "vqa_accuracy",
 ]

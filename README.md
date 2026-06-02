@@ -54,12 +54,18 @@ pip install -e ".[dev]"
 Built-in dataset specs currently cover:
 
 - `lmms-lab/textvqa`
+- `pingzhili/vqa_v2`
+- `HuggingFaceM4/VizWiz`
+- `Mineru/GQA`
 
-Training uses the built-in Hugging Face dataset loader in `src/vlmintune/data/hf_datasets.py`. The example training configs default to `lmms-lab/textvqa` because it exposes a `train` split on Hugging Face.
+Training uses the built-in Hugging Face dataset loader in `src/vlmintune/data/hf_datasets.py`. Each built-in dataset spec declares a default training split and default evaluation split, so configs can omit `split`.
 
 ### Evaluation support
 
-- `TextVQA`
+- `TextVQA` via `vqa_accuracy`
+- `VQAv2` via `vqa_accuracy`
+- `VizWiz` via `vqa_accuracy`
+- `GQA` via `normalized_exact_match`
 
 ## Repository Layout
 
@@ -100,7 +106,8 @@ experiment_setup/<experiment_name>/
 Notes:
 
 - Run the commands on the machine that actually has the model weights, GPU, and dependencies installed.
-- Training dataset selection lives under `data.data_path`.
+- Training dataset selection lives under `data.dataset_name`.
+- `data.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default training split.
 - Training sample count lives under `data.max_samples`. Set it to `0` or omit it for the full split.
 - `experiment.name` is required and becomes the experiment folder name under `experiment.base_dir` (default `experiments/`).
 - Training writes into one fixed experiment layout:
@@ -146,10 +153,13 @@ In that config:
 
 - `experiment.name` selects the saved experiment
 - `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
+- `model.model_path` is optional; if omitted, the trained checkpoint must include `vlmintune_meta.json` with `base_model`
 - `eval.source` is required and must be `"trained"`
 - `eval.dataset_name` selects the eval dataset
-- `eval.split` is required
-- `eval.metric` is required and must be `"vqa_accuracy"`
+- `eval.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default eval split
+- Eval metric is chosen automatically from the dataset spec:
+  - `vqa_accuracy` for `TextVQA / VQAv2 / VizWiz`
+  - `normalized_exact_match` for `GQA`
 - `eval.max_samples` limits the eval sample count
 
 ### Evaluate A Base-Model Baseline
@@ -167,11 +177,13 @@ In that config:
 - `model.model_path` is required
 - `eval.source` is required and must be `"base"`
 - `eval.dataset_name` selects the eval dataset
-- `eval.split` is required
-- `eval.metric` is required and must be `"vqa_accuracy"`
+- `eval.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default eval split
+- Eval metric is chosen automatically from the dataset spec:
+  - `vqa_accuracy` for `TextVQA / VQAv2 / VizWiz`
+  - `normalized_exact_match` for `GQA`
 - `eval.max_samples` limits the eval sample count
 
-This initial release intentionally evaluates one dataset per run. If you want multiple eval datasets, run `vlmintune.eval` multiple times with different configs.
+This release evaluates exactly one dataset per run.
 
 ## Pre-trained Models
 

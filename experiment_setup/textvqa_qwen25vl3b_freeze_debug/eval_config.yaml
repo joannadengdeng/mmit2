@@ -14,8 +14,6 @@ eval:
   name: "textvqa_validation_debug20"
   source: "trained"
   dataset_name: "lmms-lab/textvqa"
-  split: validation
-  metric: "vqa_accuracy"
   # Keep this small so the predictions file is easy to inspect by hand.
   max_samples: 20
   max_new_tokens: 16

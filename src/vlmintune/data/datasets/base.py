@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+import os
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Tuple
 
 from PIL import Image
 
-from vlmintune.data.types import CanonicalSample, Turn
+from vlmintune.data.types import CanonicalSample
 
 
 @dataclass(frozen=True)
@@ -20,8 +21,30 @@ class ColumnMapping:
     answer_col: str = "answer"
 
 
-def handle_image_value(image_val, load_images: bool = True) -> Tuple[str, Dict[str, Any]]:
-    """Convert a HuggingFace image field into ``(image_path, metadata)``."""
+@dataclass(frozen=True)
+class DatasetDataModel:
+    """Minimal per-dataset contract used by training/eval loaders."""
+
+    dataset_name: str
+    hf_dataset_name: str = ""
+    config_name: str = ""
+    default_train_split: str = "train"
+    default_eval_split: str = "validation"
+    metric_family: str = "vqa_accuracy"
+
+    @property
+    def resolved_hf_dataset_name(self) -> str:
+        return self.hf_dataset_name or self.dataset_name
+
+
+@dataclass(frozen=True)
+class AnswerBundle:
+    train_answer: str = ""
+    eval_answers: List[str] = field(default_factory=list)
+
+
+def parse_image_field(image_val, load_images: bool = True) -> Tuple[str, Dict[str, Any]]:
+    """Parse a HF row image field into ``(image_path, metadata)``."""
 
     metadata: Dict[str, Any] = {}
     image_path = ""
@@ -54,12 +77,166 @@ def handle_image_value(image_val, load_images: bool = True) -> Tuple[str, Dict[s
     return image_path, metadata
 
 
+def load_sample_image(sample: CanonicalSample) -> Image.Image | None:
+    """Load a runtime image from cached sample metadata or a sample image path."""
+
+    metadata = sample.metadata or {}
+    pil_image = metadata.get("_pil_image")
+    if isinstance(pil_image, Image.Image):
+        return pil_image.convert("RGB")
+
+    image_bytes = metadata.get("_image_bytes")
+    if image_bytes:
+        try:
+            return Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        except Exception:
+            pass
+
+    raw_image = metadata.get("_raw_image")
+    if isinstance(raw_image, Image.Image):
+        return raw_image.convert("RGB")
+
+    if not sample.image_path or sample.image_path in {"<in_memory>", "<deferred>"}:
+        return None
+
+    if not os.path.isfile(sample.image_path):
+        return None
+    return Image.open(sample.image_path).convert("RGB")
+
+
+def extract_answer_strings(raw: Any, *, answer_key: str = "answer") -> List[str]:
+    answers: List[str] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                text = item.get(answer_key, str(item))
+            else:
+                text = str(item)
+            text = text.strip()
+            if text:
+                answers.append(text)
+        return answers
+    if raw not in (None, ""):
+        text = str(raw).strip()
+        if text:
+            answers.append(text)
+    return answers
+
+
+def majority_vote_answer(answers: List[str]) -> str:
+    if not answers:
+        return ""
+    counts: Dict[str, int] = {}
+    for answer in answers:
+        counts[answer] = counts.get(answer, 0) + 1
+    return max(
+        counts,
+        key=lambda answer: (counts[answer], -answers.index(answer)),
+    )
+
+
+def build_question_message(question: str, has_image: bool) -> Dict[str, Any]:
+    text = question.strip()
+    if not text:
+        raise ValueError("Question text is empty.")
+    if has_image:
+        content = [{"type": "image"}, {"type": "text", "text": text}]
+    else:
+        content = [{"type": "text", "text": text}]
+    return {"role": "user", "content": content}
+
+
+def build_answer_message(answer: str) -> Dict[str, Any] | None:
+    text = answer.strip()
+    if not text:
+        return None
+    return {
+        "role": "assistant",
+        "content": [{"type": "text", "text": text}],
+    }
+
+
+def build_prompt_messages(question: str, has_image: bool) -> List[Dict[str, Any]]:
+    return [build_question_message(question, has_image)]
+
+
+def build_full_messages(
+    question: str,
+    train_answer: str,
+    has_image: bool,
+) -> List[Dict[str, Any]]:
+    messages = build_prompt_messages(question, has_image)
+    answer_message = build_answer_message(train_answer)
+    if answer_message is not None:
+        messages.append(answer_message)
+    return messages
+
+
+def build_processor_images(image: Any) -> List[Any] | None:
+    return [image] if image is not None else None
+
+
+def render_prompt_text(processor: Any, question: str, has_image: bool) -> str:
+    messages = build_prompt_messages(question, has_image)
+    return processor.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+
+
+def render_full_text(
+    processor: Any,
+    question: str,
+    train_answer: str,
+    has_image: bool,
+) -> str:
+    messages = build_full_messages(question, train_answer, has_image)
+    return processor.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+
+
+def build_prompt_inputs(
+    processor: Any,
+    question: str,
+    image: Any,
+    **processor_kwargs: Any,
+) -> Tuple[str, Dict[str, Any]]:
+    text = render_prompt_text(processor, question, image is not None)
+    inputs = processor(
+        text=text,
+        images=build_processor_images(image),
+        **processor_kwargs,
+    )
+    return text, inputs
+
+
+def build_full_inputs(
+    processor: Any,
+    question: str,
+    train_answer: str,
+    image: Any,
+    **processor_kwargs: Any,
+) -> Tuple[str, Dict[str, Any]]:
+    text = render_full_text(processor, question, train_answer, image is not None)
+    inputs = processor(
+        text=text,
+        images=build_processor_images(image),
+        **processor_kwargs,
+    )
+    return text, inputs
+
+
 class HFDatasetSpec:
     """Dataset-specific mapping and row parsing for a HF VQA dataset."""
 
     dataset_name: str = ""
     mapping: ColumnMapping = ColumnMapping()
     prefer_streaming: bool = False
+    data_model: DatasetDataModel | None = None
 
     def parse_question(self, row: dict) -> str:
         raw = row.get(self.mapping.question_col, "") if self.mapping.question_col else ""
@@ -67,44 +244,35 @@ class HFDatasetSpec:
             return str(raw[0]).strip() if raw else ""
         return str(raw).strip()
 
-    def parse_answer(self, row: dict) -> tuple[str, Any]:
+    def parse_answers(self, row: dict) -> AnswerBundle:
         raw = row.get(self.mapping.answer_col, "") if self.mapping.answer_col else ""
-        if isinstance(raw, list):
-            if raw and isinstance(raw[0], dict):
-                return raw[0].get("answer", str(raw[0])), raw
-            return (str(raw[0]) if raw else ""), raw
-        return str(raw).strip(), raw
+        answers = extract_answer_strings(raw)
+        if answers:
+            return AnswerBundle(
+                train_answer=majority_vote_answer(answers),
+                eval_answers=answers,
+            )
+        return AnswerBundle()
 
-    def build_metadata(self, answer_raw: Any) -> Dict[str, Any]:
-        metadata: Dict[str, Any] = {}
-        if isinstance(answer_raw, list):
-            if answer_raw and isinstance(answer_raw[0], dict):
-                metadata["raw_answers"] = [item.get("answer", str(item)) for item in answer_raw]
-            else:
-                metadata["raw_answers"] = [str(item) for item in answer_raw]
-        elif answer_raw:
-            metadata["raw_answers"] = [str(answer_raw).strip()]
-        return metadata
+    def build_metadata(self, row: dict) -> Dict[str, Any]:
+        del row
+        return {}
 
     def parse_row(self, row: dict, idx: int, load_images: bool = True) -> CanonicalSample:
         question = self.parse_question(row)
-        answer, answer_raw = self.parse_answer(row)
-
-        turns = []
-        if question:
-            turns.append(Turn(role="user", content=question))
-        if answer:
-            turns.append(Turn(role="assistant", content=answer))
+        answers = self.parse_answers(row)
 
         image_val = row.get(self.mapping.image_col)
-        image_path, image_meta = handle_image_value(image_val, load_images)
-        metadata = {**image_meta, **self.build_metadata(answer_raw)}
+        image_path, image_meta = parse_image_field(image_val, load_images)
+        metadata = {**image_meta, **self.build_metadata(row)}
 
         sample_id = str(row.get(self.mapping.id_col, idx)) if self.mapping.id_col else str(idx)
         return CanonicalSample(
             id=sample_id,
             image_path=image_path,
-            turns=turns,
+            question=question,
+            train_answer=answers.train_answer,
+            eval_answers=answers.eval_answers,
             metadata=metadata,
         )
 
@@ -122,3 +290,4 @@ class ConfiguredVQASpec(HFDatasetSpec):
         self.dataset_name = dataset_name
         self.mapping = mapping
         self.prefer_streaming = prefer_streaming
+        self.data_model = DatasetDataModel(dataset_name=dataset_name)

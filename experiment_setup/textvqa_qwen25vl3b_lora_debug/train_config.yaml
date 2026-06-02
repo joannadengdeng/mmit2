@@ -28,6 +28,5 @@ training:
     target_modules: ["q_proj", "v_proj"]
 
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
   max_samples: 100

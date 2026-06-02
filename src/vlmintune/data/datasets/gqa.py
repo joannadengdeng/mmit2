@@ -1,20 +1,20 @@
-"""TextVQA dataset spec."""
+"""GQA dataset spec."""
 from __future__ import annotations
 
 from vlmintune.data.datasets.base import ColumnMapping, DatasetDataModel, HFDatasetSpec
 
 
-class TextVQASpec(HFDatasetSpec):
-    dataset_name = "lmms-lab/textvqa"
+class GQASpec(HFDatasetSpec):
+    dataset_name = "Mineru/GQA"
     data_model = DatasetDataModel(
         dataset_name=dataset_name,
-        default_train_split="train",
-        default_eval_split="validation",
-        metric_family="vqa_accuracy",
+        default_train_split="train_balanced",
+        default_eval_split="val_balanced",
+        metric_family="normalized_exact_match",
     )
     mapping = ColumnMapping(
         id_col="question_id",
         image_col="image",
         question_col="question",
-        answer_col="answers",
+        answer_col="answer",
     )

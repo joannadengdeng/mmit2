@@ -35,30 +35,6 @@ def build_mores_intervention_mask(
     return intervention_mask
 
 
-class MoReSProjector(nn.Module):
-    """Shared downsample/upsample projector with orthogonal rows."""
-
-    def __init__(self, hidden_size: int, rank: int) -> None:
-        super().__init__()
-        projector = nn.Linear(hidden_size, rank, bias=False, dtype=torch.float32)
-        nn.init.orthogonal_(projector.weight)
-        projector = torch.nn.utils.parametrizations.orthogonal(
-            projector,
-            orthogonal_map="householder",
-        )
-        projector.parametrizations.weight.original.data = (
-            projector.parametrizations.weight.original.data.to(torch.float32)
-        )
-        self.projector = projector
-
-    @property
-    def weight(self) -> torch.Tensor:
-        return self.projector.weight
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.projector(hidden_states.to(torch.float32))
-
-
 class MoReSAdapter(nn.Module):
     """Residual steering module: h + W_up(Linear(h) - W_down(h))."""
 
@@ -68,14 +44,27 @@ class MoReSAdapter(nn.Module):
         rank: int,
     ) -> None:
         super().__init__()
-        self.projector = MoReSProjector(hidden_size, rank)
-        self.learned_source = nn.Linear(hidden_size, rank, dtype=torch.float32)
+        w_down = nn.Linear(hidden_size, rank, bias=False, dtype=torch.float32)
+        nn.init.orthogonal_(w_down.weight)
+        w_down = torch.nn.utils.parametrizations.orthogonal(
+            w_down,
+            orthogonal_map="householder",
+        )
+        w_down.parametrizations.weight.original.data = (
+            w_down.parametrizations.weight.original.data.to(torch.float32)
+        )
+        self.w_down = w_down
+        self.linear = nn.Linear(hidden_size, rank, dtype=torch.float32)
+
+    @property
+    def w_up(self) -> torch.Tensor:
+        return self.w_down.weight
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         base = hidden_states.to(torch.float32)
-        projected = self.projector(base)
-        steered = self.learned_source(base) - projected
-        update = torch.matmul(steered, self.projector.weight)
+        w_down_h = self.w_down(base)
+        linear_h = self.linear(base)
+        update = torch.matmul(linear_h - w_down_h, self.w_up)
         return (base + update).to(hidden_states.dtype)
 
 
@@ -162,6 +151,22 @@ class MoReSMethod(TrainingMethod):
 
     def compute_loss(self, model, batch, outputs):
         return CROSS_ENTROPY_LOSS.compute(model, batch, outputs)
+
+    def prepare_inference_inputs(
+        self,
+        model: nn.Module,
+        processor: Any,
+        inputs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        del processor
+        intervention_mask = build_mores_intervention_mask(
+            model.config,
+            inputs["input_ids"].squeeze(0),
+        )
+        return {
+            **inputs,
+            "intervention_mask": intervention_mask.unsqueeze(0),
+        }
 
     def get_trainable_params(self, model: nn.Module) -> List[Dict[str, Any]]:
         adapters = getattr(model, "mores_adapters", None)

@@ -30,7 +30,6 @@ training:
       - "model.language_model.layers.3"
 
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
   # Keep this small for fast smoke/debug runs. Set to 0 for the full train split.
   max_samples: 100

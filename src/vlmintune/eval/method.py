@@ -6,28 +6,21 @@ import os
 from typing import Any, Dict
 
 import torch
-from PIL import Image
 
-from vlmintune.data.types import CanonicalSample, EvalSample, Turn
+from vlmintune.data.datasets.base import build_prompt_inputs, load_sample_image
+from vlmintune.data.types import CanonicalSample, EvalSample
 from vlmintune.training.methods.base import load_processor, load_vlm
-from vlmintune.training.methods.mores import build_mores_intervention_mask
 from vlmintune.training.methods.registry import build_training_method
-
-_SHORT_ANSWER_INSTRUCTION = "Answer with a single short answer only. Do not use a full sentence."
-
-
-def build_eval_question(question: str) -> str:
-    question = question.strip() or "Describe this image."
-    return f"{question}\n{_SHORT_ANSWER_INSTRUCTION}"
 
 
 class LocalMethod:
     """Inference with a locally loaded VLM model."""
 
-    def __init__(self, model, processor, device=None):
+    def __init__(self, model, processor, device=None, inference_method=None):
         self.model = model
         self.processor = processor
         self.device = device or next(model.parameters()).device
+        self.inference_method = inference_method
         self.model.eval()
 
     @classmethod
@@ -73,7 +66,7 @@ class LocalMethod:
                 quantize_4bit=quantize_4bit,
                 **kwargs,
             )
-            return cls(model, processor)
+            return cls(model, processor, inference_method=method)
 
         return cls.from_base_model(
             base_model_id,
@@ -83,60 +76,33 @@ class LocalMethod:
     def prepare_eval_input(
         self,
         sample: EvalSample,
-        image_root: str = "",
     ) -> Dict[str, Any]:
         cs = CanonicalSample(
             id=sample.id,
             image_path=sample.image_path,
-            turns=[Turn(role="user", content=build_eval_question(sample.question))],
+            question=sample.question,
             metadata=sample.metadata,
         )
-        return self.prepare_input(cs, image_root=image_root)
+        return self.prepare_input(cs)
 
     def prepare_input(
         self,
         sample: CanonicalSample,
-        image_root: str = "",
     ) -> Dict[str, Any]:
-        image = None
-        if sample.image_path:
-            pil = (sample.metadata or {}).get("_pil_image")
-            if pil is not None:
-                image = pil.convert("RGB")
-            else:
-                img_path = os.path.join(image_root, sample.image_path) if image_root else sample.image_path
-                if os.path.isfile(img_path):
-                    image = Image.open(img_path).convert("RGB")
+        image = load_sample_image(sample)
 
-        question = ""
-        for turn in sample.turns:
-            if turn.role == "user":
-                question = turn.content
-                break
-        if not question:
-            question = "Describe this image."
-
-        if image is not None:
-            messages = [{"role": "user", "content": [
-                {"type": "image"},
-                {"type": "text", "text": question},
-            ]}]
-        else:
-            messages = [{"role": "user", "content": [
-                {"type": "text", "text": question},
-            ]}]
-
-        text = self.processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True,
+        _, inputs = build_prompt_inputs(
+            self.processor,
+            sample.question,
+            image,
+            return_tensors="pt",
         )
-        images = [image] if image is not None else None
-        inputs = self.processor(text=text, images=images, return_tensors="pt")
-        if hasattr(self.model, "mores_adapters"):
-            intervention_mask = build_mores_intervention_mask(
-                self.model.config,
-                inputs["input_ids"].squeeze(0),
+        if self.inference_method is not None:
+            inputs = self.inference_method.prepare_inference_inputs(
+                self.model,
+                self.processor,
+                inputs,
             )
-            inputs["intervention_mask"] = intervention_mask.unsqueeze(0)
         return {
             key: value.to(self.device) if isinstance(value, torch.Tensor) else value
             for key, value in inputs.items()
@@ -163,5 +129,4 @@ class LocalMethod:
 
 __all__ = [
     "LocalMethod",
-    "build_eval_question",
 ]

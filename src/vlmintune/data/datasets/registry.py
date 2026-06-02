@@ -4,11 +4,17 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from vlmintune.data.datasets.base import ColumnMapping, ConfiguredVQASpec, HFDatasetSpec
+from vlmintune.data.datasets.gqa import GQASpec
 from vlmintune.data.datasets.textvqa import TextVQASpec
+from vlmintune.data.datasets.vizwiz import VizWizSpec
+from vlmintune.data.datasets.vqav2 import VQAv2Spec
 
 
 _SPEC_CLASSES = (
     TextVQASpec,
+    VQAv2Spec,
+    VizWizSpec,
+    GQASpec,
 )
 
 DATASET_SPECS: Dict[str, HFDatasetSpec] = {

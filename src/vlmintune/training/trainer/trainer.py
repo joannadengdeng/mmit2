@@ -87,7 +87,6 @@ class Trainer:
             model_config=self.model.config,
             enable_instruction_supervision=config.training_method == "l2t",
             enable_mores_intervention=config.training_method == "mores",
-            image_root=config.data_config.get("image_root", ""),
             max_length=config.max_length,
             skip_logger=build_skip_logger(debug_recorder),
             debug_recorder=debug_recorder,

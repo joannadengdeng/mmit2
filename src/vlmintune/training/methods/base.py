@@ -139,6 +139,20 @@ class TrainingMethod(ABC):
         excluded_keys = {"instruction_supervision_mask"}
         return {key: value for key, value in batch.items() if key not in excluded_keys}
 
+    def prepare_inference_inputs(
+        self,
+        model: nn.Module,
+        processor: Any,
+        inputs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Optionally augment inference-time model inputs.
+
+        Override for methods that need runtime-only tensors during generation
+        (e.g. MoReS intervention masks). Default: return inputs unchanged.
+        """
+        del model, processor
+        return inputs
+
     @abstractmethod
     def compute_loss(
         self,

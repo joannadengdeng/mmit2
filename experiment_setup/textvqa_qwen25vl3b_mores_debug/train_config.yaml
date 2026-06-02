@@ -23,6 +23,5 @@ training:
   output_dir: "experiments"
 
 data:
-  data_path: "lmms-lab/textvqa"
-  split: train
+  dataset_name: "lmms-lab/textvqa"
   max_samples: 100

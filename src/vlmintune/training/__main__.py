@@ -12,8 +12,7 @@ Config schema::
     model:
       model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
     data:
-      data_path: "..."
-      split: "train"
+      dataset_name: "..."
     training_method: "qlora"
     method_params: {lora_r: 8}
     training:

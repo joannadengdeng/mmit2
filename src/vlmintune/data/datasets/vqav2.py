@@ -1,11 +1,11 @@
-"""TextVQA dataset spec."""
+"""VQAv2 dataset spec."""
 from __future__ import annotations
 
 from vlmintune.data.datasets.base import ColumnMapping, DatasetDataModel, HFDatasetSpec
 
 
-class TextVQASpec(HFDatasetSpec):
-    dataset_name = "lmms-lab/textvqa"
+class VQAv2Spec(HFDatasetSpec):
+    dataset_name = "pingzhili/vqa_v2"
     data_model = DatasetDataModel(
         dataset_name=dataset_name,
         default_train_split="train",

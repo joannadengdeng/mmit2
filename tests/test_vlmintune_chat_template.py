@@ -2,12 +2,13 @@ import os
 import sys
 import types
 
+import pytest
 import torch
 from PIL import Image
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vlmintune.data.types import CanonicalSample, Turn
+from vlmintune.data.types import CanonicalSample
 from vlmintune.training.chat_template import ChatTemplatePreprocessor
 
 
@@ -90,10 +91,8 @@ def test_chat_template_tokenize_includes_rendered_prompt_preview():
     sample = CanonicalSample(
         id="sample-1",
         image_path="",
-        turns=[
-            Turn(role="user", content="Question?"),
-            Turn(role="assistant", content="Answer."),
-        ],
+        question="Question?",
+        train_answer="Answer.",
     )
 
     result = ChatTemplatePreprocessor(enable_instruction_supervision=True).tokenize(
@@ -120,10 +119,8 @@ def test_chat_template_tokenize_emits_mores_intervention_mask_for_visual_tokens(
     sample = CanonicalSample(
         id="sample-image",
         image_path="",
-        turns=[
-            Turn(role="user", content="What is shown?"),
-            Turn(role="assistant", content="Answer."),
-        ],
+        question="What is shown?",
+        train_answer="Answer.",
         metadata={"_pil_image": Image.new("RGB", (4, 4), color="white")},
     )
 
@@ -182,10 +179,8 @@ def test_chat_template_default_preprocessor_skips_l2t_only_fields():
     sample = CanonicalSample(
         id="sample-plain",
         image_path="",
-        turns=[
-            Turn(role="user", content="Question?"),
-            Turn(role="assistant", content="Answer."),
-        ],
+        question="Question?",
+        train_answer="Answer.",
     )
 
     result = ChatTemplatePreprocessor().tokenize(
@@ -199,3 +194,20 @@ def test_chat_template_default_preprocessor_skips_l2t_only_fields():
     assert "instruction_texts" not in result["prompt_preview"]
     assert "instruction_supervision_spans" not in result["prompt_preview"]
     assert "intervention_mask" not in result["prompt_preview"]
+
+
+def test_chat_template_tokenize_rejects_empty_question():
+    model_config = types.SimpleNamespace(image_token_id=99)
+    sample = CanonicalSample(
+        id="sample-empty",
+        image_path="",
+        question="   ",
+        train_answer="Answer.",
+    )
+
+    with pytest.raises(ValueError, match="Question text is empty"):
+        ChatTemplatePreprocessor().tokenize(
+            sample,
+            _FakeProcessor(),
+            model_config,
+        )

@@ -12,11 +12,8 @@ from vlmintune.training.methods.base import TrainingMethod
 
 
 def extract_instruction_texts(sample: CanonicalSample) -> List[str]:
-    return [
-        turn.content.strip()
-        for turn in sample.turns
-        if turn.role == "user" and turn.content.strip()
-    ]
+    question = sample.question.strip()
+    return [question] if question else []
 
 
 def build_instruction_supervision_mask(

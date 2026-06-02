@@ -10,38 +10,30 @@ from PIL import Image
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.data.hf_datasets import HFDatasetsAdapter
-from vlmintune.data.types import CanonicalSample, EvalSample, Turn
+from vlmintune.data.types import CanonicalSample, EvalSample
 from vlmintune.eval.method import (
     LocalMethod,
 )
 from vlmintune.eval.run import (
     EvalTarget,
-    evaluate_vqa_dataset,
+    evaluate_dataset,
     parse_eval_target,
     resolve_experiment_source,
 )
-from vlmintune.eval.vqa import normalize_answer, vqa_accuracy
+from vlmintune.eval.vqa import (
+    normalize_answer,
+    normalized_exact_match,
+    vqa_accuracy,
+)
 from vlmintune.training.experiment import ExperimentTracker
+from vlmintune.training.methods.mores import MoReSMethod
 
 
-def test_parse_eval_target_requires_explicit_split():
-    with pytest.raises(ValueError, match="eval.split is required"):
-        parse_eval_target(
-            {
-                "dataset_name": "lmms-lab/textvqa",
-                "max_new_tokens": 12,
-                "max_samples": 25,
-            }
-        )
-
-
-def test_parse_eval_target_accepts_explicit_split():
+def test_parse_eval_target_uses_default_eval_split():
     target = parse_eval_target(
         {
             "dataset_name": "lmms-lab/textvqa",
-            "split": "validation",
             "source": "trained",
-            "metric": "vqa_accuracy",
             "max_new_tokens": 12,
             "max_samples": 25,
         }
@@ -55,70 +47,34 @@ def test_parse_eval_target_accepts_explicit_split():
     assert target.max_samples == 25
 
 
-def test_parse_eval_target_requires_metric():
-    with pytest.raises(ValueError, match="eval.metric is required"):
-        parse_eval_target(
-            {
-                "dataset_name": "lmms-lab/textvqa",
-                "split": "validation",
-                "source": "trained",
-            }
-        )
+def test_parse_eval_target_accepts_explicit_split():
+    target = parse_eval_target(
+        {
+            "dataset_name": "lmms-lab/textvqa",
+            "split": "validation",
+            "source": "trained",
+            "max_new_tokens": 12,
+            "max_samples": 25,
+        }
+    )
 
-
-def test_parse_eval_target_rejects_non_string_metric():
-    with pytest.raises(ValueError, match="eval.metric is required"):
-        parse_eval_target(
-            {
-                "dataset_name": "lmms-lab/textvqa",
-                "split": "validation",
-                "source": "trained",
-                "metric": ["vqa_accuracy"],
-            }
-        )
+    assert target.dataset_name == "lmms-lab/textvqa"
+    assert target.split == "validation"
+    assert target.source == "trained"
+    assert target.metric == "vqa_accuracy"
+    assert target.max_new_tokens == 12
+    assert target.max_samples == 25
 
 
 def test_parse_eval_target_rejects_unknown_dataset():
     with pytest.raises(ValueError, match="Unsupported eval.dataset_name"):
         parse_eval_target({"dataset_name": "foo/bar"})
 
-
-def test_parse_eval_target_rejects_non_textvqa_dataset():
-    with pytest.raises(ValueError, match="Unsupported eval.dataset_name"):
-        parse_eval_target({"dataset_name": "lmms-lab/VQAv2"})
-
-
-def test_parse_eval_target_rejects_unsupported_metric():
-    with pytest.raises(ValueError, match="eval.metric must be exactly"):
-        parse_eval_target(
-            {
-                "dataset_name": "lmms-lab/textvqa",
-                "split": "validation",
-                "source": "trained",
-                "metric": "anls",
-            }
-        )
-
-
-def test_parse_eval_target_rejects_metric_with_whitespace():
-    with pytest.raises(ValueError, match="eval.metric must be exactly"):
-        parse_eval_target(
-            {
-                "dataset_name": "lmms-lab/textvqa",
-                "split": "validation",
-                "source": "trained",
-                "metric": " vqa_accuracy ",
-            }
-        )
-
-
 def test_parse_eval_target_requires_source():
     with pytest.raises(ValueError, match="eval.source is required"):
         parse_eval_target(
             {
                 "dataset_name": "lmms-lab/textvqa",
-                "split": "validation",
-                "metric": "vqa_accuracy",
             }
         )
 
@@ -130,19 +86,6 @@ def test_parse_eval_target_rejects_unknown_source():
                 "dataset_name": "lmms-lab/textvqa",
                 "split": "validation",
                 "source": "baseline",
-                "metric": "vqa_accuracy",
-            }
-        )
-
-
-def test_parse_eval_target_rejects_multi_target_legacy_config():
-    with pytest.raises(ValueError, match="exactly one eval dataset"):
-        parse_eval_target(
-            {
-                "targets": [
-                    {"dataset_name": "lmms-lab/textvqa"},
-                    {"dataset_name": "lmms-lab/textvqa"},
-                ]
             }
         )
 
@@ -161,6 +104,10 @@ def test_vqa_accuracy_matches_official_leave_one_out_scoring():
     assert vqa_accuracy("cat", ["cat"] * 4 + ["dog"] * 6) == 1.0
 
 
+def test_normalized_exact_match_uses_vqa_normalization():
+    assert normalized_exact_match("The cat.", ["cat"]) == 1.0
+    assert normalized_exact_match("dogs", ["cat"]) == 0.0
+
 def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
     tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
     meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")
@@ -176,7 +123,7 @@ def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
     source, loaded_tracker = resolve_experiment_source(
         {
             "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
-            "eval": {"dataset_name": "lmms-lab/textvqa", "split": "validation", "source": "trained", "metric": "vqa_accuracy"},
+            "eval": {"dataset_name": "lmms-lab/textvqa", "source": "trained"},
         },
         EvalTarget(
             name="textvqa_validation",
@@ -204,7 +151,8 @@ def test_resolve_experiment_source_uses_base_eval_dir(tmp_path):
     source, _ = resolve_experiment_source(
         {
             "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
-            "eval": {"dataset_name": "lmms-lab/textvqa", "split": "validation", "source": "base", "metric": "vqa_accuracy"},
+            "eval": {"dataset_name": "lmms-lab/textvqa", "source": "base"},
+            "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
         },
         EvalTarget(
             name="textvqa_validation",
@@ -221,8 +169,31 @@ def test_resolve_experiment_source_uses_base_eval_dir(tmp_path):
     assert source.output_dir == tracker.get_eval_dir("base")
 
 
+def test_resolve_experiment_source_requires_explicit_model_path_for_base(tmp_path):
+    tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
+    meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({"base_model": "Qwen/Qwen2.5-VL-3B-Instruct"}, f)
+
+    with pytest.raises(ValueError, match="model.model_path is required when eval.source='base'"):
+        resolve_experiment_source(
+            {
+                "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
+                "eval": {"dataset_name": "lmms-lab/textvqa", "source": "base"},
+                "model": {},
+            },
+            EvalTarget(
+                name="textvqa_validation",
+                dataset_name="lmms-lab/textvqa",
+                split="validation",
+                source="base",
+                metric="vqa_accuracy",
+            ),
+        )
+
+
 class _DummyMethod:
-    def prepare_eval_input(self, sample, image_root=""):
+    def prepare_eval_input(self, sample):
         return sample
 
     def generate(self, prepared, max_new_tokens, temperature):
@@ -278,7 +249,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
 
     monkeypatch.setattr(HFDatasetsAdapter, "load_dataset", fake_load_dataset)
 
-    result = evaluate_vqa_dataset(
+    result = evaluate_dataset(
         _DummyMethod(),
         EvalTarget(
             name="textvqa_validation",
@@ -302,7 +273,7 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
     assert record["ground_truth"].count("cat") == 3
 
 
-def test_local_method_eval_prompt_requests_short_answer():
+def test_local_method_prepare_eval_input_uses_raw_question_text():
     processor = _FakeEvalProcessor()
     method = LocalMethod(_FakeEvalModel(), processor)
 
@@ -314,24 +285,56 @@ def test_local_method_eval_prompt_requests_short_answer():
         )
     )
 
-    assert "single short answer only" in processor.last_text.lower()
-    assert "do not use a full sentence" in processor.last_text.lower()
+    assert processor.last_text == "What number is on the player's jersey?"
+
 
 
 def test_local_method_prepare_input_adds_intervention_mask_for_mores_models():
     processor = _FakeEvalProcessor()
     model = _FakeEvalModel()
-    model.mores_adapters = nn.ModuleList()
-    method = LocalMethod(model, processor)
+    method = LocalMethod(model, processor, inference_method=MoReSMethod())
 
     prepared = method.prepare_input(
         CanonicalSample(
             id="1",
             image_path="cat.png",
-            turns=[Turn(role="user", content="What animal is this?")],
+            question="What animal is this?",
             metadata={"_pil_image": Image.new("RGB", (4, 4), color="white")},
         )
     )
 
     assert "intervention_mask" in prepared
     assert prepared["intervention_mask"].tolist() == [[True, True, False]]
+
+
+def test_local_method_prepare_input_uses_explicit_question_field():
+    processor = _FakeEvalProcessor()
+    model = _FakeEvalModel()
+    method = LocalMethod(model, processor)
+
+    method.prepare_input(
+        CanonicalSample(
+            id="1",
+            image_path="",
+            question="Question?",
+            metadata={},
+        )
+    )
+
+    assert "Question?" in processor.last_text
+
+
+def test_local_method_prepare_input_rejects_empty_question():
+    processor = _FakeEvalProcessor()
+    model = _FakeEvalModel()
+    method = LocalMethod(model, processor)
+
+    with pytest.raises(ValueError, match="Question text is empty"):
+        method.prepare_input(
+            CanonicalSample(
+                id="1",
+                image_path="",
+                question="   ",
+                metadata={},
+            )
+        )

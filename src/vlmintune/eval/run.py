@@ -7,10 +7,11 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, Optional
 
+from vlmintune.data.datasets.registry import DATASET_SPECS, get_dataset_spec
 from vlmintune.training.experiment import ExperimentTracker
 
 from vlmintune.eval.method import LocalMethod
-from vlmintune.eval.vqa import score_textvqa_prediction, validate_metric
+from vlmintune.eval.vqa import score_prediction
 
 
 @dataclass(frozen=True)
@@ -36,9 +37,6 @@ class EvalSource:
     experiment_name: str = ""
 
 
-SUPPORTED_EVAL_DATASETS = {
-    "lmms-lab/textvqa",
-}
 SUPPORTED_EVAL_SOURCES = {
     "trained",
     "base",
@@ -69,30 +67,22 @@ def default_eval_name(dataset_name: str, split: str) -> str:
 
 def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
     raw_eval = raw_eval or {}
-    if "targets" in raw_eval:
-        raw_targets = raw_eval.get("targets", [])
-        if len(raw_targets) != 1:
-            raise ValueError(
-                "Initial release supports exactly one eval dataset per run. "
-                "Set eval.dataset_name / eval.split / eval.max_samples instead of eval.targets."
-            )
-        raw = raw_targets[0] or {}
-    else:
-        raw = raw_eval
+    raw = raw_eval
 
     dataset_name = str(raw.get("dataset_name", "")).strip()
     if not dataset_name:
         raise ValueError("eval.dataset_name is required")
 
-    if dataset_name not in SUPPORTED_EVAL_DATASETS:
+    spec = get_dataset_spec(dataset_name)
+    if spec is None or spec.data_model is None:
         raise ValueError(
             f"Unsupported eval.dataset_name '{dataset_name}'. "
-            f"Supported: {sorted(SUPPORTED_EVAL_DATASETS)}"
+            f"Supported: {sorted(DATASET_SPECS)}"
         )
 
-    split = str(raw.get("split", "")).strip()
+    split = str(raw.get("split", "")).strip() or str(spec.data_model.default_eval_split).strip()
     if not split:
-        raise ValueError("eval.split is required")
+        raise ValueError(f"eval split could not be resolved for dataset '{dataset_name}'")
 
     raw_source = raw.get("source")
     if not isinstance(raw_source, str):
@@ -102,10 +92,7 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
             f"eval.source must be exactly one of {sorted(SUPPORTED_EVAL_SOURCES)}"
         )
 
-    raw_metric = raw.get("metric")
-    if not isinstance(raw_metric, str):
-        raise ValueError("eval.metric is required and must be a string")
-    metric = validate_metric(raw_metric)
+    metric = spec.data_model.metric_family
 
     max_samples_raw = raw.get("max_samples")
     max_samples = int(max_samples_raw) if max_samples_raw not in (None, "", 0) else None
@@ -137,7 +124,7 @@ def emit_eval_debug_examples(records: list[dict[str, Any]]) -> None:
     print(json.dumps(records, indent=2, ensure_ascii=False))
 
 
-def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
+def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
     from vlmintune.data.hf_datasets import HFDatasetsAdapter
     from vlmintune.data.types import EvalSample
 
@@ -147,7 +134,11 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
         max_samples=target.max_samples,
         streaming=target.streaming,
         load_images=True,
+        usage="eval",
     )
+    data_model = getattr(adapter.profile, "data_model", None)
+    if data_model is None:
+        raise ValueError(f"Dataset '{target.dataset_name}' is missing eval data model metadata.")
     total = len(adapter) if len(adapter) >= 0 else None
     prediction_file = prediction_path(output_dir)
 
@@ -157,33 +148,30 @@ def evaluate_vqa_dataset(method, target: EvalTarget, output_dir: str) -> Dict[st
 
     with open(prediction_file, "w", encoding="utf-8") as f:
         for sample in iter_with_progress(adapter, total, f"Evaluating {target.name}"):
-            ground_truth = sample.metadata.get("raw_answers") or ([sample.first_answer] if sample.first_answer else [])
+            eval_answers = sample.eval_answers
 
             eval_sample = EvalSample(
                 id=sample.id,
                 image_path=sample.image_path,
-                question=sample.first_question,
-                ground_truth=ground_truth,
+                question=sample.question,
+                eval_answers=eval_answers,
                 metadata=sample.metadata,
             )
-            prepared = method.prepare_eval_input(eval_sample, image_root="")
+            prepared = method.prepare_eval_input(eval_sample)
             prediction = method.generate(
                 prepared,
                 max_new_tokens=target.max_new_tokens,
                 temperature=target.temperature,
             )
-            scores = score_textvqa_prediction(
-                prediction=prediction,
-                ground_truth=ground_truth,
-            )
+            scores = score_prediction(target.metric, prediction=prediction, ground_truth=eval_answers)
             for metric_name, value in scores.items():
                 metric_sums[metric_name] = metric_sums.get(metric_name, 0.0) + float(value)
 
             record = {
                 "id": sample.id,
-                "question": sample.first_question,
+                "question": sample.question,
                 "prediction": prediction,
-                "ground_truth": ground_truth,
+                "ground_truth": eval_answers,
                 "scores": scores,
             }
             if len(debug_records) < 5:
@@ -226,7 +214,7 @@ def resolve_experiment_source(
 
     tracker = ExperimentTracker.load_by_name(base_dir, experiment_name)
     model_cfg = raw_cfg.get("model", {}) or {}
-    base_model_id = str(model_cfg.get("model_path", "")).strip()
+    configured_base_model_id = str(model_cfg.get("model_path", "")).strip()
     checkpoint_path = tracker.get_checkpoint_dir()
 
     checkpoint_meta: Dict[str, Any] = {}
@@ -236,16 +224,16 @@ def resolve_experiment_source(
         except FileNotFoundError:
             checkpoint_meta = {}
 
-    base_model_id = base_model_id or str(checkpoint_meta.get("base_model", "")).strip()
-    if not base_model_id:
-        raise ValueError(
-            "Could not determine base model id. Set model.model_path in the eval config "
-            "or ensure the experiment checkpoint has vlmintune_meta.json."
-        )
-
     if target.source == "trained":
         if not os.path.isdir(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        base_model_id = configured_base_model_id or str(checkpoint_meta.get("base_model", "")).strip()
+        if not base_model_id:
+            raise ValueError(
+                "Could not determine base model id for eval.source='trained'. "
+                "Set model.model_path in the eval config or ensure the checkpoint has "
+                "vlmintune_meta.json with a base_model entry."
+            )
         ft_method = str(checkpoint_meta.get("ft_method", "")).strip()
         if not ft_method:
             raise ValueError(
@@ -261,9 +249,12 @@ def resolve_experiment_source(
         )
         return source, tracker
 
+    if not configured_base_model_id:
+        raise ValueError("model.model_path is required when eval.source='base'")
+
     source = EvalSource(
         kind="base",
-        base_model_id=base_model_id,
+        base_model_id=configured_base_model_id,
         output_dir=tracker.get_eval_dir("base"),
         checkpoint_path="",
         ft_method="",
@@ -298,7 +289,7 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 method = LocalMethod.from_base_model(source.base_model_id)
 
-            eval_result = evaluate_vqa_dataset(method, eval_target, source.output_dir)
+            eval_result = evaluate_dataset(method, eval_target, source.output_dir)
             summary = {
                 "experiment_name": source.experiment_name,
                 "source": source.kind,
@@ -327,7 +318,7 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
 __all__ = [
     "EvalSource",
     "EvalTarget",
-    "evaluate_vqa_dataset",
+    "evaluate_dataset",
     "parse_eval_target",
     "resolve_experiment_source",
     "run_eval_config",

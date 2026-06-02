@@ -164,16 +164,10 @@ def build_label_supervision_debug(
 def build_dataset(config: Any):
     data_cfg = dict(config.data_config)
     max_samples = int(data_cfg.pop("max_samples", 0) or 0)
-    data_cfg.pop("image_root", None)
-
-    if "dataset_name" not in data_cfg:
-        if "data_path" in data_cfg:
-            data_cfg["dataset_name"] = data_cfg.pop("data_path")
-        elif "dataset" in data_cfg:
-            data_cfg["dataset_name"] = data_cfg.pop("dataset")
 
     adapter = HFDatasetsAdapter(
         max_samples=max_samples if max_samples > 0 else None,
+        usage="train",
         **data_cfg,
     )
     dataset_len = len(adapter)

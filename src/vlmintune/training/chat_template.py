@@ -1,53 +1,18 @@
 """Chat-template preprocessor for single-sample tokenization and batch collation."""
 from __future__ import annotations
 
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import torch
-from PIL import Image
 
+from vlmintune.data.datasets.base import (
+    build_full_inputs,
+    build_prompt_inputs,
+    load_sample_image,
+)
 from vlmintune.data.types import CanonicalSample
 
 IGNORE_INDEX = -100
-
-
-def load_image(sample: CanonicalSample, image_root: str = "") -> Optional[Image.Image]:
-    if not sample.image_path:
-        return None
-    pil_image = sample.metadata.get("_pil_image") if sample.metadata else None
-    if pil_image is not None:
-        return pil_image.convert("RGB")
-    img_path = os.path.join(image_root, sample.image_path) if image_root else sample.image_path
-    if not os.path.isfile(img_path):
-        return None
-    return Image.open(img_path).convert("RGB")
-
-
-def build_messages(sample: CanonicalSample, has_image: bool) -> List[Dict[str, Any]]:
-    messages: List[Dict[str, Any]] = []
-    for turn in sample.turns:
-        if turn.role == "user":
-            role = "user"
-        elif turn.role == "assistant":
-            role = "assistant"
-        else:
-            raise ValueError(f"Unsupported turn role for chat template: {turn.role}")
-        if role == "user" and has_image and not messages:
-            content = [{"type": "image"}, {"type": "text", "text": turn.content}]
-        else:
-            content = [{"type": "text", "text": turn.content}]
-        messages.append({"role": role, "content": content})
-    return messages
-
-
-def build_prompt_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    last_assistant_idx = -1
-    for idx in range(len(messages) - 1, -1, -1):
-        if messages[idx]["role"] == "assistant":
-            last_assistant_idx = idx
-            break
-    return messages if last_assistant_idx < 0 else messages[:last_assistant_idx]
 
 class ChatTemplatePreprocessor:
     def __init__(
@@ -63,58 +28,42 @@ class ChatTemplatePreprocessor:
         sample: CanonicalSample,
         processor: Any,
         model_config: Any,
-        image_root: str = "",
         max_length: int = 2048,
     ) -> Dict[str, Any]:
         # `processor` must be a Hugging Face multimodal processor that supports
         # both `apply_chat_template(...)` and `processor(text=..., images=...)`.
-        image = load_image(sample, image_root)
-        messages = build_messages(sample, image is not None)
-        if not messages:
-            raise ValueError(f"Sample {sample.id} has no turns")
-
-        full_text = processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False,
+        image = load_sample_image(sample)
+        full_text, full_inputs = build_full_inputs(
+            processor,
+            sample.question,
+            sample.train_answer,
+            image,
+            return_tensors="pt",
+            truncation=True,
+            max_length=max_length,
         )
-
-        prompt_messages = build_prompt_messages(messages)
-        prompt_text = ""
-        if prompt_messages:
-            prompt_text = processor.apply_chat_template(
-                prompt_messages, tokenize=False, add_generation_prompt=True,
-            )
-
-        prompt_preview = {
-            "sample_id": sample.id,
-            "has_image": image is not None,
-            "message_count": len(messages),
-            "full_text": full_text,
-            "prompt_text": prompt_text,
-        }
-
-        images = [image] if image is not None else None
-        full_inputs = processor(
-            text=full_text,
-            images=images,
+        prompt_text, prompt_inputs = build_prompt_inputs(
+            processor,
+            sample.question,
+            image,
             return_tensors="pt",
             truncation=True,
             max_length=max_length,
         )
 
+        prompt_preview = {
+            "sample_id": sample.id,
+            "has_image": image is not None,
+            "message_count": 1 + int(bool(sample.train_answer.strip())),
+            "full_text": full_text,
+            "prompt_text": prompt_text,
+        }
+
         input_ids = full_inputs["input_ids"].squeeze(0)
 
         labels = input_ids.clone()
-        prompt_len = 0
-        if prompt_text:
-            prompt_inputs = processor(
-                text=prompt_text,
-                images=images,
-                return_tensors="pt",
-                truncation=True,
-                max_length=max_length,
-            )
-            prompt_len = min(prompt_inputs["input_ids"].shape[1], input_ids.size(0))
-            labels[:prompt_len] = IGNORE_INDEX
+        prompt_len = min(prompt_inputs["input_ids"].shape[1], input_ids.size(0))
+        labels[:prompt_len] = IGNORE_INDEX
 
         result: Dict[str, Any] = {
             "input_ids": input_ids,
@@ -235,7 +184,6 @@ class ChatTemplatePreprocessor:
 __all__ = [
     "ChatTemplatePreprocessor",
     "IGNORE_INDEX",
-    "load_image",
-    "build_messages",
-    "build_prompt_messages",
+    "build_full_inputs",
+    "build_prompt_inputs",
 ]

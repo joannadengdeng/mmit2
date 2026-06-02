@@ -23,16 +23,18 @@ class HFDatasetsAdapter:
     def __init__(
         self,
         dataset_name: str,
-        split: str = "train",
+        split: Optional[str] = None,
         column_map: Optional[ColumnMapping] = None,
         max_samples: Optional[int] = None,
         streaming: bool = False,
         trust_remote_code: bool = True,
         load_images: bool = True,
         config_name: Optional[str] = None,
+        usage: str = "train",
     ) -> None:
         self.dataset_name = dataset_name
-        self.split = split
+        self.split = str(split or "").strip()
+        self.usage = usage
         self.max_samples = max_samples
         self.streaming = streaming
         self.load_images = load_images
@@ -40,8 +42,27 @@ class HFDatasetsAdapter:
 
         spec = get_dataset_spec(dataset_name)
         prefer_streaming = spec.prefer_streaming if spec is not None else False
-        config_arg = config_name or ""
-        load_pos = (dataset_name, config_arg) if config_arg else (dataset_name,)
+        data_model = getattr(spec, "data_model", None)
+        if not self.split:
+            if data_model is None:
+                raise ValueError(
+                    f"Dataset '{dataset_name}' requires an explicit split because no built-in data model was found."
+                )
+            if usage == "eval":
+                self.split = str(data_model.default_eval_split).strip()
+            else:
+                self.split = str(data_model.default_train_split).strip()
+            if not self.split:
+                raise ValueError(
+                    f"Dataset '{dataset_name}' does not define a default split for usage='{usage}'."
+                )
+
+        resolved_dataset_name = (
+            data_model.resolved_hf_dataset_name if data_model is not None else dataset_name
+        )
+        self.hf_dataset_name = resolved_dataset_name
+        config_arg = config_name or (data_model.config_name if data_model is not None else "")
+        load_pos = (resolved_dataset_name, config_arg) if config_arg else (resolved_dataset_name,)
 
         # For initial-release smoke runs, loading a fixed subset should not force
         # downloading the full dataset shards before sampling.
@@ -52,7 +73,7 @@ class HFDatasetsAdapter:
         self._hf_dataset = self.load_dataset(
             datasets,
             load_pos,
-            split,
+            self.split,
             streaming,
             trust_remote_code,
         )

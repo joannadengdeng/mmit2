@@ -63,9 +63,8 @@ class ExperimentConfig:
 
 @dataclass
 class DataConfig:
-    data_path: str = ""
-    split: str = "train"
-    image_root: str = ""
+    dataset_name: str = ""
+    split: str = ""
     max_samples: int = 0
 
 
@@ -116,9 +115,8 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
             setup_dir=str(raw_experiment.get("setup_dir", "")).strip(),
         ),
         data=DataConfig(
-            data_path=str(raw_data.get("data_path", "")),
-            split=str(raw_data.get("split", "train")),
-            image_root=str(raw_data.get("image_root", "")),
+            dataset_name=str(raw_data.get("dataset_name", "")).strip(),
+            split=str(raw_data.get("split", "")).strip(),
             max_samples=int(raw_data.get("max_samples", 0)),
         ),
     )
@@ -185,8 +183,8 @@ def validate(cfg: TrainingConfig) -> None:
     if not cfg.model.model_path:
         errors.append("model.model_path: required field is empty")
 
-    if not cfg.data.data_path:
-        errors.append("data.data_path: required field is empty")
+    if not cfg.data.dataset_name:
+        errors.append("data.dataset_name: required field is empty")
 
     if not cfg.experiment.name:
         errors.append("experiment.name: required field is empty")
@@ -236,10 +234,10 @@ def merge_method_defaults(cfg: TrainingConfig) -> None:
 def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
     """Convert TrainingConfig to the trainer dict format expected by __main__.py."""
     data_config = {
-        "data_path": cfg.data.data_path,
-        "split": cfg.data.split,
-        "image_root": cfg.data.image_root,
+        "dataset_name": cfg.data.dataset_name,
     }
+    if cfg.data.split:
+        data_config["split"] = cfg.data.split
     if cfg.data.max_samples:
         data_config["max_samples"] = cfg.data.max_samples
 
