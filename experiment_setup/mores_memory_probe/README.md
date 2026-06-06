@@ -24,7 +24,7 @@ By default this runs:
 - Qwen2.5-VL-3B MoReS and LLaVA-1.5-7B MoReS
 - TextVQA, VizWiz, VQAv2, and GQA
 - 50 training samples per dataset
-- max_length 1024
+- max_length 1536
 
 This is enough for a fast first 5090 fit check across dataset types.
 
@@ -40,7 +40,7 @@ To keep all datasets but use 100 samples each:
 SAMPLE_SIZES="100" bash experiment_setup/mores_memory_probe/run_5090_check.sh
 ```
 
-To also test `max_length: 1536`:
+To compare `max_length: 1024` and `max_length: 1536`:
 
 ```bash
 MAX_LENGTHS="1024 1536" bash experiment_setup/mores_memory_probe/run_5090_check.sh

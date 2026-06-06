@@ -11,7 +11,7 @@ SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODELS="${MODELS:-qwen llava}"
 DATASETS="${DATASETS:-textvqa vizwiz vqav2 gqa}"
 SAMPLE_SIZES="${SAMPLE_SIZES:-50}"
-MAX_LENGTHS="${MAX_LENGTHS:-1024}"
+MAX_LENGTHS="${MAX_LENGTHS:-1536}"
 
 echo "=== MoReS RTX 5090 fit check ==="
 echo "models=$MODELS"

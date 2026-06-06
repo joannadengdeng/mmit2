@@ -151,6 +151,7 @@ class Trainer:
         self.model.train()
         device = next(self.model.parameters()).device
         global_step = 0
+        accumulated_batches = 0
         total_loss = 0.0
         ema_loss = None
         start_time = time.time()
@@ -165,6 +166,15 @@ class Trainer:
                 batch["labels"] = method_obj.preprocess_labels(
                     batch["input_ids"], batch["labels"], batch_meta=batch,
                 )
+                if not (batch["labels"] != -100).any():
+                    emit(
+                        "log",
+                        {
+                            "message": "Skipping batch with no supervised label tokens.",
+                            "level": "WARNING",
+                        },
+                    )
+                    continue
                 if not logged_first_batch:
                     emit("log", {"message": describe_batch(batch), "level": "INFO"})
                     emit(
@@ -184,8 +194,9 @@ class Trainer:
                 loss, metrics = method_obj.compute_loss(self.model, batch, outputs)
                 loss = loss / config.gradient_accumulation_steps
                 loss.backward()
+                accumulated_batches += 1
 
-                if (step + 1) % config.gradient_accumulation_steps != 0:
+                if accumulated_batches % config.gradient_accumulation_steps != 0:
                     continue
 
                 if config.max_grad_norm > 0:
