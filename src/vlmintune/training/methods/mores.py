@@ -36,6 +36,12 @@ def build_mores_intervention_mask(
     return intervention_mask
 
 
+def first_parameter_device(module: nn.Module) -> torch.device | None:
+    for param in module.parameters(recurse=True):
+        return param.device
+    return None
+
+
 class MoReSAdapter(nn.Module):
     """Residual steering module: h + W_up(Linear(h) - W_down(h))."""
 
@@ -133,6 +139,9 @@ class MoReSMethod(TrainingMethod):
                 int(hidden_size),
                 MORES_LOW_RANK_DIMENSION,
             )
+            layer_device = first_parameter_device(layer)
+            if layer_device is not None:
+                adapter = adapter.to(layer_device)
             adapters.append(adapter)
             layer.register_forward_hook(self.layer_hook(adapter))
 

@@ -116,6 +116,10 @@ def test_mores_prepare_model_freezes_backbone_and_adds_adapters():
     assert base_params
     assert all(not param.requires_grad for param in base_params)
     assert all(param.requires_grad for param in model.mores_adapters.parameters())
+    assert all(
+        next(adapter.parameters()).device == next(layer.parameters()).device
+        for adapter, layer in zip(model.mores_adapters, model.model.language_model.layers)
+    )
 
 
 def test_mores_only_steers_visual_tokens_during_forward():
