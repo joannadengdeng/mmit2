@@ -10,7 +10,7 @@ Usage::
 Config schema::
 
     model:
-      model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+      name: "qwen25vl_3b_instruct"
     data:
       dataset_name: "..."
     training_method: "qlora"
@@ -35,6 +35,7 @@ import sys
 import traceback
 
 from vlmintune.config.training_config import config_to_trainer_dict, load_config
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.experiment import ExperimentTracker
 from vlmintune.training.trainer import Trainer, TrainerConfig, emit
 
@@ -52,7 +53,7 @@ def apply_hf_token(token: str | None, token_file: str | None) -> None:
 def parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
     """Parse a single-stage config dict into TrainerConfig."""
     model_cfg = config.get("model", {})
-    model_path = model_cfg.get("model_path", "")
+    model_name = str(model_cfg.get("name", "")).strip()
 
     data_cfg = config.get("data", {})
     training_cfg = config.get("training", {})
@@ -74,7 +75,7 @@ def parse_train_config(config: dict) -> tuple[str, TrainerConfig]:
         save_steps=training_cfg.get("save_steps", 500),
         output_dir=training_cfg.get("output_dir", "output"),
     )
-    return model_path, train_config
+    return model_name, train_config
 
 
 def create_experiment_tracker(config: dict, train_config: TrainerConfig) -> ExperimentTracker:
@@ -93,16 +94,18 @@ def create_experiment_tracker(config: dict, train_config: TrainerConfig) -> Expe
 
 def write_failed_train_summary(
     tracker: ExperimentTracker | None,
-    model_path: str,
+    model_name: str,
     train_config: TrainerConfig | None,
     error: Exception,
 ) -> None:
     if tracker is None or train_config is None:
         return
+    model_spec = get_model_spec(model_name)
     tracker.write_train_summary(
         {
             "experiment_name": tracker.exp_name,
-            "model_path": model_path,
+            "model_name": model_name,
+            "hf_model_id": model_spec.hf_model_id,
             "training_method": train_config.training_method,
             "training_params": {
                 "num_epochs": train_config.num_epochs,
@@ -153,17 +156,17 @@ def main():
         parser.error("Either --config or --config-json is required")
 
     tracker = None
-    model_path = ""
+    model_name = ""
     train_config = None
     try:
         if "data" not in config:
             emit("error", {"message": "config must contain 'data' key"})
             sys.exit(1)
 
-        model_path, train_config = parse_train_config(config)
+        model_name, train_config = parse_train_config(config)
 
-        if not model_path:
-            emit("error", {"message": "model.model_path is required"})
+        if not model_name:
+            emit("error", {"message": "model.name is required"})
             sys.exit(1)
 
         tracker = create_experiment_tracker(config, train_config)
@@ -180,10 +183,10 @@ def main():
                     },
                 )
 
-                trainer = Trainer(model_path, experiment_tracker=tracker)
+                trainer = Trainer(model_name, experiment_tracker=tracker)
                 trainer.train(train_config)
             except Exception as e:
-                write_failed_train_summary(tracker, model_path, train_config, e)
+                write_failed_train_summary(tracker, model_name, train_config, e)
                 emit("error", {"message": str(e), "traceback": traceback.format_exc()})
                 emit("status", {"status": "failed"})
                 raise

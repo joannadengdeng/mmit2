@@ -118,9 +118,9 @@ class L2TMethod(TrainingMethod):
     def requires_quantization(self, config=None):
         return self.base.requires_quantization(config)
 
-    def prepare_model_impl(self, model, processor, config):
+    def prepare_model_impl(self, model, processor, config, model_spec=None):
         self.last_config = dict(config)
-        return self.base.prepare_model(model, processor, config)
+        return self.base.prepare_model(model, processor, config, model_spec=model_spec)
 
     def preprocess_labels(self, input_ids, labels, batch_meta=None):
         if not batch_meta:
@@ -148,5 +148,5 @@ class L2TMethod(TrainingMethod):
         metadata = {**metadata, "ft_method": self.name, "config": self.last_config}
         self.base.save_checkpoint(model, processor, path, metadata)
 
-    def load_for_inference(self, path, base_model_id, **kwargs):
-        return self.base.load_for_inference(path, base_model_id, **kwargs)
+    def load_for_inference(self, path, model_name, **kwargs):
+        return self.base.load_for_inference(path, model_name, **kwargs)

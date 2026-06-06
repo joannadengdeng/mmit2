@@ -11,6 +11,7 @@ import os
 import torch
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
 from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
@@ -37,7 +38,7 @@ class LoRAMethod(TrainingMethod):
         """Extra kwargs for LoraConfig. Override in subclasses."""
         return {}
 
-    def prepare_model_impl(self, model, processor, config):
+    def prepare_model_impl(self, model, processor, config, model_spec=None):
         r = int(config["lora_r"])
         alpha = int(config["lora_alpha"])
         dropout = float(config["lora_dropout"])
@@ -79,9 +80,10 @@ class LoRAMethod(TrainingMethod):
         with open(os.path.join(path, "vlmintune_meta.json"), "w") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    def load_for_inference(self, path, base_model_id, **kwargs):
-        processor = load_processor(base_model_id)
-        model = load_vlm(base_model_id, quantize_4bit=True, torch_dtype=torch.float16)
+    def load_for_inference(self, path, model_name, **kwargs):
+        model_spec = get_model_spec(model_name)
+        processor = load_processor(model_spec.hf_model_id)
+        model = load_vlm(model_spec.hf_model_id, quantize_4bit=True, torch_dtype=torch.float16)
         model = PeftModel.from_pretrained(model, path)
         model.eval()
         try:
@@ -90,7 +92,7 @@ class LoRAMethod(TrainingMethod):
             pass
 
         adapter_name = os.path.basename(path)
-        info = {"model_id": f"{base_model_id} ({self.display_name}: {adapter_name})"}
+        info = {"model_id": f"{model_spec.hf_model_id} ({self.display_name}: {adapter_name})"}
         return model, processor, info
 
 

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
 from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
@@ -108,19 +109,23 @@ class MoReSMethod(TrainingMethod):
         self.current_intervention_mask = intervention_mask
         return None
 
-    def prepare_model_impl(self, model, processor, config):
-        del processor, config
-        self.last_config = {}
+    def prepare_model_impl(self, model, processor, config, model_spec=None):
+        del processor
+        self.last_config = dict(config)
+        if model_spec is None:
+            raise ValueError("MoReS requires a resolved model spec.")
 
-        self.image_token_id = int(model.config.image_token_id)
+        self.image_token_id = model_spec.get_image_token_id(model)
 
         for param in model.parameters():
             param.requires_grad = False
 
-        hidden_size = int(model.config.text_config.hidden_size)
-        layers = list(model.model.language_model.layers)
+        hidden_size = model_spec.get_hidden_size(model)
+        layers = list(model_spec.get_transformer_layers(model))
         if not layers:
-            raise ValueError("MoReS found no Qwen2.5-VL transformer layers.")
+            raise ValueError(
+                f"MoReS found no transformer layers for model '{model_spec.name}'."
+            )
 
         adapters: list[MoReSAdapter] = []
         for layer in layers:
@@ -141,7 +146,8 @@ class MoReSMethod(TrainingMethod):
         trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
         total = sum(param.numel() for param in model.parameters())
         info = (
-            f"MoReS: backbone=Qwen2.5-VL, rank={MORES_LOW_RANK_DIMENSION}, "
+            f"MoReS: backbone={model_spec.name}, "
+            f"rank={MORES_LOW_RANK_DIMENSION}, "
             f"positions=f{MORES_FIRST_VISUAL_TOKEN_COUNT}+l{MORES_LAST_VISUAL_TOKEN_COUNT}, "
             f"image_token_id={self.image_token_id}\n"
             f"Transformer layers: {len(layers)}\n"
@@ -186,11 +192,12 @@ class MoReSMethod(TrainingMethod):
         with open(os.path.join(path, "vlmintune_meta.json"), "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    def load_for_inference(self, path, base_model_id, **kwargs):
+    def load_for_inference(self, path, model_name, **kwargs):
         quantize_4bit = bool(kwargs.get("quantize_4bit", False))
-        processor = load_processor(base_model_id)
+        model_spec = get_model_spec(model_name)
+        processor = load_processor(model_spec.hf_model_id)
         model = load_vlm(
-            base_model_id,
+            model_spec.hf_model_id,
             quantize_4bit=quantize_4bit,
             torch_dtype=torch.float16 if quantize_4bit else torch.bfloat16,
         )
@@ -200,7 +207,7 @@ class MoReSMethod(TrainingMethod):
             metadata = json.load(f) or {}
         config = dict(metadata.get("config") or self.default_config())
 
-        model, _ = self.prepare_model(model, processor, config)
+        model, _ = self.prepare_model(model, processor, config, model_spec=model_spec)
         state = torch.load(
             os.path.join(path, "mores_tuned.pt"),
             map_location="cpu",
@@ -210,5 +217,5 @@ class MoReSMethod(TrainingMethod):
         model.eval()
 
         adapter_name = os.path.basename(path)
-        info = {"model_id": f"{base_model_id} (MoReS: {adapter_name})"}
+        info = {"model_id": f"{model_spec.hf_model_id} (MoReS: {adapter_name})"}
         return model, processor, info

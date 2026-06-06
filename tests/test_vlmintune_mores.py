@@ -9,6 +9,7 @@ import torch.nn as nn
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.config.training_config import load_config_dict
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.mores import MoReSMethod
 from vlmintune.training.methods.registry import list_training_methods
 
@@ -64,6 +65,27 @@ class _ToyQwenVL(nn.Module):
         return hidden_states
 
 
+class _ToyLlava(nn.Module):
+    def __init__(self, hidden_size: int = 4, vocab_size: int = 64, num_layers: int = 1):
+        super().__init__()
+        self.config = types.SimpleNamespace(
+            text_config=types.SimpleNamespace(hidden_size=hidden_size),
+            image_token_id=32000,
+        )
+        self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
+        with torch.no_grad():
+            self.embed_tokens.weight.zero_()
+        self.model = nn.Module()
+        self.model.language_model = _ToyLanguageModel(hidden_size, num_layers)
+
+    def forward(self, input_ids=None, inputs_embeds=None, attention_mask=None, **kwargs):
+        del attention_mask, kwargs
+        hidden_states = inputs_embeds if inputs_embeds is not None else self.embed_tokens(input_ids)
+        for layer in self.model.language_model.layers:
+            hidden_states = layer(hidden_states)
+        return hidden_states
+
+
 def test_mores_registers_as_built_in_training_method():
     assert "mores" in list_training_methods()
 
@@ -76,12 +98,13 @@ def test_mores_prepare_model_freezes_backbone_and_adds_adapters():
         model,
         _FakeProcessor(),
         {},
+        model_spec=get_model_spec("qwen25vl_3b_instruct"),
     )
 
     assert prepared_model is model
     assert hasattr(model, "mores_adapters")
     assert len(model.mores_adapters) == 2
-    assert "backbone=Qwen2.5-VL" in info
+    assert "backbone=qwen25vl_3b_instruct" in info
     assert "Transformer layers: 2" in info
     assert "positions=f4+l5" in info
 
@@ -102,6 +125,7 @@ def test_mores_only_steers_visual_tokens_during_forward():
         model,
         _FakeProcessor(),
         {},
+        model_spec=get_model_spec("qwen25vl_3b_instruct"),
     )
 
     adapter = model.mores_adapters[0]
@@ -140,32 +164,32 @@ def test_mores_build_forward_batch_keeps_intervention_mask():
     assert torch.equal(forward_batch["intervention_mask"], batch["intervention_mask"])
     assert "instruction_supervision_mask" not in forward_batch
 
-def test_mores_config_merges_defaults_without_target_modules():
+def test_mores_supports_llava_layout():
+    model = _ToyLlava(num_layers=2)
+    method = MoReSMethod()
+
+    prepared_model, info = method.prepare_model(
+        model,
+        _FakeProcessor(),
+        {},
+        model_spec=get_model_spec("llava15_7b"),
+    )
+
+    assert prepared_model is model
+    assert hasattr(model, "mores_adapters")
+    assert len(model.mores_adapters) == 2
+    assert "backbone=llava15_7b" in info
+
+
+def test_mores_config_accepts_model_name_only():
     cfg = load_config_dict(
         {
-            "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
+            "model": {"name": "qwen25vl_3b_instruct"},
             "experiment": {"name": "demo"},
             "training": {"ft_method": "mores"},
             "data": {"dataset_name": "lmms-lab/textvqa", "split": "train"},
         }
     )
 
-    assert cfg.training.ft_method == "mores"
-    assert cfg.training.params == {}
-    assert "activation" not in cfg.training.params
-    assert "layer_stride" not in cfg.training.params
-    assert "use_orthogonal_projection" not in cfg.training.params
-    assert "target_modules" not in cfg.training.params
-
-
-def test_mores_config_no_longer_requires_method_params():
-    cfg = load_config_dict(
-        {
-            "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
-            "experiment": {"name": "demo"},
-            "training": {"ft_method": "mores", "params": {}},
-            "data": {"dataset_name": "lmms-lab/textvqa", "split": "train"},
-        }
-    )
-
+    assert cfg.model.name == "qwen25vl_3b_instruct"
     assert cfg.training.params == {}

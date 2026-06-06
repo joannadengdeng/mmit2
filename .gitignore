@@ -10,3 +10,5 @@ dist/
 /run_logs/
 /experiments/
 /eval_outputs/
+/experiment_results/
+*.tgz

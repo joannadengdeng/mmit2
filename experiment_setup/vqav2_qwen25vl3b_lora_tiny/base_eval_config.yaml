@@ -1,0 +1,18 @@
+# Tiny base-model eval config for VQAv2.
+#
+# Usage:
+#   python -m vlmintune.eval --config experiment_setup/vqav2_qwen25vl3b_lora_tiny/base_eval_config.yaml
+
+model:
+  name: "qwen25vl_3b_instruct"
+
+experiment:
+  name: "vqav2_qwen25vl3b_lora_tiny"
+  base_dir: "experiments"
+
+eval:
+  source: "base"
+  dataset_name: "pingzhili/vqa_v2"
+  max_samples: 4
+  max_new_tokens: 16
+  temperature: 0.0

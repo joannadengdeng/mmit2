@@ -114,7 +114,7 @@ def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(
             {
-                "base_model": "Qwen/Qwen2.5-VL-3B-Instruct",
+                "model_name": "qwen25vl_3b_instruct",
                 "ft_method": "lora",
             },
             f,
@@ -135,7 +135,8 @@ def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
     )
 
     assert source.kind == "trained"
-    assert source.base_model_id == "Qwen/Qwen2.5-VL-3B-Instruct"
+    assert source.model_name == "qwen25vl_3b_instruct"
+    assert source.hf_model_id == "Qwen/Qwen2.5-VL-3B-Instruct"
     assert source.checkpoint_path == tracker.get_checkpoint_dir()
     assert source.ft_method == "lora"
     assert source.output_dir == tracker.get_eval_dir("trained")
@@ -146,13 +147,13 @@ def test_resolve_experiment_source_uses_base_eval_dir(tmp_path):
     tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
     meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")
     with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump({"base_model": "Qwen/Qwen2.5-VL-3B-Instruct"}, f)
+        json.dump({"model_name": "qwen25vl_3b_instruct"}, f)
 
     source, _ = resolve_experiment_source(
         {
             "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
             "eval": {"dataset_name": "lmms-lab/textvqa", "source": "base"},
-            "model": {"model_path": "Qwen/Qwen2.5-VL-3B-Instruct"},
+            "model": {"name": "qwen25vl_3b_instruct"},
         },
         EvalTarget(
             name="textvqa_validation",
@@ -164,18 +165,19 @@ def test_resolve_experiment_source_uses_base_eval_dir(tmp_path):
     )
 
     assert source.kind == "base"
-    assert source.base_model_id == "Qwen/Qwen2.5-VL-3B-Instruct"
+    assert source.model_name == "qwen25vl_3b_instruct"
+    assert source.hf_model_id == "Qwen/Qwen2.5-VL-3B-Instruct"
     assert source.checkpoint_path == ""
     assert source.output_dir == tracker.get_eval_dir("base")
 
 
-def test_resolve_experiment_source_requires_explicit_model_path_for_base(tmp_path):
+def test_resolve_experiment_source_requires_explicit_model_name_for_base(tmp_path):
     tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
     meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")
     with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump({"base_model": "Qwen/Qwen2.5-VL-3B-Instruct"}, f)
+        json.dump({"model_name": "qwen25vl_3b_instruct"}, f)
 
-    with pytest.raises(ValueError, match="model.model_path is required when eval.source='base'"):
+    with pytest.raises(ValueError, match="model.name is required when eval.source='base'"):
         resolve_experiment_source(
             {
                 "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},

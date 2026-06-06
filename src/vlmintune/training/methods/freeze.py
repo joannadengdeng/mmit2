@@ -7,11 +7,7 @@ import os
 import torch
 import torch.nn as nn
 
-from vlmintune.config.model_layouts import (
-    get_model_layout,
-    list_model_layouts,
-    resolve_transformer_layers,
-)
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
 from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
@@ -27,7 +23,8 @@ def has_updatable_params(module: nn.Module) -> bool:
     return any(can_update(param) for param in module.parameters(recurse=True))
 
 
-def list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
+def list_tunable_modules(model: nn.Module, model_name: str) -> list[str]:
+    spec = get_model_spec(model_name)
     candidates = set()
     for name, module in model.named_modules():
         if not name or name.count(".") > 1:
@@ -35,11 +32,10 @@ def list_tunable_modules(model: nn.Module, model_layout: str) -> list[str]:
         if has_updatable_params(module):
             candidates.add(name)
 
-    layout = get_model_layout(model_layout)
-    layers = resolve_transformer_layers(model, model_layout)
-    candidates.add(layout.transformer_layer_path)
+    layers = spec.get_transformer_layers(model)
+    candidates.add(spec.transformer_layer_path)
     for idx in range(len(layers)):
-        candidates.add(f"{layout.transformer_layer_path}.{idx}")
+        candidates.add(f"{spec.transformer_layer_path}.{idx}")
 
     return sorted(candidates)
 
@@ -56,25 +52,21 @@ class FreezeTuningMethod(TrainingMethod):
 
     def default_config(self):
         return {
-            "model_layout": "",
             "unfreeze_modules": [],
         }
 
-    def prepare_model_impl(self, model, processor, config):
-        model_layout = str(config.get("model_layout", "")).strip()
-        if not model_layout:
-            raise ValueError(
-                "Freeze Tuning requires training.params.model_layout. "
-                f"Available layouts: {list_model_layouts()}"
-            )
+    def prepare_model_impl(self, model, processor, config, model_spec=None):
+        del processor
+        if model_spec is None:
+            raise ValueError("Freeze Tuning requires a resolved model spec.")
 
-        available = list_tunable_modules(model, model_layout)
+        available = list_tunable_modules(model, model_spec.name)
         unfreeze_modules = [str(name).strip() for name in config["unfreeze_modules"] if str(name).strip()]
         if not unfreeze_modules:
             available_lines = "\n".join(f"  - {name}" for name in available) or "  (no parameterized modules found)"
             raise ValueError(
                 "Freeze Tuning requires a non-empty 'unfreeze_modules' list.\n"
-                f"Model layout: {model_layout}\n"
+                f"Model: {model_spec.name}\n"
                 "Available module prefixes you can unfreeze:\n"
                 f"{available_lines}"
             )
@@ -100,14 +92,15 @@ class FreezeTuningMethod(TrainingMethod):
             available_lines = "\n".join(f"  - {name}" for name in available) or "  (no parameterized modules found)"
             raise ValueError(
                 "Unknown unfreeze_modules entries: "
-                f"{unknown}\nModel layout: {model_layout}\n"
+                f"{unknown}\nModel: {model_spec.name}\n"
                 f"Available module prefixes you can unfreeze:\n{available_lines}"
             )
 
         trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
         total = sum(param.numel() for param in model.parameters())
         info = (
-            f"Freeze Tuning ({model_layout}): unfrozen [{', '.join(sorted(matched_modules))}]\n"
+            f"Freeze Tuning ({model_spec.name}): "
+            f"unfrozen [{', '.join(sorted(matched_modules))}]\n"
             f"Trainable parameter tensors: {unfrozen_params}\n"
             f"Trainable: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)"
         )
@@ -129,9 +122,10 @@ class FreezeTuningMethod(TrainingMethod):
         with open(os.path.join(path, "vlmintune_meta.json"), "w") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    def load_for_inference(self, path, base_model_id, **kwargs):
-        processor = load_processor(base_model_id)
-        model = load_vlm(base_model_id, quantize_4bit=False, torch_dtype=torch.bfloat16)
+    def load_for_inference(self, path, model_name, **kwargs):
+        model_spec = get_model_spec(model_name)
+        processor = load_processor(model_spec.hf_model_id)
+        model = load_vlm(model_spec.hf_model_id, quantize_4bit=False, torch_dtype=torch.bfloat16)
         state = torch.load(
             os.path.join(path, "freeze_tuned.pt"),
             map_location="cpu", weights_only=True,
@@ -140,5 +134,5 @@ class FreezeTuningMethod(TrainingMethod):
         model.eval()
 
         adapter_name = os.path.basename(path)
-        info = {"model_id": f"{base_model_id} (Freeze: {adapter_name})"}
+        info = {"model_id": f"{model_spec.hf_model_id} (Freeze: {adapter_name})"}
         return model, processor, info

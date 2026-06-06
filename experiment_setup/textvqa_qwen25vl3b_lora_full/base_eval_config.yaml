@@ -4,7 +4,7 @@
 #   python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/base_eval_config.yaml
 
 model:
-  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+  name: "qwen25vl_3b_instruct"
 
 experiment:
   name: "textvqa_qwen25vl3b_lora_full"

@@ -32,14 +32,13 @@ def test_training_config_loads_local_yaml_for_current_machine(tmp_path):
     config_path.write_text(
         """
 model:
-  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+  name: "qwen25vl_3b_instruct"
 experiment:
   name: "demo_exp"
   base_dir: "experiments"
 training:
   ft_method: freeze
   params:
-    model_layout: "qwen2_5_vl"
     unfreeze_modules: ["model.language_model.layers.0"]
 data:
   dataset_name: "lmms-lab/textvqa"
@@ -62,7 +61,7 @@ experiment:
   name: "demo_exp"
   base_dir: "experiments"
 model:
-  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+  name: "qwen25vl_3b_instruct"
 eval:
   source: "base"
   dataset_name: "lmms-lab/textvqa"

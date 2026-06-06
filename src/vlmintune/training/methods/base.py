@@ -16,6 +16,8 @@ import torch
 import torch.nn as nn
 from transformers import AutoProcessor, BitsAndBytesConfig
 
+from vlmintune.models.base import ModelSpec
+
 try:
     from transformers import AutoModelForImageTextToText as AutoVLM
 except ImportError:
@@ -83,6 +85,7 @@ class TrainingMethod(ABC):
         model: nn.Module,
         processor: Any,
         config: Dict[str, Any],
+        model_spec: ModelSpec | None = None,
     ) -> Tuple[nn.Module, str]:
         """Prepare the model for training.
 
@@ -99,7 +102,7 @@ class TrainingMethod(ABC):
         -------
         (prepared_model, info_str)
         """
-        return self.prepare_model_impl(model, processor, config)
+        return self.prepare_model_impl(model, processor, config, model_spec=model_spec)
 
     @abstractmethod
     def prepare_model_impl(
@@ -107,6 +110,7 @@ class TrainingMethod(ABC):
         model: nn.Module,
         processor: Any,
         config: Dict[str, Any],
+        model_spec: ModelSpec | None = None,
     ) -> Tuple[nn.Module, str]:
         """Subclass implementation of model preparation.
 
@@ -192,7 +196,7 @@ class TrainingMethod(ABC):
     def load_for_inference(
         self,
         path: str,
-        base_model_id: str,
+        model_name: str,
         **kwargs,
     ) -> Tuple[nn.Module, Any, Dict[str, str]]:
         """Load a saved checkpoint for inference.

@@ -14,7 +14,7 @@ def test_load_config_infers_experiment_setup_dir(tmp_path, monkeypatch):
     config_path.write_text(
         """
 model:
-  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+  name: "qwen25vl_3b_instruct"
 experiment:
   name: "demo_exp"
   base_dir: "experiments"
@@ -40,7 +40,7 @@ def test_load_config_requires_experiment_name(tmp_path):
     config_path.write_text(
         """
 model:
-  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+  name: "qwen25vl_3b_instruct"
 training:
   ft_method: lora
   params:
@@ -65,7 +65,7 @@ def test_load_config_preserves_training_perf_overrides(tmp_path):
     config_path.write_text(
         """
 model:
-  model_path: "Qwen/Qwen2.5-VL-3B-Instruct"
+  name: "qwen25vl_3b_instruct"
 experiment:
   name: "demo_exp"
 training:

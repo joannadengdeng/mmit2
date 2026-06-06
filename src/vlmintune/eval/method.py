@@ -9,6 +9,7 @@ import torch
 
 from vlmintune.data.datasets.base import build_prompt_inputs, load_sample_image
 from vlmintune.data.types import CanonicalSample, EvalSample
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import load_processor, load_vlm
 from vlmintune.training.methods.registry import build_training_method
 
@@ -26,12 +27,13 @@ class LocalMethod:
     @classmethod
     def from_base_model(
         cls,
-        base_model_id: str,
+        model_name: str,
         quantize_4bit: bool = True,
     ) -> "LocalMethod":
-        processor = load_processor(base_model_id)
+        model_spec = get_model_spec(model_name)
+        processor = load_processor(model_spec.hf_model_id)
         model = load_vlm(
-            base_model_id,
+            model_spec.hf_model_id,
             quantize_4bit=quantize_4bit,
             torch_dtype=torch.bfloat16,
         )
@@ -41,7 +43,7 @@ class LocalMethod:
     @classmethod
     def from_checkpoint(
         cls,
-        base_model_id: str,
+        model_name: str,
         checkpoint_path: str = "",
         ft_method: str = "",
         quantize_4bit: bool = True,
@@ -62,14 +64,14 @@ class LocalMethod:
             method = build_training_method(ft_method)
             model, processor, _ = method.load_for_inference(
                 checkpoint_path,
-                base_model_id,
+                model_name,
                 quantize_4bit=quantize_4bit,
                 **kwargs,
             )
             return cls(model, processor, inference_method=method)
 
         return cls.from_base_model(
-            base_model_id,
+            model_name,
             quantize_4bit=quantize_4bit,
         )
 

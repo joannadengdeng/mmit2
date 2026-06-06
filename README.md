@@ -153,7 +153,7 @@ In that config:
 
 - `experiment.name` selects the saved experiment
 - `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
-- `model.model_path` is optional; if omitted, the trained checkpoint must include `vlmintune_meta.json` with `base_model`
+- `model.name` is optional; if omitted, the trained checkpoint must include `vlmintune_meta.json` with `model_name`
 - `eval.source` is required and must be `"trained"`
 - `eval.dataset_name` selects the eval dataset
 - `eval.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default eval split
@@ -174,7 +174,7 @@ In that config:
 
 - `experiment.name` is required
 - `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
-- `model.model_path` is required
+- `model.name` is required
 - `eval.source` is required and must be `"base"`
 - `eval.dataset_name` selects the eval dataset
 - `eval.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default eval split

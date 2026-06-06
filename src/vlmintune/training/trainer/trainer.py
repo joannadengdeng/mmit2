@@ -10,6 +10,7 @@ import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import load_processor, load_vlm
 from vlmintune.training.trainer.helpers import (
     build_label_supervision_debug,
@@ -48,17 +49,25 @@ class TrainerConfig:
 class Trainer:
     """Run a single training configuration end to end."""
 
-    def __init__(self, model_path: str, experiment_tracker=None):
-        self.model_path = model_path
+    def __init__(self, model_name: str, experiment_tracker=None):
+        self.model_name = model_name
+        self.model_spec = get_model_spec(model_name)
+        self.hf_model_id = self.model_spec.hf_model_id
         self.model = None
         self.processor = None
         self.tracker = experiment_tracker
 
     def load_model(self, method_obj, method_config: Optional[Dict[str, Any]] = None) -> None:
-        emit("log", {"message": f"Loading model: {self.model_path}", "level": "INFO"})
-        self.processor = load_processor(self.model_path)
+        emit(
+            "log",
+            {
+                "message": f"Loading model: {self.model_name} ({self.hf_model_id})",
+                "level": "INFO",
+            },
+        )
+        self.processor = load_processor(self.hf_model_id)
         self.model = load_vlm(
-            self.model_path,
+            self.hf_model_id,
             quantize_4bit=method_obj.requires_quantization(method_config),
             torch_dtype=torch.bfloat16,
         )
@@ -95,7 +104,7 @@ class Trainer:
 
         # 3. Prepare trainable parameters and optimizer state.
         self.model, info_str = method_obj.prepare_model(
-            self.model, self.processor, method_config,
+            self.model, self.processor, method_config, model_spec=self.model_spec,
         )
         emit("log", {"message": info_str, "level": "INFO"})
 
@@ -211,7 +220,8 @@ class Trainer:
                 if config.save_steps > 0 and global_step % config.save_steps == 0:
                     ckpt_path = os.path.join(config.output_dir, f"checkpoint-{global_step}")
                     method_obj.save_checkpoint(self.model, self.processor, ckpt_path, {
-                        "base_model": self.model_path,
+                        "model_name": self.model_name,
+                        "hf_model_id": self.hf_model_id,
                         "step": global_step,
                     })
 
@@ -224,7 +234,8 @@ class Trainer:
 
         avg_loss = round(total_loss / max(1, global_step), 6)
         method_obj.save_checkpoint(self.model, self.processor, final_path, {
-            "base_model": self.model_path,
+            "model_name": self.model_name,
+            "hf_model_id": self.hf_model_id,
             "final_loss": avg_loss,
         })
 
@@ -234,7 +245,8 @@ class Trainer:
             self.tracker.write_train_summary(
                 {
                     "experiment_name": self.tracker.exp_name,
-                    "model_path": self.model_path,
+                    "model_name": self.model_name,
+                    "hf_model_id": self.hf_model_id,
                     "training_method": config.training_method,
                     "training_params": {
                         "num_epochs": config.num_epochs,

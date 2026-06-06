@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, Optional
 
 from vlmintune.data.datasets.registry import DATASET_SPECS, get_dataset_spec
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.experiment import ExperimentTracker
 
 from vlmintune.eval.method import LocalMethod
@@ -30,7 +31,8 @@ class EvalTarget:
 @dataclass(frozen=True)
 class EvalSource:
     kind: str
-    base_model_id: str
+    model_name: str
+    hf_model_id: str
     output_dir: str
     checkpoint_path: str = ""
     ft_method: str = ""
@@ -214,7 +216,7 @@ def resolve_experiment_source(
 
     tracker = ExperimentTracker.load_by_name(base_dir, experiment_name)
     model_cfg = raw_cfg.get("model", {}) or {}
-    configured_base_model_id = str(model_cfg.get("model_path", "")).strip()
+    configured_model_name = str(model_cfg.get("name", "")).strip()
     checkpoint_path = tracker.get_checkpoint_dir()
 
     checkpoint_meta: Dict[str, Any] = {}
@@ -227,13 +229,17 @@ def resolve_experiment_source(
     if target.source == "trained":
         if not os.path.isdir(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-        base_model_id = configured_base_model_id or str(checkpoint_meta.get("base_model", "")).strip()
-        if not base_model_id:
+        model_name = configured_model_name or str(checkpoint_meta.get("model_name", "")).strip()
+        if not model_name:
             raise ValueError(
-                "Could not determine base model id for eval.source='trained'. "
-                "Set model.model_path in the eval config or ensure the checkpoint has "
-                "vlmintune_meta.json with a base_model entry."
+                "Could not determine model.name for eval.source='trained'. "
+                "Set model.name in the eval config or ensure the checkpoint has "
+                "vlmintune_meta.json with a model_name entry."
             )
+        try:
+            model_spec = get_model_spec(model_name)
+        except KeyError as exc:
+            raise ValueError(str(exc)) from exc
         ft_method = str(checkpoint_meta.get("ft_method", "")).strip()
         if not ft_method:
             raise ValueError(
@@ -241,7 +247,8 @@ def resolve_experiment_source(
             )
         source = EvalSource(
             kind="trained",
-            base_model_id=base_model_id,
+            model_name=model_name,
+            hf_model_id=model_spec.hf_model_id,
             output_dir=tracker.get_eval_dir("trained"),
             checkpoint_path=checkpoint_path,
             ft_method=ft_method,
@@ -249,12 +256,17 @@ def resolve_experiment_source(
         )
         return source, tracker
 
-    if not configured_base_model_id:
-        raise ValueError("model.model_path is required when eval.source='base'")
+    if not configured_model_name:
+        raise ValueError("model.name is required when eval.source='base'")
+    try:
+        model_spec = get_model_spec(configured_model_name)
+    except KeyError as exc:
+        raise ValueError(str(exc)) from exc
 
     source = EvalSource(
         kind="base",
-        base_model_id=configured_base_model_id,
+        model_name=configured_model_name,
+        hf_model_id=model_spec.hf_model_id,
         output_dir=tracker.get_eval_dir("base"),
         checkpoint_path="",
         ft_method="",
@@ -275,25 +287,26 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
             print(f"Source: {source.kind}")
             print(f"Experiment: {source.experiment_name}")
             print(f"Output dir: {source.output_dir}")
-            print(f"Model: {source.base_model_id}")
+            print(f"Model: {source.model_name} -> {source.hf_model_id}")
             print(f"Checkpoint: {source.checkpoint_path or '<base model only>'}")
             print(f"Eval dataset: {eval_target.dataset_name} ({eval_target.split})")
             print()
 
             if source.kind == "trained":
                 method = LocalMethod.from_checkpoint(
-                    base_model_id=source.base_model_id,
+                    model_name=source.model_name,
                     checkpoint_path=source.checkpoint_path,
                     ft_method=source.ft_method,
                 )
             else:
-                method = LocalMethod.from_base_model(source.base_model_id)
+                method = LocalMethod.from_base_model(source.model_name)
 
             eval_result = evaluate_dataset(method, eval_target, source.output_dir)
             summary = {
                 "experiment_name": source.experiment_name,
                 "source": source.kind,
-                "model_path": source.base_model_id,
+                "model_name": source.model_name,
+                "hf_model_id": source.hf_model_id,
                 "dataset_name": eval_result["dataset_name"],
                 "split": eval_result["split"],
                 "metric": eval_target.metric,

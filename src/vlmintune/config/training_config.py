@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 
 import yaml
 
-from vlmintune.config.model_layouts import list_model_layouts
+from vlmintune.models.registry import get_model_spec, list_model_names
 from vlmintune.training.methods.registry import (
     get_training_method_defaults,
     list_training_methods,
@@ -32,7 +32,7 @@ _LORA_FAMILY_METHODS = {"lora", "qlora", "dora", "l2t"}
 
 @dataclass
 class ModelConfig:
-    model_path: str = ""
+    name: str = ""
 
 
 @dataclass
@@ -90,7 +90,7 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
 
     cfg = TrainingConfig(
         model=ModelConfig(
-            model_path=str(raw_model.get("model_path", "")),
+            name=str(raw_model.get("name", "")).strip(),
         ),
         training=TrainingParams(
             ft_method=str(raw_training.get("ft_method", "qlora")),
@@ -180,8 +180,16 @@ def validate(cfg: TrainingConfig) -> None:
     """Validate config fields; raise ValueError with all issues at once."""
     errors: List[str] = []
 
-    if not cfg.model.model_path:
-        errors.append("model.model_path: required field is empty")
+    if not cfg.model.name:
+        errors.append("model.name: required field is empty")
+    elif cfg.model.name:
+        try:
+            get_model_spec(cfg.model.name)
+        except KeyError:
+            errors.append(
+                f"model.name: unknown built-in model '{cfg.model.name}'. "
+                f"Available: {list_model_names()}"
+            )
 
     if not cfg.data.dataset_name:
         errors.append("data.dataset_name: required field is empty")
@@ -203,12 +211,6 @@ def validate(cfg: TrainingConfig) -> None:
         errors.append(
             "training.params.target_modules: required non-empty list for "
             f"method '{method_name}'"
-        )
-
-    if method_name == "freeze" and not str(method_params.get("model_layout", "")).strip():
-        errors.append(
-            "training.params.model_layout: required non-empty string for method "
-            f"'{method_name}'. Available: {list_model_layouts()}"
         )
 
     if errors:
@@ -243,7 +245,7 @@ def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
 
     return {
         "model": {
-            "model_path": cfg.model.model_path,
+            "name": cfg.model.name,
         },
         "experiment": {
             "name": cfg.experiment.name,
