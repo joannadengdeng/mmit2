@@ -16,6 +16,8 @@ CROSS_ENTROPY_LOSS = CrossEntropyLoss()
 MORES_LOW_RANK_DIMENSION = 1
 MORES_FIRST_VISUAL_TOKEN_COUNT = 4
 MORES_LAST_VISUAL_TOKEN_COUNT = 5
+MORES_CHECKPOINT_FORMAT = "mores_compact_v1"
+MORES_DEBUG_LAYER_PREVIEW_LIMIT = 16
 
 
 def build_mores_intervention_mask(
@@ -75,6 +77,52 @@ class MoReSAdapter(nn.Module):
         return (base + update).to(hidden_states.dtype)
 
 
+def compact_mores_state(adapters: nn.ModuleList) -> Dict[str, Any]:
+    """Return a compact MoReS checkpoint without orthogonal parametrization buffers."""
+    layers = []
+    for adapter in adapters:
+        layers.append(
+            {
+                "w_down_weight": adapter.w_down.weight.detach().cpu(),
+                "linear_weight": adapter.linear.weight.detach().cpu(),
+                "linear_bias": adapter.linear.bias.detach().cpu(),
+            }
+        )
+    return {
+        "format": MORES_CHECKPOINT_FORMAT,
+        "layers": layers,
+    }
+
+
+def load_compact_mores_state(adapters: nn.ModuleList, state: Dict[str, Any]) -> None:
+    layers = state.get("layers")
+    if not isinstance(layers, list):
+        raise ValueError("Invalid compact MoReS checkpoint: missing layers list.")
+    if len(layers) != len(adapters):
+        raise ValueError(
+            "Invalid compact MoReS checkpoint: "
+            f"expected {len(adapters)} layers, found {len(layers)}."
+        )
+    with torch.no_grad():
+        for adapter, layer_state in zip(adapters, layers):
+            adapter.w_down.weight = layer_state["w_down_weight"].to(
+                device=adapter.w_down.weight.device,
+                dtype=adapter.w_down.weight.dtype,
+            )
+            adapter.linear.weight.copy_(
+                layer_state["linear_weight"].to(
+                    device=adapter.linear.weight.device,
+                    dtype=adapter.linear.weight.dtype,
+                )
+            )
+            adapter.linear.bias.copy_(
+                layer_state["linear_bias"].to(
+                    device=adapter.linear.bias.device,
+                    dtype=adapter.linear.bias.dtype,
+                )
+            )
+
+
 class MoReSMethod(TrainingMethod):
     """Freeze the backbone and steer sparse visual tokens in every transformer layer."""
 
@@ -85,15 +133,23 @@ class MoReSMethod(TrainingMethod):
         self.last_config: Dict[str, Any] = {}
         self.image_token_id: Optional[int] = None
         self.current_intervention_mask: Optional[torch.Tensor] = None
+        self.hook_call_count = 0
+        self.hook_layer_indices: List[int] = []
+        self.hook_intervention_tokens: Optional[int] = None
 
     def default_config(self) -> Dict[str, Any]:
         return {}
 
-    def layer_hook(self, adapter: MoReSAdapter):
+    def layer_hook(self, adapter: MoReSAdapter, layer_index: int):
         def hook(module, args, output):
             del module, args
 
             intervention_mask = self.current_intervention_mask.to(output.device)
+            self.hook_call_count += 1
+            if len(self.hook_layer_indices) < MORES_DEBUG_LAYER_PREVIEW_LIMIT:
+                self.hook_layer_indices.append(layer_index)
+            if self.hook_intervention_tokens is None:
+                self.hook_intervention_tokens = int(intervention_mask.sum().item())
             updated = output.clone()
             updated[intervention_mask] = adapter(output[intervention_mask])
             return updated
@@ -118,6 +174,9 @@ class MoReSMethod(TrainingMethod):
     def prepare_model_impl(self, model, processor, config, model_spec=None):
         del processor
         self.last_config = dict(config)
+        self.hook_call_count = 0
+        self.hook_layer_indices = []
+        self.hook_intervention_tokens = None
         if model_spec is None:
             raise ValueError("MoReS requires a resolved model spec.")
 
@@ -134,7 +193,7 @@ class MoReSMethod(TrainingMethod):
             )
 
         adapters: list[MoReSAdapter] = []
-        for layer in layers:
+        for layer_index, layer in enumerate(layers):
             adapter = MoReSAdapter(
                 int(hidden_size),
                 MORES_LOW_RANK_DIMENSION,
@@ -143,7 +202,7 @@ class MoReSMethod(TrainingMethod):
             if layer_device is not None:
                 adapter = adapter.to(layer_device)
             adapters.append(adapter)
-            layer.register_forward_hook(self.layer_hook(adapter))
+            layer.register_forward_hook(self.layer_hook(adapter, layer_index))
 
         if not adapters:
             raise ValueError("MoReS did not activate any transformer layers.")
@@ -163,6 +222,14 @@ class MoReSMethod(TrainingMethod):
             f"Trainable: {trainable:,} / {total:,} ({100 * trainable / total:.4f}%)"
         )
         return model, info
+
+    def runtime_debug(self) -> Dict[str, Any]:
+        return {
+            "kind": "mores_runtime",
+            "hook_call_count": self.hook_call_count,
+            "hook_layer_indices_preview": self.hook_layer_indices,
+            "hook_intervention_tokens": self.hook_intervention_tokens,
+        }
 
     def compute_loss(self, model, batch, outputs):
         return CROSS_ENTROPY_LOSS.compute(model, batch, outputs)
@@ -195,7 +262,7 @@ class MoReSMethod(TrainingMethod):
         adapters = getattr(model, "mores_adapters", None)
         if adapters is None:
             raise ValueError("MoReS checkpoint save failed: model.mores_adapters is missing.")
-        torch.save(adapters.state_dict(), os.path.join(path, "mores_tuned.pt"))
+        torch.save(compact_mores_state(adapters), os.path.join(path, "mores_tuned.pt"))
         processor.save_pretrained(path)
         metadata = {**metadata, "ft_method": self.name, "config": dict(self.last_config)}
         with open(os.path.join(path, "vlmintune_meta.json"), "w", encoding="utf-8") as f:
@@ -222,7 +289,10 @@ class MoReSMethod(TrainingMethod):
             map_location="cpu",
             weights_only=True,
         )
-        model.mores_adapters.load_state_dict(state)
+        if isinstance(state, dict) and state.get("format") == MORES_CHECKPOINT_FORMAT:
+            load_compact_mores_state(model.mores_adapters, state)
+        else:
+            model.mores_adapters.load_state_dict(state)
         model.eval()
 
         adapter_name = os.path.basename(path)

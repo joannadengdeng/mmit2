@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from typing import Any, Dict
 
 import yaml
@@ -50,3 +51,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    if os.environ.get("VLMINTUNE_FAST_EXIT") == "1":
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)

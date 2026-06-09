@@ -111,7 +111,13 @@ class HFDatasetsAdapter:
         split_sizes: Dict[str, int] = {}
         available: List[str] = []
         try:
-            ds_info = datasets_mod.load_dataset_builder(*load_pos).info
+            try:
+                ds_info = datasets_mod.load_dataset_builder(
+                    *load_pos,
+                    trust_remote_code=trust_remote_code,
+                ).info
+            except TypeError:
+                ds_info = datasets_mod.load_dataset_builder(*load_pos).info
             if ds_info.splits:
                 split_sizes = {
                     name: int(split_info.num_examples)

@@ -81,9 +81,15 @@ class LoRAMethod(TrainingMethod):
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     def load_for_inference(self, path, model_name, **kwargs):
+        del kwargs
         model_spec = get_model_spec(model_name)
         processor = load_processor(model_spec.hf_model_id)
-        model = load_vlm(model_spec.hf_model_id, quantize_4bit=True, torch_dtype=torch.float16)
+        quantize_4bit = self.requires_quantization()
+        model = load_vlm(
+            model_spec.hf_model_id,
+            quantize_4bit=quantize_4bit,
+            torch_dtype=torch.float16 if quantize_4bit else torch.bfloat16,
+        )
         model = PeftModel.from_pretrained(model, path)
         model.eval()
         try:

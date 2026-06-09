@@ -159,6 +159,122 @@ def build_label_supervision_debug(
     return debug
 
 
+def build_intervention_mask_debug(
+    processor: Any,
+    model_config: Any,
+    input_ids: torch.Tensor,
+    intervention_mask: torch.Tensor,
+) -> Dict[str, Any]:
+    """Summarize sparse MoReS intervention positions for the first batch."""
+    image_token_id = getattr(model_config, "image_token_id", None)
+    first_input_ids = input_ids[0].detach().cpu()
+    first_intervention_mask = intervention_mask[0].detach().cpu().bool()
+    selected_positions = first_intervention_mask.nonzero(as_tuple=False).flatten().tolist()
+    image_positions: List[int] = []
+    if image_token_id is not None:
+        image_token_int = int(image_token_id)
+        image_positions = (
+            (first_input_ids == image_token_int)
+            .nonzero(as_tuple=False)
+            .flatten()
+            .tolist()
+        )
+
+    debug = {
+        "kind": "mores_intervention",
+        "image_token_id": int(image_token_id) if image_token_id is not None else None,
+        "batch_intervention_tokens": int(intervention_mask.detach().cpu().bool().sum().item()),
+        "first_sample_image_token_count": len(image_positions),
+        "first_sample_intervention_token_count": len(selected_positions),
+        "first_sample_selected_positions": selected_positions,
+        "first_sample_first_selected_positions": selected_positions[:8],
+        "first_sample_last_selected_positions": selected_positions[-8:],
+        "first_sample_image_positions_preview": image_positions[:8] + (
+            ["..."] if len(image_positions) > 16 else []
+        ) + image_positions[-8:],
+        "first_sample_selected_spans": build_supervised_span_preview(
+            processor,
+            first_input_ids,
+            first_intervention_mask,
+        ),
+    }
+    return debug
+
+
+def trainable_parameter_debug(
+    model: torch.nn.Module,
+    *,
+    expected_prefixes: Optional[List[str]] = None,
+    limit: int = 30,
+) -> Dict[str, Any]:
+    names = [
+        name
+        for name, param in model.named_parameters()
+        if param.requires_grad
+    ]
+    unexpected = []
+    if expected_prefixes:
+        unexpected = [
+            name
+            for name in names
+            if not any(name.startswith(prefix) for prefix in expected_prefixes)
+        ]
+    return {
+        "kind": "trainable_parameters",
+        "trainable_tensor_count": len(names),
+        "trainable_parameter_names_preview": names[:limit],
+        "trainable_parameter_names_truncated": len(names) > limit,
+        "expected_prefixes": expected_prefixes or [],
+        "unexpected_trainable_parameter_names": unexpected[:limit],
+        "unexpected_trainable_parameter_names_truncated": len(unexpected) > limit,
+    }
+
+
+def trainable_parameter_refs(model: torch.nn.Module) -> Dict[int, str]:
+    return {
+        id(param): name
+        for name, param in model.named_parameters()
+        if param.requires_grad
+    }
+
+
+def gradient_debug(
+    param_groups: List[Dict[str, Any]],
+    param_names: Dict[int, str],
+    *,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    grad_norm_sq = 0.0
+    tensors_with_grad = 0
+    tensors_without_grad = 0
+    examples: List[Dict[str, Any]] = []
+    seen = set()
+    for group in param_groups:
+        for param in group.get("params", []):
+            if id(param) in seen:
+                continue
+            seen.add(id(param))
+            name = param_names.get(id(param), "<unnamed>")
+            if param.grad is None:
+                tensors_without_grad += 1
+                if len(examples) < limit:
+                    examples.append({"name": name, "grad_norm": None})
+                continue
+            grad = param.grad.detach()
+            norm = float(grad.float().norm().item())
+            grad_norm_sq += norm * norm
+            tensors_with_grad += 1
+            if len(examples) < limit:
+                examples.append({"name": name, "grad_norm": round(norm, 8)})
+    return {
+        "kind": "gradient",
+        "global_grad_norm": round(math.sqrt(grad_norm_sq), 8),
+        "trainable_tensors_with_grad": tensors_with_grad,
+        "trainable_tensors_without_grad": tensors_without_grad,
+        "trainable_grad_norm_preview": examples,
+    }
+
+
 # Dataset helpers
 
 def build_dataset(config: Any):

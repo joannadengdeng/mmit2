@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import load_processor, load_vlm
 from vlmintune.training.trainer.helpers import (
+    build_intervention_mask_debug,
     build_label_supervision_debug,
     build_dataset,
     build_skip_logger,
@@ -20,7 +21,10 @@ from vlmintune.training.trainer.helpers import (
     cosine_schedule,
     describe_batch,
     emit,
+    gradient_debug,
     to_device,
+    trainable_parameter_debug,
+    trainable_parameter_refs,
 )
 from vlmintune.training.trainer.tokenization import build_tokenized_dataset, safe_collate
 
@@ -107,6 +111,15 @@ class Trainer:
             self.model, self.processor, method_config, model_spec=self.model_spec,
         )
         emit("log", {"message": info_str, "level": "INFO"})
+        expected_prefixes = ["mores_adapters"] if config.training_method == "mores" else None
+        emit(
+            "debug",
+            trainable_parameter_debug(
+                self.model,
+                expected_prefixes=expected_prefixes,
+            ),
+        )
+        trainable_param_names = trainable_parameter_refs(self.model)
 
         param_groups = method_obj.get_trainable_params(self.model)
         for param_group in param_groups:
@@ -156,6 +169,8 @@ class Trainer:
         ema_loss = None
         start_time = time.time()
         logged_first_batch = False
+        logged_runtime_debug = False
+        logged_gradient_debug = False
 
         for epoch in range(config.num_epochs):
             for step, batch in enumerate(loader):
@@ -187,10 +202,25 @@ class Trainer:
                             batch.get("instruction_supervision_mask"),
                         ),
                     )
+                    if "intervention_mask" in batch:
+                        emit(
+                            "debug",
+                            build_intervention_mask_debug(
+                                self.processor,
+                                self.model.config,
+                                batch["input_ids"],
+                                batch["intervention_mask"],
+                            ),
+                        )
                     logged_first_batch = True
 
                 forward_batch = method_obj.build_forward_batch(batch)
                 outputs = self.model(**forward_batch)
+                if not logged_runtime_debug:
+                    runtime_debug_fn = getattr(method_obj, "runtime_debug", None)
+                    if callable(runtime_debug_fn):
+                        emit("debug", runtime_debug_fn())
+                    logged_runtime_debug = True
                 loss, metrics = method_obj.compute_loss(self.model, batch, outputs)
                 loss = loss / config.gradient_accumulation_steps
                 loss.backward()
@@ -198,6 +228,13 @@ class Trainer:
 
                 if accumulated_batches % config.gradient_accumulation_steps != 0:
                     continue
+
+                if not logged_gradient_debug:
+                    emit(
+                        "debug",
+                        gradient_debug(param_groups, trainable_param_names),
+                    )
+                    logged_gradient_debug = True
 
                 if config.max_grad_norm > 0:
                     torch.nn.utils.clip_grad_norm_(

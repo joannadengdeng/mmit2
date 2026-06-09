@@ -10,7 +10,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.config.training_config import load_config_dict
 from vlmintune.models.registry import get_model_spec
-from vlmintune.training.methods.mores import MoReSMethod
+from vlmintune.training.methods.mores import (
+    MORES_CHECKPOINT_FORMAT,
+    MoReSAdapter,
+    MoReSMethod,
+    compact_mores_state,
+    load_compact_mores_state,
+)
 from vlmintune.training.methods.registry import list_training_methods
 
 
@@ -167,6 +173,39 @@ def test_mores_build_forward_batch_keeps_intervention_mask():
 
     assert torch.equal(forward_batch["intervention_mask"], batch["intervention_mask"])
     assert "instruction_supervision_mask" not in forward_batch
+
+
+def test_mores_compact_checkpoint_omits_orthogonal_parametrization_buffers():
+    adapters = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(2)])
+
+    state = compact_mores_state(adapters)
+
+    assert state["format"] == MORES_CHECKPOINT_FORMAT
+    assert len(state["layers"]) == 2
+    assert set(state["layers"][0]) == {
+        "w_down_weight",
+        "linear_weight",
+        "linear_bias",
+    }
+    assert state["layers"][0]["w_down_weight"].shape == (1, 4)
+
+
+def test_mores_compact_checkpoint_round_trips_adapter_outputs():
+    source = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(1)])
+    target = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(1)])
+    inputs = torch.randn(3, 4)
+
+    with torch.no_grad():
+        source[0].w_down.weight.zero_()
+        source[0].w_down.weight[0, 2] = 1.0
+        source[0].linear.weight.fill_(0.25)
+        source[0].linear.bias.fill_(0.5)
+
+    expected = source[0](inputs)
+    load_compact_mores_state(target, compact_mores_state(source))
+
+    assert torch.allclose(target[0](inputs), expected, atol=1e-6, rtol=1e-5)
+
 
 def test_mores_supports_llava_layout():
     model = _ToyLlava(num_layers=2)
