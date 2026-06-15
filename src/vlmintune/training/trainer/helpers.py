@@ -10,6 +10,7 @@ import torch
 from torch.optim.lr_scheduler import LambdaLR
 
 from vlmintune.data.hf_datasets import HFDatasetsAdapter
+from vlmintune.data.visnec import VisNecFilteredAdapter, load_visnec_selection
 
 DEBUG_EXAMPLE_LIMIT = 5
 IGNORE_INDEX = -100
@@ -280,12 +281,35 @@ def gradient_debug(
 def build_dataset(config: Any):
     data_cfg = dict(config.data_config)
     max_samples = int(data_cfg.pop("max_samples", 0) or 0)
+    visnec_score_file = str(data_cfg.pop("visnec_score_file", "") or "").strip()
+    visnec_top_ratio = float(data_cfg.pop("visnec_top_ratio", 1.0) or 1.0)
 
     adapter = HFDatasetsAdapter(
-        max_samples=max_samples if max_samples > 0 else None,
+        max_samples=None if visnec_score_file else (max_samples if max_samples > 0 else None),
         usage="train",
         **data_cfg,
     )
+
+    if visnec_score_file:
+        selection = load_visnec_selection(visnec_score_file, visnec_top_ratio)
+        adapter = VisNecFilteredAdapter(
+            adapter,
+            selection,
+            max_samples=max_samples if max_samples > 0 else None,
+        )
+        emit(
+            "log",
+            {
+                "message": (
+                    "VisNec filtering enabled: "
+                    f"score_file={selection.score_file} "
+                    f"top_ratio={selection.top_ratio} "
+                    f"selected_ids={len(selection.selected_ids)}"
+                ),
+                "level": "INFO",
+            },
+        )
+
     dataset_len = len(adapter)
     if dataset_len < 0:
         raise ValueError(

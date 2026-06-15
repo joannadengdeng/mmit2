@@ -49,7 +49,7 @@ def test_vqav2_spec_uses_majority_vote_for_train_answer():
 
 
 def test_vizwiz_spec_uses_answer_contract_without_extra_metadata():
-    spec = get_dataset_spec("HuggingFaceM4/VizWiz")
+    spec = get_dataset_spec("ebrukilic/vizwiz_vqa_dataset")
     sample = spec.parse_row(
         {
             "question_id": 30,
@@ -67,6 +67,15 @@ def test_vizwiz_spec_uses_answer_contract_without_extra_metadata():
     assert sample.train_answer == "nothing"
     assert sample.eval_answers == ["nothing", "nothing", "blur"]
     assert sample.metadata == {}
+
+
+def test_vizwiz_spec_uses_replacement_dataset_directly():
+    spec = get_dataset_spec("ebrukilic/vizwiz_vqa_dataset")
+
+    assert spec is get_dataset_spec("ebrukilic/vizwiz_vqa_dataset")
+    assert spec.data_model.resolved_hf_dataset_name == "ebrukilic/vizwiz_vqa_dataset"
+    assert spec.data_model.default_train_split == "train"
+    assert spec.data_model.default_eval_split == "validation"
 
 
 def test_gqa_spec_uses_one_row_one_question_shape():
@@ -89,3 +98,42 @@ def test_gqa_spec_uses_one_row_one_question_shape():
     assert sample.train_answer == "red"
     assert sample.eval_answers == ["red"]
     assert "fullAnswer" not in sample.metadata
+
+
+def test_scienceqa_image_spec_uses_choice_index_answer():
+    spec = get_dataset_spec("scienceqa_image")
+    sample = spec.parse_row(
+        {
+            "pid": "sci-1",
+            "image": {"path": "science.png"},
+            "question": "Which object is magnetic?",
+            "choices": ["wooden spoon", "iron nail", "plastic cup"],
+            "answer": 1,
+            "hint": "Think about metals.",
+        },
+        idx=0,
+        load_images=False,
+    )
+
+    assert spec.data_model.resolved_hf_dataset_name == "derek-thomas/ScienceQA"
+    assert spec.data_model.default_train_split == "train"
+    assert spec.data_model.default_eval_split == "validation"
+    assert spec.data_model.metric_family == "normalized_exact_match"
+    assert sample.id == "sci-1"
+    assert sample.image_path == "science.png"
+    assert sample.question == "\n".join(
+        [
+            "Question: Which object is magnetic?",
+            "Options:",
+            "0. wooden spoon",
+            "1. iron nail",
+            "2. plastic cup",
+            "Answer with only the option index.",
+        ]
+    )
+    assert sample.train_answer == "1"
+    assert sample.eval_answers == ["1"]
+    assert sample.metadata["answer_index"] == 1
+    assert sample.metadata["answer_text"] == "iron nail"
+    assert sample.metadata["choices"] == ["wooden spoon", "iron nail", "plastic cup"]
+    assert sample.metadata["hint"] == "Think about metals."

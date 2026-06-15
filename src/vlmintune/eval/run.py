@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import traceback
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Iterator, Optional
 
@@ -25,6 +26,8 @@ class EvalTarget:
     temperature: float = 0.0
     max_samples: Optional[int] = None
     streaming: bool = True
+    sample_seed: Optional[int] = None
+    shuffle_buffer_size: int = 10_000
     metric: str = ""
 
 
@@ -98,6 +101,8 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
 
     max_samples_raw = raw.get("max_samples")
     max_samples = int(max_samples_raw) if max_samples_raw not in (None, "", 0) else None
+    sample_seed_raw = raw.get("sample_seed")
+    sample_seed = int(sample_seed_raw) if sample_seed_raw not in (None, "") else None
     name = str(raw.get("name", "")).strip() or default_eval_name(dataset_name, split)
 
     return EvalTarget(
@@ -109,6 +114,8 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
         temperature=float(raw.get("temperature", raw_eval.get("temperature", 0.0))),
         max_samples=max_samples,
         streaming=bool(raw.get("streaming", True)),
+        sample_seed=sample_seed,
+        shuffle_buffer_size=int(raw.get("shuffle_buffer_size", 10_000)),
         metric=metric,
     )
 
@@ -116,6 +123,11 @@ def parse_eval_target(raw_eval: Dict[str, Any]) -> EvalTarget:
 def prediction_path(output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
     return os.path.join(output_dir, "predictions.jsonl")
+
+
+def eval_ids_path(output_dir: str) -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    return os.path.join(output_dir, "eval_ids.json")
 
 
 def emit_eval_debug_examples(records: list[dict[str, Any]]) -> None:
@@ -137,6 +149,8 @@ def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, A
         streaming=target.streaming,
         load_images=True,
         usage="eval",
+        sample_seed=target.sample_seed,
+        shuffle_buffer_size=target.shuffle_buffer_size,
     )
     data_model = getattr(adapter.profile, "data_model", None)
     if data_model is None:
@@ -147,10 +161,20 @@ def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, A
     metric_sums: Dict[str, float] = {}
     num_predictions = 0
     debug_records: list[dict[str, Any]] = []
+    eval_ids: list[str] = []
+    prediction_word_counts: list[int] = []
+    prediction_counter: Counter[str] = Counter()
+    ground_truth_counter: Counter[str] = Counter()
+    ground_truth_items_with_unanswerable = 0
 
     with open(prediction_file, "w", encoding="utf-8") as f:
         for sample in iter_with_progress(adapter, total, f"Evaluating {target.name}"):
             eval_answers = sample.eval_answers
+            eval_ids.append(str(sample.id))
+            lowered_answers = [str(answer).strip().lower() for answer in eval_answers]
+            ground_truth_counter.update(answer for answer in lowered_answers if answer)
+            if "unanswerable" in lowered_answers:
+                ground_truth_items_with_unanswerable += 1
 
             eval_sample = EvalSample(
                 id=sample.id,
@@ -165,6 +189,9 @@ def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, A
                 max_new_tokens=target.max_new_tokens,
                 temperature=target.temperature,
             )
+            normalized_prediction = " ".join(prediction.strip().lower().split())
+            prediction_counter[normalized_prediction] += 1
+            prediction_word_counts.append(len(prediction.split()))
             scores = score_prediction(target.metric, prediction=prediction, ground_truth=eval_answers)
             for metric_name, value in scores.items():
                 metric_sums[metric_name] = metric_sums.get(metric_name, 0.0) + float(value)
@@ -182,17 +209,50 @@ def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, A
             num_predictions += 1
 
     emit_eval_debug_examples(debug_records)
+    with open(eval_ids_path(output_dir), "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "dataset_name": target.dataset_name,
+                "split": target.split,
+                "sample_seed": target.sample_seed,
+                "shuffle_buffer_size": target.shuffle_buffer_size,
+                "max_samples": target.max_samples,
+                "ids": eval_ids,
+            },
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    top_prediction, top_prediction_count = ("", 0)
+    if prediction_counter:
+        top_prediction, top_prediction_count = prediction_counter.most_common(1)[0]
 
     metrics = {
         metric_name: round(100.0 * total_value / max(1, num_predictions), 2)
         for metric_name, total_value in sorted(metric_sums.items())
+    }
+    diagnostics = {
+        "avg_prediction_words": round(
+            sum(prediction_word_counts) / max(1, len(prediction_word_counts)),
+            4,
+        ),
+        "long_prediction_count": sum(count > 5 for count in prediction_word_counts),
+        "empty_prediction_count": prediction_counter.get("", 0),
+        "top_prediction": top_prediction,
+        "top_prediction_count": int(top_prediction_count),
+        "top_prediction_ratio": round(top_prediction_count / max(1, num_predictions), 4),
+        "ground_truth_top": ground_truth_counter.most_common(10),
+        "ground_truth_items_with_unanswerable": ground_truth_items_with_unanswerable,
     }
     return {
         "dataset_name": target.dataset_name,
         "split": target.split,
         "num_predictions": num_predictions,
         "metrics": metrics,
+        "diagnostics": diagnostics,
         "prediction_file": prediction_file,
+        "eval_ids_file": eval_ids_path(output_dir),
     }
 
 
@@ -312,6 +372,9 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
                 "metric": eval_target.metric,
                 "num_predictions": eval_result["num_predictions"],
                 "metrics": eval_result["metrics"],
+                "sample_seed": eval_target.sample_seed,
+                "shuffle_buffer_size": eval_target.shuffle_buffer_size,
+                "diagnostics": eval_result["diagnostics"],
             }
             tracker.write_eval_summary(source.kind, summary)
 
@@ -322,6 +385,7 @@ def run_eval_config(raw_cfg: Dict[str, Any]) -> Dict[str, Any]:
             print("=" * 80)
             print(f"Summary JSON: {tracker.get_eval_summary_path(source.kind)}")
             print(f"Predictions: {tracker.get_predictions_path(source.kind)}")
+            print(f"Eval IDs: {eval_result['eval_ids_file']}")
             return summary
         except Exception:
             print(traceback.format_exc())

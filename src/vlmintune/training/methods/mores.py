@@ -17,7 +17,6 @@ MORES_LOW_RANK_DIMENSION = 1
 MORES_FIRST_VISUAL_TOKEN_COUNT = 4
 MORES_LAST_VISUAL_TOKEN_COUNT = 5
 MORES_CHECKPOINT_FORMAT = "mores_compact_v1"
-MORES_DEBUG_LAYER_PREVIEW_LIMIT = 16
 
 
 def build_mores_intervention_mask(
@@ -144,25 +143,38 @@ class MoReSMethod(TrainingMethod):
         def hook(module, args, output):
             del module, args
 
-            intervention_mask = self.current_intervention_mask.to(output.device)
+            is_tuple_output = isinstance(output, tuple)
+            hidden_states = output[0] if is_tuple_output else output
+            intervention_mask = self.current_intervention_mask.to(hidden_states.device)
             self.hook_call_count += 1
-            if len(self.hook_layer_indices) < MORES_DEBUG_LAYER_PREVIEW_LIMIT:
+            if len(self.hook_layer_indices) < 16:
                 self.hook_layer_indices.append(layer_index)
             if self.hook_intervention_tokens is None:
                 self.hook_intervention_tokens = int(intervention_mask.sum().item())
-            updated = output.clone()
-            updated[intervention_mask] = adapter(output[intervention_mask])
+            updated = hidden_states.clone()
+            updated[intervention_mask] = adapter(hidden_states[intervention_mask])
+            if is_tuple_output:
+                return (updated,) + output[1:]
             return updated
 
         return hook
 
     def forward_pre_hook(self, module, args, kwargs):
-        del module, args
+        del args
         input_ids = kwargs["input_ids"]
-        intervention_mask = kwargs["intervention_mask"].to(
-            device=input_ids.device,
-            dtype=torch.bool,
-        )
+        if "intervention_mask" in kwargs:
+            intervention_mask = kwargs["intervention_mask"].to(
+                device=input_ids.device,
+                dtype=torch.bool,
+            )
+        else:
+            intervention_mask = torch.stack(
+                [
+                    build_mores_intervention_mask(module.config, row)
+                    for row in input_ids
+                ],
+                dim=0,
+            ).to(device=input_ids.device)
 
         if intervention_mask.shape != input_ids.shape[:2]:
             raise ValueError(
@@ -171,14 +183,12 @@ class MoReSMethod(TrainingMethod):
         self.current_intervention_mask = intervention_mask
         return None
 
-    def prepare_model_impl(self, model, processor, config, model_spec=None):
+    def prepare_model_impl(self, model, processor, config, model_spec):
         del processor
         self.last_config = dict(config)
         self.hook_call_count = 0
         self.hook_layer_indices = []
         self.hook_intervention_tokens = None
-        if model_spec is None:
-            raise ValueError("MoReS requires a resolved model spec.")
 
         self.image_token_id = model_spec.get_image_token_id(model)
 
@@ -240,15 +250,8 @@ class MoReSMethod(TrainingMethod):
         processor: Any,
         inputs: Dict[str, Any],
     ) -> Dict[str, Any]:
-        del processor
-        intervention_mask = build_mores_intervention_mask(
-            model.config,
-            inputs["input_ids"].squeeze(0),
-        )
-        return {
-            **inputs,
-            "intervention_mask": intervention_mask.unsqueeze(0),
-        }
+        del model, processor
+        return inputs
 
     def get_trainable_params(self, model: nn.Module) -> List[Dict[str, Any]]:
         adapters = getattr(model, "mores_adapters", None)

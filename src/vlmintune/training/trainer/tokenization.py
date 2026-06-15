@@ -70,6 +70,7 @@ def build_tokenized_dataset(
     *,
     adapter,
     processor,
+    model_spec,
     model_config,
     enable_instruction_supervision: bool = False,
     enable_mores_intervention: bool = False,
@@ -80,6 +81,9 @@ def build_tokenized_dataset(
     preprocessor = ChatTemplatePreprocessor(
         enable_instruction_supervision=enable_instruction_supervision,
         enable_mores_intervention=enable_mores_intervention,
+        append_eos_to_training_answer=bool(
+            getattr(model_spec, "append_eos_to_training_answer", False)
+        ),
     )
     dataset_cls = TokenizedIterableDataset if getattr(adapter, "streaming", False) else TokenizedMapDataset
     dataset = dataset_cls(

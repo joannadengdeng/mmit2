@@ -55,10 +55,8 @@ class FreezeTuningMethod(TrainingMethod):
             "unfreeze_modules": [],
         }
 
-    def prepare_model_impl(self, model, processor, config, model_spec=None):
+    def prepare_model_impl(self, model, processor, config, model_spec):
         del processor
-        if model_spec is None:
-            raise ValueError("Freeze Tuning requires a resolved model spec.")
 
         available = list_tunable_modules(model, model_spec.name)
         unfreeze_modules = [str(name).strip() for name in config["unfreeze_modules"] if str(name).strip()]

@@ -21,6 +21,8 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     "FreezeTuningMethod": ("vlmintune.training.methods.freeze", "FreezeTuningMethod"),
     "L2TMethod": ("vlmintune.training.methods.l2t", "L2TMethod"),
     "MoReSMethod": ("vlmintune.training.methods.mores", "MoReSMethod"),
+    "MoLEMethod": ("vlmintune.training.methods.mole", "MoLEMethod"),
+    "ReFTMethod": ("vlmintune.training.methods.reft", "ReFTMethod"),
     "ChatTemplatePreprocessor": (
         "vlmintune.training.chat_template",
         "ChatTemplatePreprocessor",

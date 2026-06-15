@@ -25,7 +25,7 @@ from vlmintune.training.methods.registry import (
     list_training_methods,
 )
 
-_LORA_FAMILY_METHODS = {"lora", "qlora", "dora", "l2t"}
+_LORA_FAMILY_METHODS = {"lora", "qlora", "dora", "l2t", "mole"}
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────
@@ -66,6 +66,8 @@ class DataConfig:
     dataset_name: str = ""
     split: str = ""
     max_samples: int = 0
+    visnec_score_file: str = ""
+    visnec_top_ratio: float = 1.0
 
 
 @dataclass
@@ -118,6 +120,8 @@ def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
             dataset_name=str(raw_data.get("dataset_name", "")).strip(),
             split=str(raw_data.get("split", "")).strip(),
             max_samples=int(raw_data.get("max_samples", 0)),
+            visnec_score_file=str(raw_data.get("visnec_score_file", "")).strip(),
+            visnec_top_ratio=float(raw_data.get("visnec_top_ratio", 1.0)),
         ),
     )
 
@@ -242,6 +246,9 @@ def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
         data_config["split"] = cfg.data.split
     if cfg.data.max_samples:
         data_config["max_samples"] = cfg.data.max_samples
+    if cfg.data.visnec_score_file:
+        data_config["visnec_score_file"] = cfg.data.visnec_score_file
+        data_config["visnec_top_ratio"] = cfg.data.visnec_top_ratio
 
     return {
         "model": {

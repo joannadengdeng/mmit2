@@ -3,6 +3,8 @@ import os
 import sys
 import types
 
+import torch
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
@@ -81,5 +83,18 @@ def test_load_vlm_builds_quantized_kwargs():
         assert kwargs["trust_remote_code"] is True
         assert isinstance(kwargs["quantization_config"], dict)
         assert kwargs["quantization_config"]["load_in_4bit"] is True
+        assert kwargs["quantization_config"]["bnb_4bit_compute_dtype"] is torch.bfloat16
+    finally:
+        restore_modules(saved_modules)
+
+
+def test_load_vlm_quantized_compute_dtype_can_be_overridden():
+    modeling, calls, saved_modules = load_modeling_with_stubs()
+
+    try:
+        modeling.load_vlm("fake/model", quantize_4bit=True, torch_dtype=torch.float16)
+
+        _, kwargs = calls["model_loads"][0]
+        assert kwargs["quantization_config"]["bnb_4bit_compute_dtype"] is torch.float16
     finally:
         restore_modules(saved_modules)

@@ -175,6 +175,38 @@ def test_mores_build_forward_batch_keeps_intervention_mask():
     assert "instruction_supervision_mask" not in forward_batch
 
 
+def test_mores_forward_builds_intervention_mask_when_missing():
+    model = _ToyQwenVL(num_layers=1)
+    method = MoReSMethod()
+    method.prepare_model(
+        model,
+        _FakeProcessor(),
+        {},
+        model_spec=get_model_spec("qwen25vl_3b_instruct"),
+    )
+
+    model(input_ids=torch.tensor([[3, 42, 5, 42]]))
+
+    assert method.current_intervention_mask.tolist() == [[False, True, False, True]]
+
+
+def test_mores_inference_inputs_do_not_pass_intervention_mask_to_generate():
+    method = MoReSMethod()
+    inputs = {
+        "input_ids": torch.tensor([[3, 42, 5, 42]]),
+        "attention_mask": torch.tensor([[1, 1, 1, 1]]),
+    }
+
+    prepared = method.prepare_inference_inputs(
+        _ToyQwenVL(),
+        _FakeProcessor(),
+        inputs,
+    )
+
+    assert prepared is inputs
+    assert "intervention_mask" not in prepared
+
+
 def test_mores_compact_checkpoint_omits_orthogonal_parametrization_buffers():
     adapters = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(2)])
 

@@ -51,6 +51,7 @@ class ModelSpec(ABC):
     name: str = ""
     hf_model_id: str = ""
     transformer_layer_path: str = ""
+    append_eos_to_training_answer: bool = False
 
     @abstractmethod
     def get_transformer_layers(self, model: nn.Module) -> Sequence[nn.Module]:

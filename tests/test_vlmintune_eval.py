@@ -36,6 +36,8 @@ def test_parse_eval_target_uses_default_eval_split():
             "source": "trained",
             "max_new_tokens": 12,
             "max_samples": 25,
+            "sample_seed": 7,
+            "shuffle_buffer_size": 123,
         }
     )
 
@@ -45,6 +47,8 @@ def test_parse_eval_target_uses_default_eval_split():
     assert target.metric == "vqa_accuracy"
     assert target.max_new_tokens == 12
     assert target.max_samples == 25
+    assert target.sample_seed == 7
+    assert target.shuffle_buffer_size == 123
 
 
 def test_parse_eval_target_accepts_explicit_split():
@@ -107,6 +111,17 @@ def test_vqa_accuracy_matches_official_leave_one_out_scoring():
 def test_normalized_exact_match_uses_vqa_normalization():
     assert normalized_exact_match("The cat.", ["cat"]) == 1.0
     assert normalized_exact_match("dogs", ["cat"]) == 0.0
+
+
+def test_experiment_tracker_does_not_precreate_eval_dirs(tmp_path):
+    tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
+
+    assert os.path.isdir(tracker.get_checkpoint_dir())
+    assert os.path.isdir(tracker.get_train_dir())
+    assert tracker.get_eval_dir("base").endswith(os.path.join("demo_exp", "eval"))
+    assert not os.path.exists(tracker.get_eval_dir("base"))
+    assert not os.path.exists(tracker.get_eval_dir("trained"))
+
 
 def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
     tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
@@ -266,11 +281,18 @@ def test_evaluate_textvqa_uses_multi_annotator_answers(monkeypatch, tmp_path):
     )
 
     assert result["metrics"]["vqa_accuracy"] == 90.0
+    assert result["diagnostics"]["avg_prediction_words"] == 1.0
+    assert result["diagnostics"]["top_prediction"] == "cat"
+    assert result["diagnostics"]["top_prediction_count"] == 1
 
     with open(result["prediction_file"], "r", encoding="utf-8") as f:
         record = json.loads(f.readline())
+    with open(result["eval_ids_file"], "r", encoding="utf-8") as f:
+        eval_ids = json.load(f)
 
     assert os.path.basename(result["prediction_file"]) == "predictions.jsonl"
+    assert os.path.basename(result["eval_ids_file"]) == "eval_ids.json"
+    assert eval_ids["ids"] == ["123"]
     assert len(record["ground_truth"]) == 10
     assert record["ground_truth"].count("cat") == 3
 
@@ -291,7 +313,7 @@ def test_local_method_prepare_eval_input_uses_raw_question_text():
 
 
 
-def test_local_method_prepare_input_adds_intervention_mask_for_mores_models():
+def test_local_method_prepare_input_does_not_pass_mores_intervention_mask_to_generate():
     processor = _FakeEvalProcessor()
     model = _FakeEvalModel()
     method = LocalMethod(model, processor, inference_method=MoReSMethod())
@@ -305,8 +327,7 @@ def test_local_method_prepare_input_adds_intervention_mask_for_mores_models():
         )
     )
 
-    assert "intervention_mask" in prepared
-    assert prepared["intervention_mask"].tolist() == [[True, True, False]]
+    assert "intervention_mask" not in prepared
 
 
 def test_local_method_prepare_input_uses_explicit_question_field():

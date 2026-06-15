@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 import torch
+from PIL import Image
 
 from vlmintune.data.datasets.base import (
     build_full_inputs,
@@ -19,9 +20,82 @@ class ChatTemplatePreprocessor:
         self,
         enable_instruction_supervision: bool = False,
         enable_mores_intervention: bool = False,
+        append_eos_to_training_answer: bool = False,
     ) -> None:
         self.enable_instruction_supervision = enable_instruction_supervision
         self.enable_mores_intervention = enable_mores_intervention
+        self.append_eos_to_training_answer = append_eos_to_training_answer
+
+    @staticmethod
+    def _is_image_token_truncation_error(exc: Exception) -> bool:
+        message = str(exc)
+        return (
+            "Mismatch in `image` token count" in message
+            and "truncation='max_length'" in message
+        )
+
+    @staticmethod
+    def _resize_image(image: Image.Image, max_side: int) -> Image.Image:
+        resized = image.copy()
+        resized.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        return resized.convert("RGB")
+
+    def _tokenize_with_image_retries(
+        self,
+        *,
+        processor: Any,
+        sample: CanonicalSample,
+        image: Any,
+        max_length: int,
+    ) -> tuple[str, Dict[str, Any], str, Dict[str, Any], int, Any]:
+        candidates: list[tuple[int, Any]] = [(0, image)]
+        if isinstance(image, Image.Image):
+            seen_sizes = {image.size}
+            for max_side in (896, 768, 640, 512, 384):
+                if max(image.size) <= max_side:
+                    continue
+                resized = self._resize_image(image, max_side)
+                if resized.size in seen_sizes:
+                    continue
+                seen_sizes.add(resized.size)
+                candidates.append((len(candidates), resized))
+
+        last_error: Exception | None = None
+        for retry_index, candidate_image in candidates:
+            try:
+                full_text, full_inputs = build_full_inputs(
+                    processor,
+                    sample.question,
+                    sample.train_answer,
+                    candidate_image,
+                    append_eos_if_missing=self.append_eos_to_training_answer,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=max_length,
+                )
+                prompt_text, prompt_inputs = build_prompt_inputs(
+                    processor,
+                    sample.question,
+                    candidate_image,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=max_length,
+                )
+                return (
+                    full_text,
+                    full_inputs,
+                    prompt_text,
+                    prompt_inputs,
+                    retry_index,
+                    candidate_image,
+                )
+            except Exception as exc:
+                if not self._is_image_token_truncation_error(exc):
+                    raise
+                last_error = exc
+
+        assert last_error is not None
+        raise last_error
 
     def tokenize(
         self,
@@ -33,21 +107,17 @@ class ChatTemplatePreprocessor:
         # `processor` must be a Hugging Face multimodal processor that supports
         # both `apply_chat_template(...)` and `processor(text=..., images=...)`.
         image = load_sample_image(sample)
-        full_text, full_inputs = build_full_inputs(
-            processor,
-            sample.question,
-            sample.train_answer,
-            image,
-            return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
-        )
-        prompt_text, prompt_inputs = build_prompt_inputs(
-            processor,
-            sample.question,
-            image,
-            return_tensors="pt",
-            truncation=True,
+        (
+            full_text,
+            full_inputs,
+            prompt_text,
+            prompt_inputs,
+            image_retry_count,
+            tokenized_image,
+        ) = self._tokenize_with_image_retries(
+            processor=processor,
+            sample=sample,
+            image=image,
             max_length=max_length,
         )
 
@@ -57,7 +127,12 @@ class ChatTemplatePreprocessor:
             "message_count": 1 + int(bool(sample.train_answer.strip())),
             "full_text": full_text,
             "prompt_text": prompt_text,
+            "image_tokenization_retry_count": image_retry_count,
         }
+        if isinstance(image, Image.Image):
+            prompt_preview["original_image_size"] = list(image.size)
+        if isinstance(tokenized_image, Image.Image):
+            prompt_preview["tokenized_image_size"] = list(tokenized_image.size)
 
         input_ids = full_inputs["input_ids"].squeeze(0)
 

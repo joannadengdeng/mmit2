@@ -16,6 +16,32 @@ def extract_instruction_texts(sample: CanonicalSample) -> List[str]:
     return [question] if question else []
 
 
+def tokenized_text_variants(
+    tokenizer: Any,
+    text: str,
+    max_length: int,
+) -> List[List[int]]:
+    variants: List[List[int]] = []
+    seen = set()
+    for candidate in (text, "\n" + text, " " + text):
+        tokenized = tokenizer(
+            candidate,
+            add_special_tokens=False,
+            return_tensors="pt",
+            truncation=True,
+            max_length=max_length,
+        )
+        text_ids = tokenized["input_ids"]
+        if text_ids.dim() > 1:
+            text_ids = text_ids.squeeze(0)
+        ids = [int(token_id) for token_id in text_ids.tolist()]
+        key = tuple(ids)
+        if ids and key not in seen:
+            variants.append(ids)
+            seen.add(key)
+    return variants
+
+
 def build_instruction_supervision_mask(
     processor: Any,
     sample: CanonicalSample,
@@ -32,30 +58,21 @@ def build_instruction_supervision_mask(
     tokenizer = getattr(processor, "tokenizer", processor)
     cursor = 0
     for text in instruction_texts:
-        tokenized = tokenizer(
-            text,
-            add_special_tokens=False,
-            return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
-        )
-        text_ids = tokenized["input_ids"]
-        if text_ids.dim() > 1:
-            text_ids = text_ids.squeeze(0)
-        text_ids_list = text_ids.tolist()
-        if not text_ids_list:
-            continue
-
-        limit = len(prompt_ids) - len(text_ids_list) + 1
         start_idx = -1
-        for idx in range(max(0, cursor), max(0, limit)):
-            if prompt_ids[idx:idx + len(text_ids_list)] == text_ids_list:
-                start_idx = idx
+        matched_ids: List[int] = []
+        for text_ids_list in tokenized_text_variants(tokenizer, text, max_length):
+            limit = len(prompt_ids) - len(text_ids_list) + 1
+            for idx in range(max(0, cursor), max(0, limit)):
+                if prompt_ids[idx:idx + len(text_ids_list)] == text_ids_list:
+                    start_idx = idx
+                    matched_ids = text_ids_list
+                    break
+            if start_idx >= 0:
                 break
         if start_idx < 0:
             continue
 
-        end_idx = start_idx + len(text_ids_list)
+        end_idx = start_idx + len(matched_ids)
         mask[start_idx:end_idx] = True
         cursor = end_idx
     return mask
@@ -113,12 +130,14 @@ class L2TMethod(TrainingMethod):
         self.last_config: Dict[str, Any] = {}
 
     def default_config(self):
-        return self.base.default_config()
+        defaults = self.base.default_config()
+        defaults.pop("train_layer_range", None)
+        return defaults
 
     def requires_quantization(self, config=None):
         return self.base.requires_quantization(config)
 
-    def prepare_model_impl(self, model, processor, config, model_spec=None):
+    def prepare_model_impl(self, model, processor, config, model_spec):
         self.last_config = dict(config)
         return self.base.prepare_model(model, processor, config, model_spec=model_spec)
 

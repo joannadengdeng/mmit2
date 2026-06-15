@@ -86,6 +86,94 @@ class _FakeImageProcessor(_FakeProcessor):
         return " ".join(vocab.get(token_id, str(token_id)) for token_id in token_ids)
 
 
+class _FakeLargeImageProcessor(_FakeImageProcessor):
+    def __call__(
+        self,
+        text,
+        images=None,
+        return_tensors=None,
+        truncation=None,
+        max_length=None,
+        add_special_tokens=True,
+    ):
+        image = (images or [None])[0]
+        if isinstance(image, Image.Image) and max(image.size) > 512:
+            raise ValueError(
+                "Mismatch in `image` token count between text and `input_ids`. "
+                "Likely due to `truncation='max_length'`."
+            )
+        return super().__call__(
+            text=text,
+            images=images,
+            return_tensors=return_tensors,
+            truncation=truncation,
+            max_length=max_length,
+            add_special_tokens=add_special_tokens,
+        )
+
+
+class _FakeProcessorWithoutTemplateEos(_FakeProcessor):
+    eos_token = "</s>"
+    eos_token_id = 2
+
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        assert tokenize is False
+        if add_generation_prompt:
+            return "USER: Question? ASSISTANT:"
+        return "USER: Question? ASSISTANT: Answer. "
+
+    def __call__(
+        self,
+        text,
+        images=None,
+        return_tensors=None,
+        truncation=None,
+        max_length=None,
+        add_special_tokens=True,
+    ):
+        del images, return_tensors, truncation, max_length, add_special_tokens
+        if text == "USER: Question? ASSISTANT:":
+            return {"input_ids": torch.tensor([[11, 12, 13]])}
+        if text == "USER: Question? ASSISTANT: Answer. </s>":
+            return {
+                "input_ids": torch.tensor([[11, 12, 13, 14, 2]]),
+                "attention_mask": torch.tensor([[1, 1, 1, 1, 1]]),
+            }
+        raise AssertionError(f"unexpected text: {text!r}")
+
+    def decode(self, token_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
+        del skip_special_tokens, clean_up_tokenization_spaces
+        vocab = {11: "USER:", 12: "Question?", 13: "ASSISTANT:", 14: "Answer.", 2: "</s>"}
+        return " ".join(vocab.get(token_id, str(token_id)) for token_id in token_ids)
+
+
+class _FakeProcessorWithTemplateEos(_FakeProcessorWithoutTemplateEos):
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        assert tokenize is False
+        if add_generation_prompt:
+            return "USER: Question? ASSISTANT:"
+        return "USER: Question? ASSISTANT: Answer.</s>\n"
+
+    def __call__(
+        self,
+        text,
+        images=None,
+        return_tensors=None,
+        truncation=None,
+        max_length=None,
+        add_special_tokens=True,
+    ):
+        del images, return_tensors, truncation, max_length, add_special_tokens
+        if text == "USER: Question? ASSISTANT:":
+            return {"input_ids": torch.tensor([[11, 12, 13]])}
+        if text == "USER: Question? ASSISTANT: Answer.</s>\n":
+            return {
+                "input_ids": torch.tensor([[11, 12, 13, 14, 2, 15]]),
+                "attention_mask": torch.tensor([[1, 1, 1, 1, 1, 1]]),
+            }
+        raise AssertionError(f"unexpected text: {text!r}")
+
+
 def test_chat_template_tokenize_includes_rendered_prompt_preview():
     model_config = types.SimpleNamespace(image_token_id=99)
     sample = CanonicalSample(
@@ -114,6 +202,43 @@ def test_chat_template_tokenize_includes_rendered_prompt_preview():
     assert result["instruction_supervision_mask"].tolist() == [False, True, False, False]
 
 
+def test_chat_template_appends_eos_when_full_template_omits_it():
+    model_config = types.SimpleNamespace(image_token_id=99)
+    sample = CanonicalSample(
+        id="sample-eos",
+        image_path="",
+        question="Question?",
+        train_answer="Answer.",
+    )
+
+    result = ChatTemplatePreprocessor(append_eos_to_training_answer=True).tokenize(
+        sample,
+        _FakeProcessorWithoutTemplateEos(),
+        model_config,
+    )
+
+    assert result["prompt_preview"]["full_text"].endswith("</s>")
+    assert result["labels"].tolist() == [-100, -100, -100, 14, 2]
+
+
+def test_chat_template_does_not_duplicate_existing_template_eos():
+    model_config = types.SimpleNamespace(image_token_id=99)
+    sample = CanonicalSample(
+        id="sample-existing-eos",
+        image_path="",
+        question="Question?",
+        train_answer="Answer.",
+    )
+
+    result = ChatTemplatePreprocessor(append_eos_to_training_answer=True).tokenize(
+        sample,
+        _FakeProcessorWithTemplateEos(),
+        model_config,
+    )
+
+    assert result["prompt_preview"]["full_text"].count("</s>") == 1
+
+
 def test_chat_template_tokenize_emits_mores_intervention_mask_for_visual_tokens():
     model_config = types.SimpleNamespace(image_token_id=99)
     sample = CanonicalSample(
@@ -140,6 +265,29 @@ def test_chat_template_tokenize_emits_mores_intervention_mask_for_visual_tokens(
         False,
         False,
     ]
+
+
+def test_chat_template_retries_with_smaller_image_on_image_token_truncation():
+    model_config = types.SimpleNamespace(image_token_id=99)
+    sample = CanonicalSample(
+        id="sample-large-image",
+        image_path="",
+        question="What is shown?",
+        train_answer="Answer.",
+        metadata={"_pil_image": Image.new("RGB", (1200, 800), color="white")},
+    )
+
+    result = ChatTemplatePreprocessor().tokenize(
+        sample,
+        _FakeLargeImageProcessor(),
+        model_config,
+        max_length=4096,
+    )
+
+    assert result["input_ids"].tolist() == [99, 99, 99, 12, 13, 14, 15]
+    assert result["prompt_preview"]["image_tokenization_retry_count"] > 0
+    assert result["prompt_preview"]["original_image_size"] == [1200, 800]
+    assert max(result["prompt_preview"]["tokenized_image_size"]) <= 512
 
 
 def test_chat_template_collate_pads_intervention_mask():

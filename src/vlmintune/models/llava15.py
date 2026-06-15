@@ -10,6 +10,7 @@ class Llava15Spec(ModelSpec):
     name = "llava15_7b"
     hf_model_id = "llava-hf/llava-1.5-7b-hf"
     transformer_layer_path = "model.language_model.layers"
+    append_eos_to_training_answer = True
 
     def get_transformer_layers(self, model: nn.Module):
         return resolve_module_sequence(self, model, self.transformer_layer_path, "transformer layers")

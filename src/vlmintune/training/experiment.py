@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 _EVAL_DIRS = {
     "trained": "eval_trained",
-    "base": "eval_base",
+    "base": "eval",
 }
 
 
@@ -93,8 +93,6 @@ class ExperimentTracker:
         os.makedirs(self.exp_dir, exist_ok=True)
         os.makedirs(self.get_checkpoint_dir(), exist_ok=True)
         os.makedirs(self.get_train_dir(), exist_ok=True)
-        for source in _EVAL_DIRS:
-            os.makedirs(self.get_eval_dir(source), exist_ok=True)
 
     def get_checkpoint_dir(self) -> str:
         return os.path.join(self.exp_dir, "checkpoint")

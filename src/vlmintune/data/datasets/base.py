@@ -190,13 +190,20 @@ def render_full_text(
     question: str,
     train_answer: str,
     has_image: bool,
+    append_eos_if_missing: bool = False,
 ) -> str:
     messages = build_full_messages(question, train_answer, has_image)
-    return processor.apply_chat_template(
+    text = processor.apply_chat_template(
         messages,
         tokenize=False,
         add_generation_prompt=False,
     )
+    if append_eos_if_missing:
+        tokenizer = getattr(processor, "tokenizer", processor)
+        eos_token = getattr(tokenizer, "eos_token", None)
+        if eos_token and not str(text).rstrip().endswith(str(eos_token)):
+            text = f"{text}{eos_token}"
+    return text
 
 
 def build_prompt_inputs(
@@ -219,9 +226,16 @@ def build_full_inputs(
     question: str,
     train_answer: str,
     image: Any,
+    append_eos_if_missing: bool = False,
     **processor_kwargs: Any,
 ) -> Tuple[str, Dict[str, Any]]:
-    text = render_full_text(processor, question, train_answer, image is not None)
+    text = render_full_text(
+        processor,
+        question,
+        train_answer,
+        image is not None,
+        append_eos_if_missing=append_eos_if_missing,
+    )
     inputs = processor(
         text=text,
         images=build_processor_images(image),
@@ -258,6 +272,9 @@ class HFDatasetSpec:
         del row
         return {}
 
+    def parse_id(self, row: dict, idx: int) -> str:
+        return str(row.get(self.mapping.id_col, idx)) if self.mapping.id_col else str(idx)
+
     def parse_row(self, row: dict, idx: int, load_images: bool = True) -> CanonicalSample:
         question = self.parse_question(row)
         answers = self.parse_answers(row)
@@ -266,9 +283,8 @@ class HFDatasetSpec:
         image_path, image_meta = parse_image_field(image_val, load_images)
         metadata = {**image_meta, **self.build_metadata(row)}
 
-        sample_id = str(row.get(self.mapping.id_col, idx)) if self.mapping.id_col else str(idx)
         return CanonicalSample(
-            id=sample_id,
+            id=self.parse_id(row, idx),
             image_path=image_path,
             question=question,
             train_answer=answers.train_answer,

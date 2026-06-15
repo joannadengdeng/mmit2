@@ -5,7 +5,8 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vlmintune.training.methods.l2t import L2TMethod
+from vlmintune.data.types import CanonicalSample
+from vlmintune.training.methods.l2t import L2TMethod, build_instruction_supervision_mask
 from vlmintune.training.trainer.helpers import build_label_supervision_debug
 
 
@@ -27,7 +28,46 @@ def test_l2t_defaults_match_lora_shape():
     defaults = L2TMethod().default_config()
 
     assert "base_method" not in defaults
+    assert "train_layer_range" not in defaults
     assert defaults["target_modules"] == []
+
+
+class _PrefixSensitiveTokenizer:
+    def __call__(
+        self,
+        text,
+        add_special_tokens=False,
+        return_tensors=None,
+        truncation=None,
+        max_length=None,
+    ):
+        del add_special_tokens, return_tensors, truncation, max_length
+        if text == "what brand?":
+            return {"input_ids": torch.tensor([[20, 21]])}
+        if text == "\nwhat brand?":
+            return {"input_ids": torch.tensor([[12, 13]])}
+        if text == " what brand?":
+            return {"input_ids": torch.tensor([[30, 31]])}
+        return {"input_ids": torch.tensor([[]], dtype=torch.long)}
+
+
+class _PrefixSensitiveProcessor:
+    tokenizer = _PrefixSensitiveTokenizer()
+
+
+def test_l2t_instruction_mask_matches_newline_tokenized_question_variant():
+    sample = CanonicalSample(id="1", image_path="", question="what brand?")
+    input_ids = torch.tensor([99, 12, 13, 98, 77])
+
+    mask = build_instruction_supervision_mask(
+        processor=_PrefixSensitiveProcessor(),
+        sample=sample,
+        input_ids=input_ids,
+        prompt_len=4,
+        max_length=16,
+    )
+
+    assert mask.tolist() == [False, True, True, False, False]
 
 
 class _FakeDecodeProcessor:

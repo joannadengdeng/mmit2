@@ -99,3 +99,34 @@ data:
     assert trainer_dict["training"]["dataloader_pin_memory"] is True
     assert trainer_dict["training"]["dataloader_persistent_workers"] is True
     assert "split" not in trainer_dict["data"]
+
+
+def test_load_config_preserves_visnec_data_filters(tmp_path):
+    score_file = tmp_path / "scores.jsonl"
+    score_file.write_text('{"sample_id": "1", "visnec_score": 1.0}\n', encoding="utf-8")
+    config_path = tmp_path / "train_config.yaml"
+    config_path.write_text(
+        f"""
+model:
+  name: "qwen25vl_3b_instruct"
+experiment:
+  name: "demo_exp"
+training:
+  ft_method: lora
+  params:
+    target_modules: ["q_proj", "v_proj"]
+    train_layer_range: [0, 1]
+data:
+  dataset_name: "lmms-lab/textvqa"
+  visnec_score_file: "{score_file}"
+  visnec_top_ratio: 0.5
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_config(str(config_path))
+    trainer_dict = config_to_trainer_dict(cfg)
+
+    assert trainer_dict["data"]["visnec_score_file"] == str(score_file)
+    assert trainer_dict["data"]["visnec_top_ratio"] == 0.5

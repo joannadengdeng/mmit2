@@ -15,6 +15,8 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "FreezeTuningMethod": ("vlmintune.training.methods.freeze", "FreezeTuningMethod"),
     "L2TMethod": ("vlmintune.training.methods.l2t", "L2TMethod"),
     "MoReSMethod": ("vlmintune.training.methods.mores", "MoReSMethod"),
+    "MoLEMethod": ("vlmintune.training.methods.mole", "MoLEMethod"),
+    "ReFTMethod": ("vlmintune.training.methods.reft", "ReFTMethod"),
 }
 
 __all__ = list(_EXPORTS)

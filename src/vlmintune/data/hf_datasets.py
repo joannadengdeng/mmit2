@@ -1,6 +1,7 @@
 """Hugging Face dataset loader backed by per-dataset VQA specs."""
 from __future__ import annotations
 
+import random
 from typing import Dict, Iterator, List, Optional
 
 import datasets
@@ -31,6 +32,8 @@ class HFDatasetsAdapter:
         load_images: bool = True,
         config_name: Optional[str] = None,
         usage: str = "train",
+        sample_seed: Optional[int] = None,
+        shuffle_buffer_size: int = 10_000,
     ) -> None:
         self.dataset_name = dataset_name
         self.split = str(split or "").strip()
@@ -38,6 +41,8 @@ class HFDatasetsAdapter:
         self.max_samples = max_samples
         self.streaming = streaming
         self.load_images = load_images
+        self.sample_seed = sample_seed
+        self.shuffle_buffer_size = int(shuffle_buffer_size)
         self._num_examples: Optional[int] = None
 
         spec = get_dataset_spec(dataset_name)
@@ -78,11 +83,11 @@ class HFDatasetsAdapter:
             trust_remote_code,
         )
 
+        if sample_seed is not None:
+            self.apply_seeded_sampling(int(sample_seed))
+
         if not self.load_images and not self.streaming:
             self.disable_eager_image_decode(datasets)
-
-        if max_samples is not None and not self.streaming:
-            self._hf_dataset = self._hf_dataset.select(range(min(max_samples, len(self._hf_dataset))))
 
         if column_map is not None:
             self._spec = build_configured_spec(
@@ -98,6 +103,32 @@ class HFDatasetsAdapter:
                 "Use one of the built-in dataset specs or pass column_map explicitly. "
                 f"Built-ins: {sorted(DATASET_SPECS)}"
             )
+
+        if not self.streaming and self.dataset_name == "scienceqa_image":
+            keep_indices = [
+                idx
+                for idx, row in enumerate(self._hf_dataset)
+                if self._scienceqa_image_has_image(row)
+            ]
+            if max_samples is not None:
+                keep_indices = keep_indices[:max_samples]
+            self._hf_dataset = self._hf_dataset.select(keep_indices)
+        elif max_samples is not None and not self.streaming:
+            self._hf_dataset = self._hf_dataset.select(range(min(max_samples, len(self._hf_dataset))))
+
+    def apply_seeded_sampling(self, sample_seed: int) -> None:
+        if self.streaming:
+            if hasattr(self._hf_dataset, "shuffle"):
+                self._hf_dataset = self._hf_dataset.shuffle(
+                    seed=sample_seed,
+                    buffer_size=max(1, self.shuffle_buffer_size),
+                )
+            return
+
+        total = len(self._hf_dataset)
+        indices = list(range(total))
+        random.Random(sample_seed).shuffle(indices)
+        self._hf_dataset = self._hf_dataset.select(indices)
 
     def load_dataset(
         self,
@@ -184,6 +215,14 @@ class HFDatasetsAdapter:
         except Exception:
             pass
 
+    def _scienceqa_image_has_image(self, row: dict) -> bool:
+        image_val = row.get("image")
+        if image_val is None:
+            return False
+        if isinstance(image_val, dict):
+            return bool(image_val.get("bytes") or image_val.get("path"))
+        return bool(image_val)
+
     def __len__(self) -> int:
         if self.streaming:
             if self.max_samples is not None:
@@ -198,6 +237,8 @@ class HFDatasetsAdapter:
     def __iter__(self) -> Iterator[CanonicalSample]:
         count = 0
         for idx, row in enumerate(self._hf_dataset):
+            if self.dataset_name == "scienceqa_image" and not self._scienceqa_image_has_image(row):
+                continue
             if self.max_samples is not None and count >= self.max_samples:
                 break
             yield self._spec.parse_row(row, idx, load_images=self.load_images)
@@ -208,6 +249,12 @@ class HFDatasetsAdapter:
             raise TypeError("__getitem__ is not supported in streaming mode.")
         row = self._hf_dataset[idx]
         return self._spec.parse_row(row, idx, load_images=self.load_images)
+
+    def get_sample_id(self, idx: int) -> str:
+        if self.streaming:
+            raise TypeError("get_sample_id is not supported in streaming mode.")
+        row = self._hf_dataset[idx]
+        return self._spec.parse_id(row, idx)
 
     @property
     def column_names(self) -> List[str]:

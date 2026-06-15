@@ -41,7 +41,7 @@ def load_vlm(
     if quantize_4bit:
         load_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=torch_dtype,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
         )
@@ -85,7 +85,7 @@ class TrainingMethod(ABC):
         model: nn.Module,
         processor: Any,
         config: Dict[str, Any],
-        model_spec: ModelSpec | None = None,
+        model_spec: ModelSpec,
     ) -> Tuple[nn.Module, str]:
         """Prepare the model for training.
 
@@ -110,7 +110,7 @@ class TrainingMethod(ABC):
         model: nn.Module,
         processor: Any,
         config: Dict[str, Any],
-        model_spec: ModelSpec | None = None,
+        model_spec: ModelSpec,
     ) -> Tuple[nn.Module, str]:
         """Subclass implementation of model preparation.
 

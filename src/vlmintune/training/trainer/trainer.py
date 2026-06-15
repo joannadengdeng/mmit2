@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
@@ -97,6 +98,7 @@ class Trainer:
         tokenized_dataset, preprocessor = build_tokenized_dataset(
             adapter=adapter,
             processor=self.processor,
+            model_spec=self.model_spec,
             model_config=self.model.config,
             enable_instruction_supervision=config.training_method == "l2t",
             enable_mores_intervention=config.training_method == "mores",
@@ -111,7 +113,11 @@ class Trainer:
             self.model, self.processor, method_config, model_spec=self.model_spec,
         )
         emit("log", {"message": info_str, "level": "INFO"})
-        expected_prefixes = ["mores_adapters"] if config.training_method == "mores" else None
+        expected_prefixes = None
+        if config.training_method == "mores":
+            expected_prefixes = ["mores_adapters"]
+        elif config.training_method == "reft":
+            expected_prefixes = ["reft_adapters"]
         emit(
             "debug",
             trainable_parameter_debug(
@@ -222,6 +228,11 @@ class Trainer:
                         emit("debug", runtime_debug_fn())
                     logged_runtime_debug = True
                 loss, metrics = method_obj.compute_loss(self.model, batch, outputs)
+                if not torch.isfinite(loss.detach()):
+                    raise FloatingPointError(
+                        f"Non-finite loss during {config.training_method} training "
+                        f"before optimizer step {global_step + 1}: {loss.detach().item()}"
+                    )
                 loss = loss / config.gradient_accumulation_steps
                 loss.backward()
                 accumulated_batches += 1
@@ -237,10 +248,16 @@ class Trainer:
                     logged_gradient_debug = True
 
                 if config.max_grad_norm > 0:
-                    torch.nn.utils.clip_grad_norm_(
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
                         [param for group in param_groups for param in group["params"]],
                         config.max_grad_norm,
+                        error_if_nonfinite=True,
                     )
+                    if not math.isfinite(float(grad_norm)):
+                        raise FloatingPointError(
+                            f"Non-finite gradient norm during {config.training_method} training "
+                            f"at optimizer step {global_step + 1}: {float(grad_norm)}"
+                        )
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
@@ -316,6 +333,8 @@ class Trainer:
                         "status": "completed",
                         "avg_loss": avg_loss,
                         "total_steps": global_step,
+                        "skipped_samples": debug_recorder.total_skipped,
+                        "skip_examples": debug_recorder.skip_examples,
                         "train_time_s": round(time.time() - start_time, 1),
                         "trainable_params": trainable,
                         "total_params": total_params,
