@@ -18,11 +18,11 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     "QLoRAMethod": ("vlmintune.training.methods.lora", "QLoRAMethod"),
     "LoRAMethod": ("vlmintune.training.methods.lora", "LoRAMethod"),
     "DoRAMethod": ("vlmintune.training.methods.dora", "DoRAMethod"),
-    "FreezeTuningMethod": ("vlmintune.training.methods.freeze", "FreezeTuningMethod"),
     "L2TMethod": ("vlmintune.training.methods.l2t", "L2TMethod"),
     "MoReSMethod": ("vlmintune.training.methods.mores", "MoReSMethod"),
     "MoLEMethod": ("vlmintune.training.methods.mole", "MoLEMethod"),
     "ReFTMethod": ("vlmintune.training.methods.reft", "ReFTMethod"),
+    "VLAdapterMethod": ("vlmintune.training.methods.vl_adapter", "VLAdapterMethod"),
     "ChatTemplatePreprocessor": (
         "vlmintune.training.chat_template",
         "ChatTemplatePreprocessor",

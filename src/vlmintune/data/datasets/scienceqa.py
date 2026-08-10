@@ -26,6 +26,11 @@ class ScienceQAImageSpec(HFDatasetSpec):
         question_col="question",
         answer_col="answer",
     )
+    l2t_removed_task_templates = (
+        "Question:",
+        "Options:",
+        "Answer with only the option index.",
+    )
 
     def parse_id(self, row: dict, idx: int) -> str:
         for key in ("pid", "id", "question_id"):
@@ -62,6 +67,15 @@ class ScienceQAImageSpec(HFDatasetSpec):
     def parse_answers(self, row: dict) -> AnswerBundle:
         answer = str(self._answer_index(row))
         return AnswerBundle(train_answer=answer, eval_answers=[answer])
+
+    def build_l2t_instruction_texts(self, row: dict, rendered_question: str):
+        del rendered_question
+        question = str(row.get(self.mapping.question_col, "")).strip()
+        return [question, *self._choices(row)]
+
+    def build_l2t_removed_task_templates(self, row: dict) -> List[str]:
+        option_labels = [f"{idx}." for idx, _ in enumerate(self._choices(row))]
+        return [*self.l2t_removed_task_templates, *option_labels]
 
     def build_metadata(self, row: dict) -> Dict[str, Any]:
         choices = self._choices(row)

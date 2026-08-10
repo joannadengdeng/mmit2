@@ -14,6 +14,8 @@ class CanonicalSample:
     train_answer: str = ""
     eval_answers: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    l2t_instruction_texts: List[str] = field(default_factory=list)
+    l2t_removed_task_templates: List[str] = field(default_factory=list)
 
 
 @dataclass

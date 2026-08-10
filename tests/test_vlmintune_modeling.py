@@ -71,6 +71,51 @@ def test_load_processor_uses_trust_remote_code():
         restore_modules(saved_modules)
 
 
+def test_qwen_processor_caps_high_resolution_images():
+    modeling, _, saved_modules = load_modeling_with_stubs()
+
+    try:
+        processor = types.SimpleNamespace(
+            image_processor=types.SimpleNamespace(
+                size=types.SimpleNamespace(longest_edge=12_845_056),
+            ),
+        )
+
+        configured = modeling.configure_processor_image_budget(
+            processor,
+            "Qwen/Qwen2.5-VL-3B-Instruct",
+        )
+
+        assert configured is processor
+        assert (
+            processor.image_processor.size.longest_edge
+            == modeling.QWEN25VL_IMAGE_MAX_PIXELS
+            == 1_003_520
+        )
+    finally:
+        restore_modules(saved_modules)
+
+
+def test_image_budget_does_not_change_non_qwen_processors():
+    modeling, _, saved_modules = load_modeling_with_stubs()
+
+    try:
+        processor = types.SimpleNamespace(
+            image_processor=types.SimpleNamespace(
+                size=types.SimpleNamespace(longest_edge=12_845_056),
+            ),
+        )
+
+        modeling.configure_processor_image_budget(
+            processor,
+            "llava-hf/llava-1.5-7b-hf",
+        )
+
+        assert processor.image_processor.size.longest_edge == 12_845_056
+    finally:
+        restore_modules(saved_modules)
+
+
 def test_load_vlm_builds_quantized_kwargs():
     modeling, calls, saved_modules = load_modeling_with_stubs()
 
@@ -84,6 +129,8 @@ def test_load_vlm_builds_quantized_kwargs():
         assert isinstance(kwargs["quantization_config"], dict)
         assert kwargs["quantization_config"]["load_in_4bit"] is True
         assert kwargs["quantization_config"]["bnb_4bit_compute_dtype"] is torch.bfloat16
+        assert kwargs["quantization_config"]["bnb_4bit_quant_type"] == "nf4"
+        assert kwargs["quantization_config"]["bnb_4bit_use_double_quant"] is True
     finally:
         restore_modules(saved_modules)
 
@@ -96,5 +143,18 @@ def test_load_vlm_quantized_compute_dtype_can_be_overridden():
 
         _, kwargs = calls["model_loads"][0]
         assert kwargs["quantization_config"]["bnb_4bit_compute_dtype"] is torch.float16
+    finally:
+        restore_modules(saved_modules)
+
+
+def test_load_vlm_uses_transformers_5_dtype_keyword_when_not_quantized():
+    modeling, calls, saved_modules = load_modeling_with_stubs()
+
+    try:
+        modeling.load_vlm("fake/model", quantize_4bit=False)
+
+        _, kwargs = calls["model_loads"][0]
+        assert kwargs["dtype"] is torch.bfloat16
+        assert "torch_dtype" not in kwargs
     finally:
         restore_modules(saved_modules)

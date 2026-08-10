@@ -1,10 +1,13 @@
 """Hugging Face dataset loader backed by per-dataset VQA specs."""
 from __future__ import annotations
 
+import os
 import random
+from pathlib import Path
 from typing import Dict, Iterator, List, Optional
 
 import datasets
+from huggingface_hub import snapshot_download
 
 from vlmintune.data.datasets import (
     DATASET_SPECS,
@@ -68,6 +71,25 @@ class HFDatasetsAdapter:
         self.hf_dataset_name = resolved_dataset_name
         config_arg = config_name or (data_model.config_name if data_model is not None else "")
         load_pos = (resolved_dataset_name, config_arg) if config_arg else (resolved_dataset_name,)
+        split_file_pattern = (
+            str(data_model.split_file_pattern).strip() if data_model is not None else ""
+        )
+        self._split_data_files = (
+            {self.split: split_file_pattern.format(split=self.split)}
+            if split_file_pattern
+            else None
+        )
+        local_vqav2_files = self._resolve_local_vqav2_files(
+            resolved_dataset_name,
+            self.split,
+            split_file_pattern,
+        )
+        if local_vqav2_files is not None:
+            # Loading a Hub repo id still performs Hub metadata resolution in
+            # datasets 3.x, even when every requested shard is cached.  Use the
+            # packaged Parquet loader so strict offline runs never touch Hub.
+            load_pos = ("parquet",)
+            self._split_data_files = {self.split: local_vqav2_files}
 
         # For initial-release smoke runs, loading a fixed subset should not force
         # downloading the full dataset shards before sampling.
@@ -116,6 +138,66 @@ class HFDatasetsAdapter:
         elif max_samples is not None and not self.streaming:
             self._hf_dataset = self._hf_dataset.select(range(min(max_samples, len(self._hf_dataset))))
 
+    @staticmethod
+    def _resolve_local_vqav2_files(
+        resolved_dataset_name: str,
+        split: str,
+        split_file_pattern: str,
+    ) -> Optional[List[str]]:
+        if resolved_dataset_name != "pingzhili/vqa_v2":
+            return None
+
+        snapshot_value = os.environ.get("VLMINTUNE_VQAV2_SNAPSHOT", "").strip()
+        if not snapshot_value:
+            return None
+
+        snapshot = Path(snapshot_value).expanduser().resolve()
+        repo_cache = snapshot.parent.parent
+        if (
+            not snapshot.is_dir()
+            or snapshot.parent.name != "snapshots"
+            or repo_cache.name != "datasets--pingzhili--vqa_v2"
+        ):
+            raise RuntimeError(
+                "VLMINTUNE_VQAV2_SNAPSHOT must point to a cached "
+                "pingzhili/vqa_v2 snapshot directory."
+            )
+        if not split_file_pattern:
+            raise RuntimeError("VQAv2 does not define a split file pattern.")
+
+        pattern = split_file_pattern.format(split=split)
+        try:
+            resolved_snapshot = Path(
+                snapshot_download(
+                    repo_id="pingzhili/vqa_v2",
+                    repo_type="dataset",
+                    revision=snapshot.name,
+                    cache_dir=str(repo_cache.parent),
+                    local_files_only=True,
+                    allow_patterns=["README.md", pattern],
+                )
+            ).resolve()
+        except Exception as exc:
+            raise RuntimeError(
+                f"VQAv2 cached split '{split}' is incomplete in {snapshot}."
+            ) from exc
+        if resolved_snapshot != snapshot:
+            raise RuntimeError(
+                "Resolved VQAv2 snapshot does not match VLMINTUNE_VQAV2_SNAPSHOT: "
+                f"{resolved_snapshot} != {snapshot}"
+            )
+
+        files = sorted(
+            path.absolute()
+            for path in snapshot.glob(pattern)
+            if path.suffix == ".parquet" and path.is_file() and path.stat().st_size > 0
+        )
+        if not files:
+            raise RuntimeError(
+                f"VQAv2 cached split '{split}' has no non-empty Parquet shards in {snapshot}."
+            )
+        return [str(path) for path in files]
+
     def apply_seeded_sampling(self, sample_seed: int) -> None:
         if self.streaming:
             if hasattr(self._hf_dataset, "shuffle"):
@@ -141,14 +223,21 @@ class HFDatasetsAdapter:
         splits_to_try = [split]
         split_sizes: Dict[str, int] = {}
         available: List[str] = []
+        data_file_kwargs: Dict[str, object] = {}
+        if self._split_data_files:
+            data_file_kwargs["data_files"] = self._split_data_files
         try:
             try:
                 ds_info = datasets_mod.load_dataset_builder(
                     *load_pos,
                     trust_remote_code=trust_remote_code,
+                    **data_file_kwargs,
                 ).info
             except TypeError:
-                ds_info = datasets_mod.load_dataset_builder(*load_pos).info
+                ds_info = datasets_mod.load_dataset_builder(
+                    *load_pos,
+                    **data_file_kwargs,
+                ).info
             if ds_info.splits:
                 split_sizes = {
                     name: int(split_info.num_examples)
@@ -167,7 +256,11 @@ class HFDatasetsAdapter:
 
         first_err = None
         for try_split in splits_to_try:
-            load_kwargs: Dict[str, object] = {"split": try_split, "streaming": streaming}
+            load_kwargs: Dict[str, object] = {
+                "split": try_split,
+                "streaming": streaming,
+                **data_file_kwargs,
+            }
             for kwargs in (load_kwargs, {**load_kwargs, "trust_remote_code": trust_remote_code}):
                 try:
                     dataset = datasets_mod.load_dataset(*load_pos, **kwargs)
@@ -181,8 +274,13 @@ class HFDatasetsAdapter:
         if not streaming:
             for try_split in splits_to_try:
                 for kwargs in (
-                    {"split": try_split, "streaming": True},
-                    {"split": try_split, "streaming": True, "trust_remote_code": trust_remote_code},
+                    {"split": try_split, "streaming": True, **data_file_kwargs},
+                    {
+                        "split": try_split,
+                        "streaming": True,
+                        "trust_remote_code": trust_remote_code,
+                        **data_file_kwargs,
+                    },
                 ):
                     try:
                         dataset = datasets_mod.load_dataset(*load_pos, **kwargs)

@@ -28,6 +28,7 @@ def test_textvqa_spec_majority_vote_and_default_splits():
 
 def test_vqav2_spec_uses_majority_vote_for_train_answer():
     spec = get_dataset_spec("pingzhili/vqa_v2")
+    assert spec.data_model.split_file_pattern == "data/{split}-*"
     sample = spec.parse_row(
         {
             "question_id": 20,

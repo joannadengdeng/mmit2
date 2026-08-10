@@ -20,82 +20,13 @@ class ChatTemplatePreprocessor:
         self,
         enable_instruction_supervision: bool = False,
         enable_mores_intervention: bool = False,
+        enable_reft_intervention: bool = False,
         append_eos_to_training_answer: bool = False,
     ) -> None:
         self.enable_instruction_supervision = enable_instruction_supervision
         self.enable_mores_intervention = enable_mores_intervention
+        self.enable_reft_intervention = enable_reft_intervention
         self.append_eos_to_training_answer = append_eos_to_training_answer
-
-    @staticmethod
-    def _is_image_token_truncation_error(exc: Exception) -> bool:
-        message = str(exc)
-        return (
-            "Mismatch in `image` token count" in message
-            and "truncation='max_length'" in message
-        )
-
-    @staticmethod
-    def _resize_image(image: Image.Image, max_side: int) -> Image.Image:
-        resized = image.copy()
-        resized.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-        return resized.convert("RGB")
-
-    def _tokenize_with_image_retries(
-        self,
-        *,
-        processor: Any,
-        sample: CanonicalSample,
-        image: Any,
-        max_length: int,
-    ) -> tuple[str, Dict[str, Any], str, Dict[str, Any], int, Any]:
-        candidates: list[tuple[int, Any]] = [(0, image)]
-        if isinstance(image, Image.Image):
-            seen_sizes = {image.size}
-            for max_side in (896, 768, 640, 512, 384):
-                if max(image.size) <= max_side:
-                    continue
-                resized = self._resize_image(image, max_side)
-                if resized.size in seen_sizes:
-                    continue
-                seen_sizes.add(resized.size)
-                candidates.append((len(candidates), resized))
-
-        last_error: Exception | None = None
-        for retry_index, candidate_image in candidates:
-            try:
-                full_text, full_inputs = build_full_inputs(
-                    processor,
-                    sample.question,
-                    sample.train_answer,
-                    candidate_image,
-                    append_eos_if_missing=self.append_eos_to_training_answer,
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=max_length,
-                )
-                prompt_text, prompt_inputs = build_prompt_inputs(
-                    processor,
-                    sample.question,
-                    candidate_image,
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=max_length,
-                )
-                return (
-                    full_text,
-                    full_inputs,
-                    prompt_text,
-                    prompt_inputs,
-                    retry_index,
-                    candidate_image,
-                )
-            except Exception as exc:
-                if not self._is_image_token_truncation_error(exc):
-                    raise
-                last_error = exc
-
-        assert last_error is not None
-        raise last_error
 
     def tokenize(
         self,
@@ -107,17 +38,22 @@ class ChatTemplatePreprocessor:
         # `processor` must be a Hugging Face multimodal processor that supports
         # both `apply_chat_template(...)` and `processor(text=..., images=...)`.
         image = load_sample_image(sample)
-        (
-            full_text,
-            full_inputs,
-            prompt_text,
-            prompt_inputs,
-            image_retry_count,
-            tokenized_image,
-        ) = self._tokenize_with_image_retries(
-            processor=processor,
-            sample=sample,
-            image=image,
+        full_text, full_inputs = build_full_inputs(
+            processor,
+            sample.question,
+            sample.train_answer,
+            image,
+            append_eos_if_missing=self.append_eos_to_training_answer,
+            return_tensors="pt",
+            truncation=True,
+            max_length=max_length,
+        )
+        prompt_text, prompt_inputs = build_prompt_inputs(
+            processor,
+            sample.question,
+            image,
+            return_tensors="pt",
+            truncation=True,
             max_length=max_length,
         )
 
@@ -127,24 +63,36 @@ class ChatTemplatePreprocessor:
             "message_count": 1 + int(bool(sample.train_answer.strip())),
             "full_text": full_text,
             "prompt_text": prompt_text,
-            "image_tokenization_retry_count": image_retry_count,
         }
         if isinstance(image, Image.Image):
             prompt_preview["original_image_size"] = list(image.size)
-        if isinstance(tokenized_image, Image.Image):
-            prompt_preview["tokenized_image_size"] = list(tokenized_image.size)
 
         input_ids = full_inputs["input_ids"].squeeze(0)
 
         labels = input_ids.clone()
         prompt_len = min(prompt_inputs["input_ids"].shape[1], input_ids.size(0))
         labels[:prompt_len] = IGNORE_INDEX
+        if self.enable_instruction_supervision and not (labels != IGNORE_INDEX).any():
+            raise ValueError(
+                "L2T requires answer tokens after the prompt; increase max_length "
+                "or remove the invalid sample."
+            )
 
         result: Dict[str, Any] = {
             "input_ids": input_ids,
             "labels": labels,
             "prompt_preview": prompt_preview,
         }
+
+        if self.enable_reft_intervention:
+            from vlmintune.training.methods.reft import build_reft_position_mask
+
+            reft_intervention_mask = build_reft_position_mask(
+                input_ids.unsqueeze(0),
+                torch.tensor([prompt_len], device=input_ids.device),
+            ).squeeze(0)
+            prompt_preview["reft_intervention_mask"] = reft_intervention_mask.tolist()
+            result["reft_intervention_mask"] = reft_intervention_mask
 
         if self.enable_mores_intervention:
             from vlmintune.training.methods.mores import build_mores_intervention_mask
@@ -171,6 +119,9 @@ class ChatTemplatePreprocessor:
                 max_length=max_length,
             )
             prompt_preview["instruction_texts"] = extract_instruction_texts(sample)
+            prompt_preview["removed_task_templates"] = list(
+                sample.l2t_removed_task_templates
+            )
             prompt_preview["instruction_supervision_spans"] = build_instruction_debug_preview(
                 processor=processor,
                 input_ids=input_ids,
@@ -187,6 +138,11 @@ class ChatTemplatePreprocessor:
             result["image_sizes"] = full_inputs["image_sizes"]
         if "image_grid_thw" in full_inputs:
             result["image_grid_thw"] = full_inputs["image_grid_thw"]
+        if "mm_token_type_ids" in full_inputs:
+            mm_token_type_ids = full_inputs["mm_token_type_ids"]
+            if mm_token_type_ids.dim() > 1 and mm_token_type_ids.shape[0] == 1:
+                mm_token_type_ids = mm_token_type_ids.squeeze(0)
+            result["mm_token_type_ids"] = mm_token_type_ids
         return result
 
     def collate(self, samples: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -234,6 +190,30 @@ class ChatTemplatePreprocessor:
                     intervention_mask.to(dtype=torch.bool)
                 )
             batch["intervention_mask"] = batch_intervention_mask
+
+        if all("reft_intervention_mask" in sample for sample in samples):
+            batch_reft_intervention_mask = torch.zeros(
+                (batch_size, max_len),
+                dtype=torch.bool,
+            )
+            for sample_idx, sample in enumerate(samples):
+                reft_intervention_mask = sample["reft_intervention_mask"]
+                batch_reft_intervention_mask[
+                    sample_idx, :reft_intervention_mask.size(0)
+                ] = reft_intervention_mask.to(dtype=torch.bool)
+            batch["reft_intervention_mask"] = batch_reft_intervention_mask
+
+        if all("mm_token_type_ids" in sample for sample in samples):
+            batch_mm_token_type_ids = torch.zeros(
+                (batch_size, max_len),
+                dtype=samples[0]["mm_token_type_ids"].dtype,
+            )
+            for sample_idx, sample in enumerate(samples):
+                token_type_ids = sample["mm_token_type_ids"]
+                batch_mm_token_type_ids[
+                    sample_idx, :token_type_ids.size(0)
+                ] = token_type_ids
+            batch["mm_token_type_ids"] = batch_mm_token_type_ids
 
         if "pixel_values" in samples[0]:
             pvs = [s["pixel_values"] for s in samples]

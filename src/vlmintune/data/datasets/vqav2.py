@@ -11,6 +11,7 @@ class VQAv2Spec(HFDatasetSpec):
         default_train_split="train",
         default_eval_split="validation",
         metric_family="vqa_accuracy",
+        split_file_pattern="data/{split}-*",
     )
     mapping = ColumnMapping(
         id_col="question_id",
@@ -18,3 +19,7 @@ class VQAv2Spec(HFDatasetSpec):
         question_col="question",
         answer_col="answers",
     )
+
+    def build_l2t_instruction_texts(self, row: dict, rendered_question: str):
+        del row
+        return [rendered_question]

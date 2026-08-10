@@ -11,5 +11,5 @@ def test_source_tree_imports_without_cycles():
     import vlmintune.training.__main__
 
     assert vlmintune.LocalMethod.__name__ == "LocalMethod"
-    assert vlmintune.FreezeTuningMethod.__name__ == "FreezeTuningMethod"
+    assert vlmintune.VLAdapterMethod.__name__ == "VLAdapterMethod"
     assert callable(vlmintune.registry.build_training_method)

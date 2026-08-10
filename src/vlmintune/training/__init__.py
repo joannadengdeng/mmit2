@@ -9,8 +9,11 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "QLoRAMethod": ("vlmintune.training.methods.lora", "QLoRAMethod"),
     "LoRAMethod": ("vlmintune.training.methods.lora", "LoRAMethod"),
     "DoRAMethod": ("vlmintune.training.methods.dora", "DoRAMethod"),
-    "FreezeTuningMethod": ("vlmintune.training.methods.freeze", "FreezeTuningMethod"),
     "L2TMethod": ("vlmintune.training.methods.l2t", "L2TMethod"),
+    "MoLEMethod": ("vlmintune.training.methods.mole", "MoLEMethod"),
+    "MoReSMethod": ("vlmintune.training.methods.mores", "MoReSMethod"),
+    "ReFTMethod": ("vlmintune.training.methods.reft", "ReFTMethod"),
+    "VLAdapterMethod": ("vlmintune.training.methods.vl_adapter", "VLAdapterMethod"),
 }
 
 __all__ = list(_EXPORTS)

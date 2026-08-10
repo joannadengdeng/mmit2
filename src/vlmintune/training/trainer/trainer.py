@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import os
 import math
+import random
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 from torch.optim import AdamW
@@ -35,7 +36,6 @@ class TrainerConfig:
 
     data_config: Dict[str, Any] = field(default_factory=dict)
     training_method: str = "qlora"
-    method_params: Dict[str, Any] = field(default_factory=dict)
     num_epochs: int = 1
     per_device_batch_size: int = 4
     gradient_accumulation_steps: int = 4
@@ -48,6 +48,7 @@ class TrainerConfig:
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     save_steps: int = 500
+    seed: int = 42
     output_dir: str = "output"
 
 
@@ -62,7 +63,7 @@ class Trainer:
         self.processor = None
         self.tracker = experiment_tracker
 
-    def load_model(self, method_obj, method_config: Optional[Dict[str, Any]] = None) -> None:
+    def load_model(self, method_obj) -> None:
         emit(
             "log",
             {
@@ -73,21 +74,24 @@ class Trainer:
         self.processor = load_processor(self.hf_model_id)
         self.model = load_vlm(
             self.hf_model_id,
-            quantize_4bit=method_obj.requires_quantization(method_config),
+            quantize_4bit=method_obj.requires_quantization(),
             torch_dtype=torch.bfloat16,
         )
 
     def train(self, config: TrainerConfig) -> None:
         emit("status", {"status": "loading"})
+        random.seed(config.seed)
+        torch.manual_seed(config.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(config.seed)
 
         # 1. Resolve the tuning method and load the base model.
         from vlmintune.training.methods.registry import build_training_method
 
         method_obj = build_training_method(config.training_method)
-        method_config = {**method_obj.default_config(), **config.method_params}
 
         if self.model is None:
-            self.load_model(method_obj, method_config)
+            self.load_model(method_obj)
 
         # 2. Build the dataset pipeline and lazy tokenization wrapper.
         emit("log", {"message": "Loading dataset...", "level": "INFO"})
@@ -102,6 +106,7 @@ class Trainer:
             model_config=self.model.config,
             enable_instruction_supervision=config.training_method == "l2t",
             enable_mores_intervention=config.training_method == "mores",
+            enable_reft_intervention=config.training_method == "reft",
             max_length=config.max_length,
             skip_logger=build_skip_logger(debug_recorder),
             debug_recorder=debug_recorder,
@@ -110,7 +115,7 @@ class Trainer:
 
         # 3. Prepare trainable parameters and optimizer state.
         self.model, info_str = method_obj.prepare_model(
-            self.model, self.processor, method_config, model_spec=self.model_spec,
+            self.model, self.processor, model_spec=self.model_spec,
         )
         emit("log", {"message": info_str, "level": "INFO"})
         expected_prefixes = None
@@ -130,22 +135,30 @@ class Trainer:
         param_groups = method_obj.get_trainable_params(self.model)
         for param_group in param_groups:
             param_group.setdefault("lr", config.learning_rate)
-        optimizer = AdamW(param_groups, weight_decay=config.weight_decay)
+        if config.training_method == "qlora":
+            from bitsandbytes.optim import PagedAdamW8bit
+
+            optimizer = PagedAdamW8bit(param_groups, weight_decay=config.weight_decay)
+        else:
+            optimizer = AdamW(param_groups, weight_decay=config.weight_decay)
 
         loader = DataLoader(
             tokenized_dataset,
             batch_size=config.per_device_batch_size,
             shuffle=not getattr(adapter, "streaming", False),
             collate_fn=lambda samples: safe_collate(preprocessor, samples),
-            drop_last=True,
+            drop_last=False,
             num_workers=config.dataloader_num_workers,
             pin_memory=config.dataloader_pin_memory,
             persistent_workers=(
                 config.dataloader_persistent_workers and config.dataloader_num_workers > 0
             ),
         )
-        batches_per_epoch = max(1, dataset_len // config.per_device_batch_size)
-        steps_per_epoch = max(1, batches_per_epoch // config.gradient_accumulation_steps)
+        batches_per_epoch = max(1, math.ceil(dataset_len / config.per_device_batch_size))
+        steps_per_epoch = max(
+            1,
+            math.ceil(batches_per_epoch / config.gradient_accumulation_steps),
+        )
         total_steps = steps_per_epoch * config.num_epochs
         warmup_steps = int(total_steps * config.warmup_ratio)
         scheduler = cosine_schedule(optimizer, warmup_steps, total_steps)
@@ -159,6 +172,7 @@ class Trainer:
                     f"batches_per_epoch~{batches_per_epoch}, "
                     f"optimizer_steps_per_epoch~{steps_per_epoch}, "
                     f"total_steps~{total_steps}, warmup_steps={warmup_steps}, "
+                    f"seed={config.seed}, "
                     f"output_dir={config.output_dir}"
                 ),
                 "level": "INFO",
@@ -170,13 +184,93 @@ class Trainer:
         self.model.train()
         device = next(self.model.parameters()).device
         global_step = 0
-        accumulated_batches = 0
+        pending_batches = 0
+        pending_loss_total = 0.0
+        pending_metrics: Dict[str, float] = {}
         total_loss = 0.0
         ema_loss = None
         start_time = time.time()
         logged_first_batch = False
         logged_runtime_debug = False
         logged_gradient_debug = False
+        optimizer_parameters = [
+            parameter for group in param_groups for parameter in group["params"]
+        ]
+
+        def take_optimizer_step(epoch: int) -> None:
+            nonlocal global_step, pending_batches, pending_loss_total
+            nonlocal total_loss, ema_loss, logged_gradient_debug
+
+            for parameter in optimizer_parameters:
+                if parameter.grad is not None:
+                    parameter.grad.div_(pending_batches)
+
+            if not logged_gradient_debug:
+                emit(
+                    "debug",
+                    gradient_debug(param_groups, trainable_param_names),
+                )
+                logged_gradient_debug = True
+
+            if config.max_grad_norm > 0:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    optimizer_parameters,
+                    config.max_grad_norm,
+                    error_if_nonfinite=True,
+                )
+                if not math.isfinite(float(grad_norm)):
+                    raise FloatingPointError(
+                        f"Non-finite gradient norm during {config.training_method} training "
+                        f"at optimizer step {global_step + 1}: {float(grad_norm)}"
+                    )
+
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
+            global_step += 1
+
+            step_loss = pending_loss_total / pending_batches
+            total_loss += step_loss
+            ema_loss = (
+                step_loss
+                if ema_loss is None
+                else 0.98 * ema_loss + 0.02 * step_loss
+            )
+            pending_batches = 0
+            pending_loss_total = 0.0
+
+            elapsed = time.time() - start_time
+            remaining_steps = max(0, total_steps - global_step)
+            eta = elapsed / global_step * remaining_steps
+            step_metrics = {
+                "step": global_step,
+                "total": total_steps,
+                "epoch": epoch,
+                "total_epochs": config.num_epochs,
+                "loss": round(step_loss, 6),
+                "avg_loss": round(total_loss / global_step, 6),
+                "ema_loss": round(ema_loss, 6),
+                "lr": scheduler.get_last_lr()[0],
+                "eta": round(eta, 1),
+                **{key: round(value, 6) for key, value in pending_metrics.items()},
+            }
+            emit("metric", step_metrics)
+
+            if config.save_steps > 0 and global_step % config.save_steps == 0:
+                ckpt_path = os.path.join(
+                    config.output_dir,
+                    f"checkpoint-{global_step}",
+                )
+                method_obj.save_checkpoint(
+                    self.model,
+                    self.processor,
+                    ckpt_path,
+                    {
+                        "model_name": self.model_name,
+                        "hf_model_id": self.hf_model_id,
+                        "step": global_step,
+                    },
+                )
 
         for epoch in range(config.num_epochs):
             for step, batch in enumerate(loader):
@@ -233,67 +327,27 @@ class Trainer:
                         f"Non-finite loss during {config.training_method} training "
                         f"before optimizer step {global_step + 1}: {loss.detach().item()}"
                     )
-                loss = loss / config.gradient_accumulation_steps
                 loss.backward()
-                accumulated_batches += 1
+                pending_batches += 1
+                pending_loss_total += float(loss.detach())
+                pending_metrics = metrics
 
-                if accumulated_batches % config.gradient_accumulation_steps != 0:
-                    continue
+                if pending_batches == config.gradient_accumulation_steps:
+                    take_optimizer_step(epoch)
 
-                if not logged_gradient_debug:
-                    emit(
-                        "debug",
-                        gradient_debug(param_groups, trainable_param_names),
-                    )
-                    logged_gradient_debug = True
-
-                if config.max_grad_norm > 0:
-                    grad_norm = torch.nn.utils.clip_grad_norm_(
-                        [param for group in param_groups for param in group["params"]],
-                        config.max_grad_norm,
-                        error_if_nonfinite=True,
-                    )
-                    if not math.isfinite(float(grad_norm)):
-                        raise FloatingPointError(
-                            f"Non-finite gradient norm during {config.training_method} training "
-                            f"at optimizer step {global_step + 1}: {float(grad_norm)}"
-                        )
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad()
-                global_step += 1
-                step_loss = loss.item() * config.gradient_accumulation_steps
-                total_loss += step_loss
-                ema_loss = step_loss if ema_loss is None else (0.98 * ema_loss + 0.02 * step_loss)
-
-                elapsed = time.time() - start_time
-                eta = elapsed / global_step * (total_steps - global_step) if global_step > 0 else 0
-                step_metrics = {
-                    "step": global_step,
-                    "total": total_steps,
-                    "epoch": epoch,
-                    "total_epochs": config.num_epochs,
-                    "loss": round(step_loss, 6),
-                    "avg_loss": round(total_loss / global_step, 6),
-                    "ema_loss": round(ema_loss, 6),
-                    "lr": scheduler.get_last_lr()[0],
-                    "eta": round(eta, 1),
-                    **{key: round(value, 6) for key, value in metrics.items()},
-                }
-                emit("metric", step_metrics)
-
-                if config.save_steps > 0 and global_step % config.save_steps == 0:
-                    ckpt_path = os.path.join(config.output_dir, f"checkpoint-{global_step}")
-                    method_obj.save_checkpoint(self.model, self.processor, ckpt_path, {
-                        "model_name": self.model_name,
-                        "hf_model_id": self.hf_model_id,
-                        "step": global_step,
-                    })
+            if pending_batches:
+                take_optimizer_step(epoch)
 
         # 5. Emit debug samples, final weights, and train summary.
         debug_recorder.emit_run_log()
 
-        final_path = os.path.join(config.output_dir, "final")
+        if global_step == 0:
+            raise RuntimeError(
+                "Training produced zero optimizer steps. Check the dataset, "
+                "tokenization, labels, batch size, and max_length."
+            )
+
+        final_path = config.output_dir
         if self.tracker is not None:
             final_path = self.tracker.get_checkpoint_dir()
 
@@ -326,7 +380,7 @@ class Trainer:
                         "weight_decay": config.weight_decay,
                         "max_grad_norm": config.max_grad_norm,
                         "save_steps": config.save_steps,
-                        "method_params": dict(config.method_params),
+                        "seed": config.seed,
                     },
                     "data": dict(config.data_config),
                     "result": {

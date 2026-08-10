@@ -19,6 +19,10 @@ class VizWizSpec(HFDatasetSpec):
         answer_col="answers",
     )
 
+    def build_l2t_instruction_texts(self, row: dict, rendered_question: str):
+        del row
+        return [rendered_question]
+
     def parse_id(self, row: dict, idx: int) -> str:
         for key in ("id", "filename"):
             value = row.get(key)

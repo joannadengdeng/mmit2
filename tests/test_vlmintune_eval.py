@@ -158,6 +158,43 @@ def test_resolve_experiment_source_uses_trained_checkpoint(tmp_path):
     assert loaded_tracker.exp_name == "demo_exp"
 
 
+def test_resolve_experiment_source_accepts_training_output_dir_directly(tmp_path):
+    ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
+    checkpoint_path = tmp_path / "arbitrary_training_output"
+    checkpoint_path.mkdir()
+    (checkpoint_path / "vlmintune_meta.json").write_text(
+        json.dumps(
+            {
+                "model_name": "llava15_7b",
+                "ft_method": "mole",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    source, _ = resolve_experiment_source(
+        {
+            "experiment": {"name": "demo_exp", "base_dir": str(tmp_path)},
+            "eval": {
+                "dataset_name": "lmms-lab/textvqa",
+                "source": "trained",
+                "checkpoint_path": str(checkpoint_path),
+            },
+        },
+        EvalTarget(
+            name="textvqa_validation",
+            dataset_name="lmms-lab/textvqa",
+            split="validation",
+            source="trained",
+            metric="vqa_accuracy",
+        ),
+    )
+
+    assert source.checkpoint_path == str(checkpoint_path)
+    assert source.model_name == "llava15_7b"
+    assert source.ft_method == "mole"
+
+
 def test_resolve_experiment_source_uses_base_eval_dir(tmp_path):
     tracker = ExperimentTracker.create(exp_name="demo_exp", base_dir=str(tmp_path))
     meta_path = os.path.join(tracker.get_checkpoint_dir(), "vlmintune_meta.json")

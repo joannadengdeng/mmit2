@@ -1,4 +1,4 @@
-"""MoReS: modality linear representation steering for visual tokens."""
+"""Fixed MoReS v1 recipe for sparse visual-token representation steering."""
 from __future__ import annotations
 
 import json
@@ -12,57 +12,56 @@ from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import TrainingMethod, load_processor, load_vlm
 from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
+
 CROSS_ENTROPY_LOSS = CrossEntropyLoss()
-MORES_LOW_RANK_DIMENSION = 1
-MORES_FIRST_VISUAL_TOKEN_COUNT = 4
-MORES_LAST_VISUAL_TOKEN_COUNT = 5
-MORES_CHECKPOINT_FORMAT = "mores_compact_v1"
+MORES_RANK = 1
+MORES_VISUAL_TOKEN_INDICES = (1, 2, 3, 4, -5, -4, -3, -2, -1)
+MORES_CHECKPOINT_FORMAT = "mores_v1"
 
 
 def build_mores_intervention_mask(
     model_config: Any,
     input_ids: torch.Tensor,
 ) -> torch.Tensor:
+    """Select the fixed first four and last five visual-token positions."""
     image_token_id = int(model_config.image_token_id)
-    visual_token_indices = []
-    for idx, token_id in enumerate(input_ids.tolist()):
-        if token_id == image_token_id:
-            visual_token_indices.append(idx)
+    visual_positions = [
+        index
+        for index, token_id in enumerate(input_ids.tolist())
+        if token_id == image_token_id
+    ]
 
-    intervention_mask = torch.zeros_like(input_ids, dtype=torch.bool)
-    for idx in visual_token_indices[:MORES_FIRST_VISUAL_TOKEN_COUNT]:
-        intervention_mask[idx] = True
-    for idx in visual_token_indices[-MORES_LAST_VISUAL_TOKEN_COUNT:]:
-        intervention_mask[idx] = True
-    return intervention_mask
+    mask = torch.zeros_like(input_ids, dtype=torch.bool)
+    for visual_index in MORES_VISUAL_TOKEN_INDICES:
+        position_index = (
+            visual_index - 1
+            if visual_index > 0
+            else len(visual_positions) + visual_index
+        )
+        if 0 <= position_index < len(visual_positions):
+            mask[visual_positions[position_index]] = True
+    return mask
 
 
-def first_parameter_device(module: nn.Module) -> torch.device | None:
-    for param in module.parameters(recurse=True):
-        return param.device
-    return None
+def first_parameter_device(module: nn.Module) -> torch.device:
+    return next(module.parameters()).device
 
 
 class MoReSAdapter(nn.Module):
-    """Residual steering module: h + W_up(Linear(h) - W_down(h))."""
+    """Rank-one MoReS map: h + W_up(Linear(h) - W_down(h))."""
 
-    def __init__(
-        self,
-        hidden_size: int,
-        rank: int,
-    ) -> None:
+    def __init__(self, hidden_size: int) -> None:
         super().__init__()
-        w_down = nn.Linear(hidden_size, rank, bias=False, dtype=torch.float32)
+        w_down = nn.Linear(hidden_size, MORES_RANK, bias=False, dtype=torch.float32)
         nn.init.orthogonal_(w_down.weight)
-        w_down = torch.nn.utils.parametrizations.orthogonal(
+        self.w_down = torch.nn.utils.parametrizations.orthogonal(
             w_down,
             orthogonal_map="householder",
         )
-        w_down.parametrizations.weight.original.data = (
-            w_down.parametrizations.weight.original.data.to(torch.float32)
+        self.w_down.parametrizations.weight.original.data = (
+            self.w_down.parametrizations.weight.original.data.to(torch.float32)
         )
-        self.w_down = w_down
-        self.linear = nn.Linear(hidden_size, rank, dtype=torch.float32)
+        self.linear = nn.Linear(hidden_size, MORES_RANK, dtype=torch.float32)
 
     @property
     def w_up(self) -> torch.Tensor:
@@ -70,37 +69,32 @@ class MoReSAdapter(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         base = hidden_states.to(torch.float32)
-        w_down_h = self.w_down(base)
-        linear_h = self.linear(base)
-        update = torch.matmul(linear_h - w_down_h, self.w_up)
+        update = torch.matmul(self.linear(base) - self.w_down(base), self.w_up)
         return (base + update).to(hidden_states.dtype)
 
 
 def compact_mores_state(adapters: nn.ModuleList) -> Dict[str, Any]:
-    """Return a compact MoReS checkpoint without orthogonal parametrization buffers."""
-    layers = []
-    for adapter in adapters:
-        layers.append(
+    return {
+        "format": MORES_CHECKPOINT_FORMAT,
+        "layers": [
             {
                 "w_down_weight": adapter.w_down.weight.detach().cpu(),
                 "linear_weight": adapter.linear.weight.detach().cpu(),
                 "linear_bias": adapter.linear.bias.detach().cpu(),
             }
-        )
-    return {
-        "format": MORES_CHECKPOINT_FORMAT,
-        "layers": layers,
+            for adapter in adapters
+        ],
     }
 
 
 def load_compact_mores_state(adapters: nn.ModuleList, state: Dict[str, Any]) -> None:
-    layers = state.get("layers")
-    if not isinstance(layers, list):
-        raise ValueError("Invalid compact MoReS checkpoint: missing layers list.")
+    if state.get("format") != MORES_CHECKPOINT_FORMAT:
+        raise ValueError("Checkpoint is not the fixed MoReS v1 format.")
+    layers = state["layers"]
     if len(layers) != len(adapters):
         raise ValueError(
-            "Invalid compact MoReS checkpoint: "
-            f"expected {len(adapters)} layers, found {len(layers)}."
+            f"MoReS layer count mismatch: {len(layers)} checkpoint layers for "
+            f"{len(adapters)} model layers."
         )
     with torch.no_grad():
         for adapter, layer_state in zip(adapters, layers):
@@ -123,115 +117,94 @@ def load_compact_mores_state(adapters: nn.ModuleList, state: Dict[str, Any]) -> 
 
 
 class MoReSMethod(TrainingMethod):
-    """Freeze the backbone and steer sparse visual tokens in every transformer layer."""
+    """Fixed v1: rank one, visual f4+l5, and every language layer."""
 
     name = "mores"
-    display_name = "MoReS (Bi et al. 2025)"
+    display_name = "MoReS (fixed sparse v1)"
 
     def __init__(self) -> None:
-        self.last_config: Dict[str, Any] = {}
-        self.image_token_id: Optional[int] = None
         self.current_intervention_mask: Optional[torch.Tensor] = None
         self.hook_call_count = 0
         self.hook_layer_indices: List[int] = []
         self.hook_intervention_tokens: Optional[int] = None
 
-    def default_config(self) -> Dict[str, Any]:
-        return {}
-
     def layer_hook(self, adapter: MoReSAdapter, layer_index: int):
         def hook(module, args, output):
             del module, args
+            if self.current_intervention_mask is None:
+                return output
 
             is_tuple_output = isinstance(output, tuple)
             hidden_states = output[0] if is_tuple_output else output
-            intervention_mask = self.current_intervention_mask.to(hidden_states.device)
+            mask = self.current_intervention_mask.to(hidden_states.device)
             self.hook_call_count += 1
             if len(self.hook_layer_indices) < 16:
                 self.hook_layer_indices.append(layer_index)
             if self.hook_intervention_tokens is None:
-                self.hook_intervention_tokens = int(intervention_mask.sum().item())
+                self.hook_intervention_tokens = int(mask.sum().item())
+
             updated = hidden_states.clone()
-            updated[intervention_mask] = adapter(hidden_states[intervention_mask])
+            updated[mask] = adapter(hidden_states[mask])
             if is_tuple_output:
-                return (updated,) + output[1:]
+                return (updated, *output[1:])
             return updated
 
         return hook
 
     def forward_pre_hook(self, module, args, kwargs):
-        del args
+        if module.training:
+            return None
+        past_key_values = kwargs.get("past_key_values")
+        if past_key_values is not None and past_key_values.get_seq_length() > 0:
+            self.current_intervention_mask = None
+            return None
         input_ids = kwargs["input_ids"]
-        if "intervention_mask" in kwargs:
-            intervention_mask = kwargs["intervention_mask"].to(
-                device=input_ids.device,
-                dtype=torch.bool,
-            )
-        else:
-            intervention_mask = torch.stack(
-                [
-                    build_mores_intervention_mask(module.config, row)
-                    for row in input_ids
-                ],
-                dim=0,
-            ).to(device=input_ids.device)
-
-        if intervention_mask.shape != input_ids.shape[:2]:
-            raise ValueError(
-                "MoReS intervention_mask must have shape [batch_size, seq_len]."
-            )
-        self.current_intervention_mask = intervention_mask
+        self.current_intervention_mask = torch.stack(
+            [build_mores_intervention_mask(module.config, row) for row in input_ids],
+            dim=0,
+        ).to(input_ids.device)
         return None
 
-    def prepare_model_impl(self, model, processor, config, model_spec):
+    def prepare_model_impl(self, model, processor, model_spec):
         del processor
-        self.last_config = dict(config)
+        self.current_intervention_mask = None
         self.hook_call_count = 0
         self.hook_layer_indices = []
         self.hook_intervention_tokens = None
 
-        self.image_token_id = model_spec.get_image_token_id(model)
+        for parameter in model.parameters():
+            parameter.requires_grad = False
 
-        for param in model.parameters():
-            param.requires_grad = False
-
-        hidden_size = model_spec.get_hidden_size(model)
+        hidden_size = int(model_spec.get_hidden_size(model))
         layers = list(model_spec.get_transformer_layers(model))
-        if not layers:
-            raise ValueError(
-                f"MoReS found no transformer layers for model '{model_spec.name}'."
-            )
-
         adapters: list[MoReSAdapter] = []
         for layer_index, layer in enumerate(layers):
-            adapter = MoReSAdapter(
-                int(hidden_size),
-                MORES_LOW_RANK_DIMENSION,
-            )
-            layer_device = first_parameter_device(layer)
-            if layer_device is not None:
-                adapter = adapter.to(layer_device)
+            adapter = MoReSAdapter(hidden_size).to(first_parameter_device(layer))
             adapters.append(adapter)
             layer.register_forward_hook(self.layer_hook(adapter, layer_index))
-
-        if not adapters:
-            raise ValueError("MoReS did not activate any transformer layers.")
 
         model.mores_adapters = nn.ModuleList(adapters)
         model.register_forward_pre_hook(self.forward_pre_hook, with_kwargs=True)
         model.vlmintuneMoresMethod = self
 
-        trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
-        total = sum(param.numel() for param in model.parameters())
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in model.parameters())
         info = (
-            f"MoReS: backbone={model_spec.name}, "
-            f"rank={MORES_LOW_RANK_DIMENSION}, "
-            f"positions=f{MORES_FIRST_VISUAL_TOKEN_COUNT}+l{MORES_LAST_VISUAL_TOKEN_COUNT}, "
-            f"image_token_id={self.image_token_id}\n"
-            f"Transformer layers: {len(layers)}\n"
+            f"MoReS v1: backbone={model_spec.name}, rank={MORES_RANK}, "
+            f"visual positions=f4+l5 {list(MORES_VISUAL_TOKEN_INDICES)}, "
+            f"layers=all ({len(layers)}), init=random, scale=1.0\n"
             f"Trainable: {trainable:,} / {total:,} ({100 * trainable / total:.4f}%)"
         )
         return model, info
+
+    def build_forward_batch(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        self.current_intervention_mask = batch["intervention_mask"].bool()
+        excluded = {
+            "instruction_supervision_mask",
+            "intervention_mask",
+            "reft_intervention_mask",
+        }
+        return {key: value for key, value in batch.items() if key not in excluded}
 
     def runtime_debug(self) -> Dict[str, Any]:
         return {
@@ -244,60 +217,54 @@ class MoReSMethod(TrainingMethod):
     def compute_loss(self, model, batch, outputs):
         return CROSS_ENTROPY_LOSS.compute(model, batch, outputs)
 
-    def prepare_inference_inputs(
-        self,
-        model: nn.Module,
-        processor: Any,
-        inputs: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    def prepare_inference_inputs(self, model, processor, inputs):
         del model, processor
         return inputs
 
     def get_trainable_params(self, model: nn.Module) -> List[Dict[str, Any]]:
-        adapters = getattr(model, "mores_adapters", None)
-        if adapters is None:
-            return [{"params": []}]
-        params = [param for param in adapters.parameters() if param.requires_grad]
-        return [{"params": params}]
+        return [{"params": list(model.mores_adapters.parameters())}]
 
     def save_checkpoint(self, model, processor, path, metadata):
         os.makedirs(path, exist_ok=True)
-        adapters = getattr(model, "mores_adapters", None)
-        if adapters is None:
-            raise ValueError("MoReS checkpoint save failed: model.mores_adapters is missing.")
-        torch.save(compact_mores_state(adapters), os.path.join(path, "mores_tuned.pt"))
+        torch.save(
+            compact_mores_state(model.mores_adapters),
+            os.path.join(path, "mores_tuned.pt"),
+        )
         processor.save_pretrained(path)
-        metadata = {**metadata, "ft_method": self.name, "config": dict(self.last_config)}
+        metadata = {**metadata, "ft_method": self.name, "recipe": "mores_v1"}
         with open(os.path.join(path, "vlmintune_meta.json"), "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     def load_for_inference(self, path, model_name, **kwargs):
-        quantize_4bit = bool(kwargs.get("quantize_4bit", False))
+        del kwargs
         model_spec = get_model_spec(model_name)
         processor = load_processor(model_spec.hf_model_id)
         model = load_vlm(
             model_spec.hf_model_id,
-            quantize_4bit=quantize_4bit,
-            torch_dtype=torch.float16 if quantize_4bit else torch.bfloat16,
+            quantize_4bit=False,
+            torch_dtype=torch.bfloat16,
         )
-
-        meta_path = os.path.join(path, "vlmintune_meta.json")
-        with open(meta_path, "r", encoding="utf-8") as f:
-            metadata = json.load(f) or {}
-        config = dict(metadata.get("config") or self.default_config())
-
-        model, _ = self.prepare_model(model, processor, config, model_spec=model_spec)
+        model, _ = self.prepare_model(model, processor, model_spec=model_spec)
         state = torch.load(
             os.path.join(path, "mores_tuned.pt"),
             map_location="cpu",
             weights_only=True,
         )
-        if isinstance(state, dict) and state.get("format") == MORES_CHECKPOINT_FORMAT:
-            load_compact_mores_state(model.mores_adapters, state)
-        else:
-            model.mores_adapters.load_state_dict(state)
+        load_compact_mores_state(model.mores_adapters, state)
         model.eval()
 
         adapter_name = os.path.basename(path)
         info = {"model_id": f"{model_spec.hf_model_id} (MoReS: {adapter_name})"}
         return model, processor, info
+
+
+__all__ = [
+    "MORES_CHECKPOINT_FORMAT",
+    "MORES_RANK",
+    "MORES_VISUAL_TOKEN_INDICES",
+    "MoReSAdapter",
+    "MoReSMethod",
+    "build_mores_intervention_mask",
+    "compact_mores_state",
+    "load_compact_mores_state",
+]

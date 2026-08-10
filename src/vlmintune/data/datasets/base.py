@@ -31,6 +31,7 @@ class DatasetDataModel:
     default_train_split: str = "train"
     default_eval_split: str = "validation"
     metric_family: str = "vqa_accuracy"
+    split_file_pattern: str = ""
 
     @property
     def resolved_hf_dataset_name(self) -> str:
@@ -251,6 +252,7 @@ class HFDatasetSpec:
     mapping: ColumnMapping = ColumnMapping()
     prefer_streaming: bool = False
     data_model: DatasetDataModel | None = None
+    l2t_removed_task_templates: tuple[str, ...] = ()
 
     def parse_question(self, row: dict) -> str:
         raw = row.get(self.mapping.question_col, "") if self.mapping.question_col else ""
@@ -272,6 +274,24 @@ class HFDatasetSpec:
         del row
         return {}
 
+    def build_l2t_instruction_texts(
+        self,
+        row: dict,
+        rendered_question: str,
+    ) -> List[str]:
+        """Return dataset-owned instruction fragments that L2T may supervise.
+
+        The empty default deliberately leaves custom dataset specs without an
+        implicit L2T contract. Built-in datasets define their contract
+        explicitly.
+        """
+        del row, rendered_question
+        return []
+
+    def build_l2t_removed_task_templates(self, row: dict) -> List[str]:
+        del row
+        return list(self.l2t_removed_task_templates)
+
     def parse_id(self, row: dict, idx: int) -> str:
         return str(row.get(self.mapping.id_col, idx)) if self.mapping.id_col else str(idx)
 
@@ -290,6 +310,8 @@ class HFDatasetSpec:
             train_answer=answers.train_answer,
             eval_answers=answers.eval_answers,
             metadata=metadata,
+            l2t_instruction_texts=self.build_l2t_instruction_texts(row, question),
+            l2t_removed_task_templates=self.build_l2t_removed_task_templates(row),
         )
 
 

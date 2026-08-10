@@ -74,6 +74,7 @@ def build_tokenized_dataset(
     model_config,
     enable_instruction_supervision: bool = False,
     enable_mores_intervention: bool = False,
+    enable_reft_intervention: bool = False,
     max_length: int,
     skip_logger: Callable[[Any, Exception], None],
     debug_recorder: DebugRecorder,
@@ -81,6 +82,7 @@ def build_tokenized_dataset(
     preprocessor = ChatTemplatePreprocessor(
         enable_instruction_supervision=enable_instruction_supervision,
         enable_mores_intervention=enable_mores_intervention,
+        enable_reft_intervention=enable_reft_intervention,
         append_eos_to_training_answer=bool(
             getattr(model_spec, "append_eos_to_training_answer", False)
         ),

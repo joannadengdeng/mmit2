@@ -18,3 +18,7 @@ class TextVQASpec(HFDatasetSpec):
         question_col="question",
         answer_col="answers",
     )
+
+    def build_l2t_instruction_texts(self, row: dict, rendered_question: str):
+        del row
+        return [rendered_question]

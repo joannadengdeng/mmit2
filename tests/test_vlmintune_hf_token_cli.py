@@ -31,17 +31,10 @@ def test_training_config_loads_local_yaml_for_current_machine(tmp_path):
     config_path = tmp_path / "train_config.yaml"
     config_path.write_text(
         """
-model:
-  name: "qwen25vl_3b_instruct"
-experiment:
-  name: "demo_exp"
-  base_dir: "experiments"
-training:
-  ft_method: freeze
-  params:
-    unfreeze_modules: ["model.language_model.layers.0"]
-data:
-  dataset_name: "lmms-lab/textvqa"
+model: qwen25vl_3b_instruct
+dataset: lmms-lab/textvqa
+method: lora
+output_dir: output/demo
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -49,8 +42,8 @@ data:
 
     loaded = config_to_trainer_dict(load_config(str(config_path)))
 
-    assert loaded["training_method"] == "freeze"
-    assert loaded["experiment"]["name"] == "demo_exp"
+    assert loaded["method"] == "lora"
+    assert loaded["output_dir"] == "output/demo"
 
 
 def test_eval_cli_runs_local_yaml(monkeypatch, tmp_path):

@@ -277,7 +277,13 @@ def resolve_experiment_source(
     tracker = ExperimentTracker.load_by_name(base_dir, experiment_name)
     model_cfg = raw_cfg.get("model", {}) or {}
     configured_model_name = str(model_cfg.get("name", "")).strip()
-    checkpoint_path = tracker.get_checkpoint_dir()
+    eval_cfg = raw_cfg.get("eval", {}) or {}
+    checkpoint_path = str(eval_cfg.get("checkpoint_path", "")).strip()
+    checkpoint_path = (
+        os.path.expanduser(checkpoint_path)
+        if checkpoint_path
+        else tracker.get_checkpoint_dir()
+    )
 
     checkpoint_meta: Dict[str, Any] = {}
     if os.path.isdir(checkpoint_path):

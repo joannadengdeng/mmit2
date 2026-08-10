@@ -13,42 +13,29 @@ from vlmintune.training.methods.base import TrainingMethod, load_processor, load
 from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
 CROSS_ENTROPY_LOSS = CrossEntropyLoss()
-REFT_CHECKPOINT_FORMAT = "reft_compact_v1"
+REFT_RANK = 4
+REFT_PREFIX_POSITIONS = 4
+REFT_SUFFIX_POSITIONS = 4
 REFT_DEBUG_LAYER_PREVIEW_LIMIT = 16
+REFT_CHECKPOINT_FORMAT = "reft_tied_rank4_p4_s4_all_layers_v1"
 
 
-def first_parameter_device(module: nn.Module) -> torch.device | None:
-    for param in module.parameters(recurse=True):
-        return param.device
-    return None
+def first_parameter_device(module: nn.Module) -> torch.device:
+    return next(module.parameters()).device
 
 
 def build_reft_position_mask(
     input_ids: torch.Tensor,
-    attention_mask: Optional[torch.Tensor],
-    prefix_positions: int,
-    suffix_positions: int,
+    prompt_lengths: torch.Tensor,
 ) -> torch.Tensor:
-    """Build a prefix/suffix intervention mask for each sequence in a batch."""
+    """Select the fixed first four and last four positions of each prompt."""
     mask = torch.zeros_like(input_ids, dtype=torch.bool)
     for batch_idx in range(input_ids.size(0)):
-        if attention_mask is None:
-            valid_len = input_ids.size(1)
-        else:
-            valid_len = int(attention_mask[batch_idx].bool().sum().item())
-        if valid_len <= 0:
-            continue
-
-        prefix = int(prefix_positions)
-        suffix = int(suffix_positions)
-        if valid_len < prefix + suffix:
-            prefix = min(prefix, valid_len // 2)
-            suffix = min(suffix, valid_len - prefix)
-
-        if prefix > 0:
-            mask[batch_idx, :prefix] = True
-        if suffix > 0:
-            mask[batch_idx, valid_len - suffix:valid_len] = True
+        prompt_len = int(prompt_lengths[batch_idx].item())
+        prefix = min(REFT_PREFIX_POSITIONS, prompt_len // 2)
+        suffix = min(REFT_SUFFIX_POSITIONS, prompt_len - prefix)
+        mask[batch_idx, :prefix] = True
+        mask[batch_idx, prompt_len - suffix:prompt_len] = True
     return mask
 
 
@@ -91,20 +78,17 @@ def compact_reft_state(adapters: nn.ModuleList) -> Dict[str, Any]:
                 "source_bias": adapter.source.bias.detach().cpu(),
             }
         )
-    return {
-        "format": REFT_CHECKPOINT_FORMAT,
-        "layers": layers,
-    }
+    return {"format": REFT_CHECKPOINT_FORMAT, "layers": layers}
 
 
 def load_compact_reft_state(adapters: nn.ModuleList, state: Dict[str, Any]) -> None:
-    layers = state.get("layers")
-    if not isinstance(layers, list):
-        raise ValueError("Invalid compact ReFT checkpoint: missing layers list.")
+    if state.get("format") != REFT_CHECKPOINT_FORMAT:
+        raise ValueError("Checkpoint is not the fixed tied ReFT v1 format.")
+    layers = state["layers"]
     if len(layers) != len(adapters):
         raise ValueError(
-            "Invalid compact ReFT checkpoint: "
-            f"expected {len(adapters)} layers, found {len(layers)}."
+            f"ReFT layer count mismatch: {len(layers)} checkpoint layers for "
+            f"{len(adapters)} model layers."
         )
     with torch.no_grad():
         for adapter, layer_state in zip(adapters, layers):
@@ -127,38 +111,16 @@ def load_compact_reft_state(adapters: nn.ModuleList, state: Dict[str, Any]) -> N
 
 
 class ReFTMethod(TrainingMethod):
-    """Freeze the backbone and learn low-rank hidden-state interventions."""
+    """Fixed v1 LoReFT: rank 4, all language layers, tied prompt p4+s4."""
 
     name = "reft"
     display_name = "ReFT / LoReFT"
 
     def __init__(self) -> None:
-        self.last_config: Dict[str, Any] = {}
         self.current_intervention_mask: Optional[torch.Tensor] = None
         self.hook_call_count = 0
         self.hook_layer_indices: List[int] = []
         self.hook_intervention_tokens: Optional[int] = None
-
-    def default_config(self) -> Dict[str, Any]:
-        return {
-            "rank": 4,
-            "layers": [],
-            "prefix_positions": 4,
-            "suffix_positions": 4,
-        }
-
-    def _selected_layer_indices(self, model, model_spec, config) -> list[int]:
-        if config.get("layers"):
-            indices = [int(idx) for idx in config["layers"]]
-            layer_count = len(model_spec.get_transformer_layers(model))
-            invalid = [idx for idx in indices if idx < 0 or idx >= layer_count]
-            if invalid:
-                raise ValueError(
-                    f"ReFT layers {invalid} are invalid for model '{model_spec.name}' "
-                    f"with {layer_count} transformer layers."
-                )
-            return indices
-        return []
 
     def layer_hook(self, adapter: LoReFTAdapter, layer_index: int):
         def hook(module, args, output):
@@ -183,51 +145,50 @@ class ReFTMethod(TrainingMethod):
         return hook
 
     def forward_pre_hook(self, module, args, kwargs):
-        del module, args
-        input_ids = kwargs.get("input_ids")
-        inputs_embeds = kwargs.get("inputs_embeds")
-        attention_mask = kwargs.get("attention_mask")
-        if input_ids is None:
-            if inputs_embeds is None:
-                raise ValueError("ReFT requires input_ids or inputs_embeds during forward.")
-            input_ids = torch.zeros(
-                inputs_embeds.shape[:2],
+        del args
+        if module.training:
+            return None
+
+        past_key_values = kwargs.get("past_key_values")
+        if past_key_values is not None and past_key_values.get_seq_length() > 0:
+            self.current_intervention_mask = None
+            return None
+
+        input_ids = kwargs["input_ids"]
+        attention_mask = kwargs["attention_mask"]
+        if attention_mask.dim() == 2:
+            prompt_lengths = attention_mask.sum(dim=1)
+        else:
+            prompt_lengths = torch.full(
+                (input_ids.size(0),),
+                input_ids.size(1),
                 dtype=torch.long,
-                device=inputs_embeds.device,
+                device=input_ids.device,
             )
         self.current_intervention_mask = build_reft_position_mask(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            prefix_positions=int(self.last_config["prefix_positions"]),
-            suffix_positions=int(self.last_config["suffix_positions"]),
+            input_ids,
+            prompt_lengths,
         )
         return None
 
-    def prepare_model_impl(self, model, processor, config, model_spec):
+    def prepare_model_impl(self, model, processor, model_spec):
         del processor
-        self.last_config = dict(config)
+        self.current_intervention_mask = None
         self.hook_call_count = 0
         self.hook_layer_indices = []
         self.hook_intervention_tokens = None
-        rank = int(config["rank"])
-        if rank <= 0:
-            raise ValueError("ReFT rank must be positive.")
-        layer_indices = self._selected_layer_indices(model, model_spec, config)
-        if not layer_indices:
-            raise ValueError("ReFT requires non-empty 'layers'.")
 
         for param in model.parameters():
             param.requires_grad = False
 
         hidden_size = model_spec.get_hidden_size(model)
         layers = list(model_spec.get_transformer_layers(model))
+        layer_indices = list(range(len(layers)))
         adapters: list[LoReFTAdapter] = []
         for layer_index in layer_indices:
             layer = layers[layer_index]
-            adapter = LoReFTAdapter(int(hidden_size), rank)
-            layer_device = first_parameter_device(layer)
-            if layer_device is not None:
-                adapter = adapter.to(layer_device)
+            adapter = LoReFTAdapter(int(hidden_size), REFT_RANK)
+            adapter = adapter.to(first_parameter_device(layer))
             adapters.append(adapter)
             layer.register_forward_hook(self.layer_hook(adapter, layer_index))
 
@@ -238,11 +199,21 @@ class ReFTMethod(TrainingMethod):
         trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
         total = sum(param.numel() for param in model.parameters())
         info = (
-            f"ReFT: backbone={model_spec.name}, rank={rank}, layers={layer_indices}, "
-            f"positions=p{int(config['prefix_positions'])}+s{int(config['suffix_positions'])}\n"
+            f"ReFT v1: backbone={model_spec.name}, rank={REFT_RANK}, "
+            f"layers=all ({len(layer_indices)}), tied positions, "
+            f"prompt positions=p{REFT_PREFIX_POSITIONS}+s{REFT_SUFFIX_POSITIONS}\n"
             f"Trainable: {trainable:,} / {total:,} ({100 * trainable / total:.4f}%)"
         )
         return model, info
+
+    def build_forward_batch(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        self.current_intervention_mask = batch["reft_intervention_mask"].bool()
+        excluded_keys = {"instruction_supervision_mask", "reft_intervention_mask"}
+        return {key: value for key, value in batch.items() if key not in excluded_keys}
+
+    def prepare_inference_inputs(self, model, processor, inputs):
+        del model, processor
+        return {**inputs, "use_cache": True}
 
     def runtime_debug(self) -> Dict[str, Any]:
         return {
@@ -256,20 +227,23 @@ class ReFTMethod(TrainingMethod):
         return CROSS_ENTROPY_LOSS.compute(model, batch, outputs)
 
     def get_trainable_params(self, model: nn.Module) -> List[Dict[str, Any]]:
-        adapters = getattr(model, "reft_adapters", None)
-        if adapters is None:
-            return [{"params": []}]
-        params = [param for param in adapters.parameters() if param.requires_grad]
+        params = [
+            param for param in model.reft_adapters.parameters() if param.requires_grad
+        ]
         return [{"params": params}]
 
     def save_checkpoint(self, model, processor, path, metadata):
         os.makedirs(path, exist_ok=True)
-        adapters = getattr(model, "reft_adapters", None)
-        if adapters is None:
-            raise ValueError("ReFT checkpoint save failed: model.reft_adapters is missing.")
-        torch.save(compact_reft_state(adapters), os.path.join(path, "reft_tuned.pt"))
+        torch.save(
+            compact_reft_state(model.reft_adapters),
+            os.path.join(path, "reft_tuned.pt"),
+        )
         processor.save_pretrained(path)
-        metadata = {**metadata, "ft_method": self.name, "config": dict(self.last_config)}
+        metadata = {
+            **metadata,
+            "ft_method": self.name,
+            "recipe": REFT_CHECKPOINT_FORMAT,
+        }
         with open(os.path.join(path, "vlmintune_meta.json"), "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
@@ -283,21 +257,13 @@ class ReFTMethod(TrainingMethod):
             torch_dtype=torch.bfloat16,
         )
 
-        meta_path = os.path.join(path, "vlmintune_meta.json")
-        with open(meta_path, "r", encoding="utf-8") as f:
-            metadata = json.load(f) or {}
-        config = dict(metadata.get("config") or self.default_config())
-
-        model, _ = self.prepare_model(model, processor, config, model_spec=model_spec)
+        model, _ = self.prepare_model(model, processor, model_spec=model_spec)
         state = torch.load(
             os.path.join(path, "reft_tuned.pt"),
             map_location="cpu",
             weights_only=True,
         )
-        if isinstance(state, dict) and state.get("format") == REFT_CHECKPOINT_FORMAT:
-            load_compact_reft_state(model.reft_adapters, state)
-        else:
-            model.reft_adapters.load_state_dict(state)
+        load_compact_reft_state(model.reft_adapters, state)
         model.eval()
 
         adapter_name = os.path.basename(path)
@@ -308,6 +274,9 @@ class ReFTMethod(TrainingMethod):
 __all__ = [
     "LoReFTAdapter",
     "REFT_CHECKPOINT_FORMAT",
+    "REFT_PREFIX_POSITIONS",
+    "REFT_RANK",
+    "REFT_SUFFIX_POSITIONS",
     "ReFTMethod",
     "build_reft_position_mask",
     "compact_reft_state",

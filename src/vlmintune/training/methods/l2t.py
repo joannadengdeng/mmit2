@@ -1,19 +1,29 @@
-"""L2T: supervise both instruction and response sequences."""
+"""L2T: learn from informative instruction tokens and response tokens."""
 from __future__ import annotations
 
+import json
+import os
 from typing import Any, Dict, List, Optional
 
 import torch
 
 from vlmintune.data.types import CanonicalSample
-
-from vlmintune.training.methods.lora import LoRAMethod
+from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.base import TrainingMethod
+from vlmintune.training.methods.base import load_processor, load_vlm
+from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
+
+
+L2T_CHECKPOINT_NAME = "l2t_tuned.pt"
+_CROSS_ENTROPY_LOSS = CrossEntropyLoss()
 
 
 def extract_instruction_texts(sample: CanonicalSample) -> List[str]:
-    question = sample.question.strip()
-    return [question] if question else []
+    return [
+        text
+        for raw_text in sample.l2t_instruction_texts
+        if (text := str(raw_text).strip())
+    ]
 
 
 def tokenized_text_variants(
@@ -23,7 +33,20 @@ def tokenized_text_variants(
 ) -> List[List[int]]:
     variants: List[List[int]] = []
     seen = set()
-    for candidate in (text, "\n" + text, " " + text):
+    # Token boundaries depend on both sides of a fragment.  For example, a
+    # ScienceQA question is rendered as ``Question: <text>\nOptions:`` by the
+    # chat prompt.  Qwen therefore tokenizes its first word with a leading
+    # space and may merge the final punctuation with the trailing newline.
+    # Keep the alignment strict, but cover the whitespace contexts used by
+    # the built-in prompt renderers.
+    for candidate in (
+        text,
+        "\n" + text,
+        " " + text,
+        text + "\n",
+        "\n" + text + "\n",
+        " " + text + "\n",
+    ):
         tokenized = tokenizer(
             candidate,
             add_special_tokens=False,
@@ -42,6 +65,26 @@ def tokenized_text_variants(
     return variants
 
 
+def find_token_span(
+    sequence: List[int],
+    candidates: List[List[int]],
+    start_at: int = 0,
+) -> Optional[tuple[int, int]]:
+    search_start = max(0, start_at)
+    earliest: Optional[tuple[int, int]] = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        last_start = len(sequence) - len(candidate)
+        for idx in range(search_start, last_start + 1):
+            if sequence[idx:idx + len(candidate)] == candidate:
+                span = (idx, idx + len(candidate))
+                if earliest is None or span[0] < earliest[0]:
+                    earliest = span
+                break
+    return earliest
+
+
 def build_instruction_supervision_mask(
     processor: Any,
     sample: CanonicalSample,
@@ -51,30 +94,29 @@ def build_instruction_supervision_mask(
 ) -> torch.Tensor:
     mask = torch.zeros_like(input_ids, dtype=torch.bool)
     if prompt_len <= 0:
-        return mask
+        raise ValueError(f"L2T sample {sample.id!r} has no prompt tokens.")
 
     instruction_texts = extract_instruction_texts(sample)
+    if not instruction_texts:
+        raise ValueError(
+            f"L2T sample {sample.id!r} has no dataset-defined instruction supervision text."
+        )
     prompt_ids = input_ids[:prompt_len].tolist()
     tokenizer = getattr(processor, "tokenizer", processor)
     cursor = 0
     for text in instruction_texts:
-        start_idx = -1
-        matched_ids: List[int] = []
-        for text_ids_list in tokenized_text_variants(tokenizer, text, max_length):
-            limit = len(prompt_ids) - len(text_ids_list) + 1
-            for idx in range(max(0, cursor), max(0, limit)):
-                if prompt_ids[idx:idx + len(text_ids_list)] == text_ids_list:
-                    start_idx = idx
-                    matched_ids = text_ids_list
-                    break
-            if start_idx >= 0:
-                break
-        if start_idx < 0:
-            continue
+        text_variants = tokenized_text_variants(tokenizer, text, max_length)
+        span = find_token_span(prompt_ids, text_variants, start_at=cursor)
+        if span is None:
+            raise ValueError(
+                f"L2T could not align instruction text for sample {sample.id!r}: {text!r}"
+            )
 
-        end_idx = start_idx + len(matched_ids)
+        start_idx, end_idx = span
         mask[start_idx:end_idx] = True
         cursor = end_idx
+    if not mask.any():
+        raise ValueError(f"L2T sample {sample.id!r} produced an empty instruction mask.")
     return mask
 
 
@@ -123,49 +165,136 @@ def build_instruction_debug_preview(
 
 class L2TMethod(TrainingMethod):
     name = "l2t"
-    display_name = "L2T (Zhou et al. 2025)"
+    display_name = "L2T (full-SFT v1)"
 
-    def __init__(self):
-        self.base = LoRAMethod()
-        self.last_config: Dict[str, Any] = {}
+    @staticmethod
+    def trainable_modules(model, model_spec):
+        if model_spec.name == "qwen25vl_3b_instruct":
+            return (
+                model.model.language_model,
+                model.lm_head,
+                model.model.visual.merger,
+            )
+        if model_spec.name == "llava15_7b":
+            return (
+                model.model.language_model,
+                model.lm_head,
+                model.model.multi_modal_projector,
+            )
+        raise ValueError(
+            "L2T full-SFT v1 supports only qwen25vl_3b_instruct and llava15_7b."
+        )
 
-    def default_config(self):
-        defaults = self.base.default_config()
-        defaults.pop("train_layer_range", None)
-        return defaults
+    def prepare_model_impl(self, model, processor, model_spec):
+        del processor
+        model.requires_grad_(False)
+        for module in self.trainable_modules(model, model_spec):
+            module.requires_grad_(True)
 
-    def requires_quantization(self, config=None):
-        return self.base.requires_quantization(config)
-
-    def prepare_model_impl(self, model, processor, config, model_spec):
-        self.last_config = dict(config)
-        return self.base.prepare_model(model, processor, config, model_spec=model_spec)
+        trainable = sum(
+            parameter.numel()
+            for parameter in model.parameters()
+            if parameter.requires_grad
+        )
+        total = sum(parameter.numel() for parameter in model.parameters())
+        info = (
+            "L2T full-SFT v1: bf16 base; language model + lm_head + visual "
+            f"projection trainable; vision encoder frozen; trainable={trainable:,}/{total:,} "
+            f"({100 * trainable / total:.4f}%)"
+        )
+        return model, info
 
     def preprocess_labels(self, input_ids, labels, batch_meta=None):
         if not batch_meta:
-            return labels
+            raise ValueError("L2T requires instruction supervision batch metadata.")
+        has_answer = (labels != -100).flatten(start_dim=1).any(dim=1)
+        if not has_answer.all():
+            raise ValueError(
+                "L2T requires at least one supervised answer token in every sample; "
+                "the answer may have been truncated by max_length."
+            )
         instruction_mask = batch_meta.get("instruction_supervision_mask")
         if instruction_mask is None:
-            return labels
+            raise ValueError("L2T requires an instruction_supervision_mask.")
         mask = instruction_mask.bool()
         attention_mask = batch_meta.get("attention_mask")
         if attention_mask is not None:
             mask &= attention_mask.bool()
         if not mask.any():
-            return labels
+            raise ValueError("L2T instruction_supervision_mask contains no active tokens.")
         updated = labels.clone()
         updated[mask] = input_ids[mask]
         return updated
 
     def compute_loss(self, model, batch, outputs):
-        return self.base.compute_loss(model, batch, outputs)
+        return _CROSS_ENTROPY_LOSS.compute(model, batch, outputs)
 
     def get_trainable_params(self, model):
-        return self.base.get_trainable_params(model)
+        return [
+            {
+                "params": [
+                    parameter
+                    for parameter in model.parameters()
+                    if parameter.requires_grad
+                ]
+            }
+        ]
 
     def save_checkpoint(self, model, processor, path, metadata):
-        metadata = {**metadata, "ft_method": self.name, "config": self.last_config}
-        self.base.save_checkpoint(model, processor, path, metadata)
+        os.makedirs(path, exist_ok=True)
+        state_dict = {
+            name: parameter.detach().cpu()
+            for name, parameter in model.named_parameters()
+            if parameter.requires_grad
+        }
+        torch.save(state_dict, os.path.join(path, L2T_CHECKPOINT_NAME))
+        processor.save_pretrained(path)
+        metadata = {
+            **metadata,
+            "ft_method": self.name,
+            "recipe": "l2t_full_sft_v1",
+        }
+        with open(os.path.join(path, "vlmintune_meta.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     def load_for_inference(self, path, model_name, **kwargs):
-        return self.base.load_for_inference(path, model_name, **kwargs)
+        del kwargs
+        model_spec = get_model_spec(model_name)
+        processor = load_processor(model_spec.hf_model_id)
+        model = load_vlm(
+            model_spec.hf_model_id,
+            quantize_4bit=False,
+            torch_dtype=torch.bfloat16,
+        )
+        model, _ = self.prepare_model(model, processor, model_spec=model_spec)
+        state_dict = torch.load(
+            os.path.join(path, L2T_CHECKPOINT_NAME),
+            map_location="cpu",
+            weights_only=True,
+        )
+        expected = {
+            name for name, parameter in model.named_parameters() if parameter.requires_grad
+        }
+        if set(state_dict) != expected:
+            raise ValueError(
+                "L2T checkpoint does not match the fixed full-SFT v1 trainable state."
+            )
+        model.load_state_dict(state_dict, strict=False)
+        model.eval()
+
+        checkpoint_name = os.path.basename(os.path.normpath(path))
+        info = {
+            "model_id": f"{model_spec.hf_model_id} (L2T full-SFT: {checkpoint_name})"
+        }
+        return model, processor, info
+
+
+__all__ = [
+    "L2T_CHECKPOINT_NAME",
+    "L2TMethod",
+    "build_instruction_debug_preview",
+    "build_instruction_supervision_mask",
+    "extract_instruction_texts",
+    "find_token_span",
+    "tokenized_text_variants",
+]
