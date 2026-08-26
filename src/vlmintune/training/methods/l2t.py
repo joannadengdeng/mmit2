@@ -1,171 +1,131 @@
-"""L2T: supervise both instruction and response sequences."""
+"""Full user-prompt supervision and the standalone L2T training recipe."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 import torch
 
-from vlmintune.data.types import CanonicalSample
-
-from vlmintune.training.methods.lora import LoRAMethod
+from vlmintune.data.datasets.base import build_processor_images
 from vlmintune.training.methods.base import TrainingMethod
+from vlmintune.training.trainer.ce_loss import CrossEntropyLoss
 
 
-def extract_instruction_texts(sample: CanonicalSample) -> List[str]:
-    question = sample.question.strip()
-    return [question] if question else []
-
-
-def tokenized_text_variants(
-    tokenizer: Any,
-    text: str,
-    max_length: int,
-) -> List[List[int]]:
-    variants: List[List[int]] = []
-    seen = set()
-    for candidate in (text, "\n" + text, " " + text):
-        tokenized = tokenizer(
-            candidate,
-            add_special_tokens=False,
-            return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
-        )
-        text_ids = tokenized["input_ids"]
-        if text_ids.dim() > 1:
-            text_ids = text_ids.squeeze(0)
-        ids = [int(token_id) for token_id in text_ids.tolist()]
-        key = tuple(ids)
-        if ids and key not in seen:
-            variants.append(ids)
-            seen.add(key)
-    return variants
-
-
-def build_instruction_supervision_mask(
-    processor: Any,
-    sample: CanonicalSample,
-    input_ids: torch.Tensor,
-    prompt_len: int,
-    max_length: int,
-) -> torch.Tensor:
-    mask = torch.zeros_like(input_ids, dtype=torch.bool)
-    if prompt_len <= 0:
-        return mask
-
-    instruction_texts = extract_instruction_texts(sample)
-    prompt_ids = input_ids[:prompt_len].tolist()
-    tokenizer = getattr(processor, "tokenizer", processor)
-    cursor = 0
-    for text in instruction_texts:
-        start_idx = -1
-        matched_ids: List[int] = []
-        for text_ids_list in tokenized_text_variants(tokenizer, text, max_length):
-            limit = len(prompt_ids) - len(text_ids_list) + 1
-            for idx in range(max(0, cursor), max(0, limit)):
-                if prompt_ids[idx:idx + len(text_ids_list)] == text_ids_list:
-                    start_idx = idx
-                    matched_ids = text_ids_list
-                    break
-            if start_idx >= 0:
-                break
-        if start_idx < 0:
-            continue
-
-        end_idx = start_idx + len(matched_ids)
-        mask[start_idx:end_idx] = True
-        cursor = end_idx
-    return mask
-
-
-def decode_token_ids(processor: Any, token_ids: List[int]) -> str:
-    if not token_ids:
-        return ""
-    tokenizer = getattr(processor, "tokenizer", processor)
-    if hasattr(tokenizer, "decode"):
-        return str(
-            tokenizer.decode(
-                token_ids,
-                skip_special_tokens=False,
-                clean_up_tokenization_spaces=False,
-            )
-        )
-    return " ".join(str(token_id) for token_id in token_ids)
-
-
-def build_instruction_debug_preview(
-    processor: Any,
-    input_ids: torch.Tensor,
-    instruction_supervision_mask: torch.Tensor,
-) -> List[Dict[str, Any]]:
-    previews: List[Dict[str, Any]] = []
-    span_start: Optional[int] = None
-    mask_list = instruction_supervision_mask.tolist()
-    token_ids = input_ids.tolist()
-
-    for idx, is_selected in enumerate(mask_list + [False]):
-        if is_selected and span_start is None:
-            span_start = idx
-        if not is_selected and span_start is not None:
-            span_token_ids = token_ids[span_start:idx]
-            previews.append(
-                {
-                    "start": span_start,
-                    "end": idx,
-                    "token_count": len(span_token_ids),
-                    "text": decode_token_ids(processor, span_token_ids),
-                }
-            )
-            span_start = None
-
-    return previews
+L2T_CHECKPOINT_NAME = "l2t_tuned.pt"
+L2T_SUPERVISION_RECIPE = "l2t_full_user_prompt_v2"
+_LOSS = CrossEntropyLoss()
 
 
 class L2TMethod(TrainingMethod):
+    """Train the language side on the complete user text and answer."""
+
     name = "l2t"
-    display_name = "L2T (Zhou et al. 2025)"
+    display_name = "L2T (full user prompt)"
 
-    def __init__(self):
-        self.base = LoRAMethod()
-        self.last_config: Dict[str, Any] = {}
+    @staticmethod
+    def build_method_mask(
+        *,
+        sample,
+        processor,
+        input_ids,
+        prompt_text,
+        image,
+        max_length,
+        **_,
+    ):
+        question = sample.question.strip()
+        question_start = prompt_text.rindex(question)
+        processor_kwargs = {
+            "images": build_processor_images(image),
+            "return_tensors": "pt",
+            "truncation": True,
+            "max_length": max_length,
+        }
+        question_token_start = processor(
+            text=prompt_text[:question_start],
+            **processor_kwargs,
+        )["input_ids"].size(1)
+        question_token_end = processor(
+            text=prompt_text[:question_start + len(question)],
+            **processor_kwargs,
+        )["input_ids"].size(1)
+        mask = torch.zeros_like(input_ids, dtype=torch.bool)
+        mask[question_token_start:question_token_end] = True
+        return mask
 
-    def default_config(self):
-        defaults = self.base.default_config()
-        defaults.pop("train_layer_range", None)
-        return defaults
+    @staticmethod
+    def trainable_modules(model, model_spec):
+        if model_spec.name == "qwen25vl_3b_instruct":
+            return model.model.language_model, model.lm_head, model.model.visual.merger
+        if model_spec.name == "llava15_7b":
+            return (
+                model.model.language_model,
+                model.lm_head,
+                model.model.multi_modal_projector,
+            )
+        raise ValueError(
+            "L2T supports only qwen25vl_3b_instruct and llava15_7b."
+        )
 
-    def requires_quantization(self, config=None):
-        return self.base.requires_quantization(config)
+    def prepare_model_impl(self, model, processor, model_spec):
+        del processor
+        model.requires_grad_(False)
+        for module in self.trainable_modules(model, model_spec):
+            module.requires_grad_(True)
 
-    def prepare_model_impl(self, model, processor, config, model_spec):
-        self.last_config = dict(config)
-        return self.base.prepare_model(model, processor, config, model_spec=model_spec)
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in model.parameters())
+        info = (
+            "L2T full-user-prompt supervision: language model + lm_head + visual projection "
+            f"trainable; vision encoder frozen; trainable={trainable:,}/{total:,} "
+            f"({100 * trainable / total:.4f}%)"
+        )
+        return model, info
 
-    def preprocess_labels(self, input_ids, labels, batch_meta=None):
-        if not batch_meta:
-            return labels
-        instruction_mask = batch_meta.get("instruction_supervision_mask")
-        if instruction_mask is None:
-            return labels
-        mask = instruction_mask.bool()
-        attention_mask = batch_meta.get("attention_mask")
-        if attention_mask is not None:
-            mask &= attention_mask.bool()
-        if not mask.any():
-            return labels
-        updated = labels.clone()
-        updated[mask] = input_ids[mask]
-        return updated
+    def preprocess_labels(self, input_ids, labels, batch_meta):
+        return torch.where(batch_meta["method_mask"], input_ids, labels)
 
     def compute_loss(self, model, batch, outputs):
-        return self.base.compute_loss(model, batch, outputs)
+        return _LOSS.compute(model, batch, outputs)
 
     def get_trainable_params(self, model):
-        return self.base.get_trainable_params(model)
+        return [{"params": [p for p in model.parameters() if p.requires_grad]}]
 
-    def save_checkpoint(self, model, processor, path, metadata):
-        metadata = {**metadata, "ft_method": self.name, "config": self.last_config}
-        self.base.save_checkpoint(model, processor, path, metadata)
+    def _save_weights(self, model, path):
+        state_dict = {
+            name: parameter.detach().cpu()
+            for name, parameter in model.named_parameters()
+            if parameter.requires_grad
+        }
+        torch.save(state_dict, Path(path) / L2T_CHECKPOINT_NAME)
 
-    def load_for_inference(self, path, model_name, **kwargs):
-        return self.base.load_for_inference(path, model_name, **kwargs)
+    def _restore_model(self, model, processor, model_spec, path):
+        model, _ = self.prepare_model(model, processor, model_spec=model_spec)
+        state_dict = torch.load(
+            Path(path) / L2T_CHECKPOINT_NAME,
+            map_location="cpu",
+            weights_only=True,
+        )
+        expected = {
+            name
+            for name, parameter in model.named_parameters()
+            if parameter.requires_grad
+        }
+        if set(state_dict) != expected:
+            raise ValueError(
+                "L2T checkpoint does not match the fixed trainable state."
+            )
+        model.load_state_dict(state_dict, strict=False)
+        return model
+
+    def _checkpoint_metadata(self):
+        return {
+            "recipe": "l2t_full_sft_v1",
+            "supervision_recipe": L2T_SUPERVISION_RECIPE,
+        }
+
+
+__all__ = [
+    "L2T_CHECKPOINT_NAME",
+    "L2T_SUPERVISION_RECIPE",
+    "L2TMethod",
+]

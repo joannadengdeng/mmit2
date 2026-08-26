@@ -31,6 +31,7 @@ class DatasetDataModel:
     default_train_split: str = "train"
     default_eval_split: str = "validation"
     metric_family: str = "vqa_accuracy"
+    split_file_pattern: str = ""
 
     @property
     def resolved_hf_dataset_name(self) -> str:

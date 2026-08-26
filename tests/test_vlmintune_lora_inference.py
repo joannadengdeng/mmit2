@@ -1,12 +1,13 @@
 import os
 import sys
-import json
+
+import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.training.methods import lora as lora_mod
+from vlmintune.training.methods import base as method_base
 from vlmintune.training.methods.dora import DoRAMethod
-from vlmintune.training.methods.l2t import L2TMethod
 from vlmintune.training.methods.lora import LoRAMethod, QLoRAMethod
 
 
@@ -32,11 +33,6 @@ class _FakePeftModel:
         return self
 
 
-class _FakeSaveable:
-    def save_pretrained(self, path):
-        os.makedirs(path, exist_ok=True)
-
-
 def test_lora_family_inference_quantizes_only_qlora(monkeypatch, tmp_path):
     load_calls = []
 
@@ -53,34 +49,19 @@ def test_lora_family_inference_quantizes_only_qlora(monkeypatch, tmp_path):
         )
         return _FakeModel()
 
-    monkeypatch.setattr(lora_mod, "load_processor", fake_load_processor)
-    monkeypatch.setattr(lora_mod, "load_vlm", fake_load_vlm)
+    monkeypatch.setattr(method_base, "load_processor", fake_load_processor)
+    monkeypatch.setattr(method_base, "load_vlm", fake_load_vlm)
     monkeypatch.setattr(lora_mod, "PeftModel", _FakePeftModel)
 
     methods = [
         (LoRAMethod(), False),
         (DoRAMethod(), False),
-        (L2TMethod(), False),
         (QLoRAMethod(), True),
     ]
 
     for method, expected_quantized in methods:
         load_calls.clear()
-        model, _, _ = method.load_for_inference(str(tmp_path), "llava15_7b", quantize_4bit=True)
+        model, _, _ = method.load_for_inference(str(tmp_path), "llava15_7b")
         assert load_calls[-1]["quantize_4bit"] is expected_quantized
+        assert load_calls[-1]["torch_dtype"] is torch.bfloat16
         assert model.merged is (not expected_quantized)
-
-
-def test_l2t_checkpoint_metadata_keeps_l2t_method(tmp_path):
-    method = L2TMethod()
-    method.last_config = {"target_modules": ["q_proj", "v_proj"]}
-
-    method.save_checkpoint(
-        _FakeSaveable(),
-        _FakeSaveable(),
-        str(tmp_path),
-        {"model_name": "qwen25vl_3b_instruct"},
-    )
-
-    metadata = json.loads((tmp_path / "vlmintune_meta.json").read_text())
-    assert metadata["ft_method"] == "l2t"

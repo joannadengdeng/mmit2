@@ -2,36 +2,29 @@
 set -euo pipefail
 
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SETUP_DIR/../.." && pwd)"
-RUN_STAMP="${RUN_STAMP:-$(date +%Y%m%d_%H%M%S)}"
+SMOKE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vlmintune-config-smoke.XXXXXX")"
+trap 'rm -rf "$SMOKE_DIR"' EXIT
 
-cd "$ROOT_DIR"
-mkdir -p run_logs
+DATASET="${DATASET:-lmms-lab/textvqa}"
+GENERAL_MODEL="${MODEL:-qwen25vl_3b_instruct}"
 
-export RUN_STAMP
-export MODELS="${MODELS:-qwen25vl_3b_instruct llava15_7b}"
-export DATASETS="${DATASETS:-textvqa vqav2 vizwiz gqa scienceqa}"
-export METHODS="${METHODS:-base qlora lora dora freeze l2t mole reft mores lora_layer}"
-export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-8}"
-export EVAL_MAX_SAMPLES="${EVAL_MAX_SAMPLES:-8}"
-export MAX_LENGTH="${MAX_LENGTH:-1536}"
-export MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-16}"
-export CONTINUE_ON_ERROR="${CONTINUE_ON_ERROR:-1}"
-export VLMINTUNE_FAST_EXIT="${VLMINTUNE_FAST_EXIT:-1}"
-export REFT_LAYERS="${REFT_LAYERS:-0}"
+for method in \
+  lora qlora dora reft mores vl_adapter l2t \
+  mores_lora mores_dora reft_lora; do
+  model="$GENERAL_MODEL"
+  if [[ "$method" == "vl_adapter" ]]; then
+    model="qwen25vl_3b_instruct"
+  fi
 
-echo "Smoke matrix:"
-echo "  MODELS=$MODELS"
-echo "  DATASETS=$DATASETS"
-echo "  METHODS=$METHODS"
-echo "  TRAIN_MAX_SAMPLES=$TRAIN_MAX_SAMPLES"
-echo "  EVAL_MAX_SAMPLES=$EVAL_MAX_SAMPLES"
-echo "  REFT_LAYERS=$REFT_LAYERS"
-if [[ -n "${VISNEC_SCORE_FILE:-}" ]]; then
-  echo "  VISNEC_SCORE_FILE=$VISNEC_SCORE_FILE"
-  echo "  VISNEC_TOP_RATIO=${VISNEC_TOP_RATIO:-1.0}"
-fi
-echo "  RUN_STAMP=$RUN_STAMP"
+  echo "Validating method=$method model=$model dataset=$DATASET"
+  MODEL="$model" \
+  DATASET="$DATASET" \
+  METHOD="$method" \
+  RUN_NAME="smoke_${method}" \
+  OUTPUT_DIR="$SMOKE_DIR/$method/checkpoint" \
+  CONFIG_PATH="$SMOKE_DIR/$method/train_config.yaml" \
+  DRY_RUN=1 \
+    bash "$SETUP_DIR/run_paper_benchmark.sh"
+done
 
-bash "$SETUP_DIR/run_paper_benchmark.sh" \
-  2>&1 | tee "run_logs/smoke_all_${RUN_STAMP}.log"
+echo "Strict configuration smoke passed for all ten release recipes."

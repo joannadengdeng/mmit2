@@ -47,7 +47,6 @@ class LocalMethod:
         checkpoint_path: str = "",
         ft_method: str = "",
         quantize_4bit: bool = True,
-        **kwargs,
     ) -> "LocalMethod":
         if checkpoint_path and os.path.isdir(checkpoint_path):
             if not ft_method:
@@ -65,8 +64,6 @@ class LocalMethod:
             model, processor, _ = method.load_for_inference(
                 checkpoint_path,
                 model_name,
-                quantize_4bit=quantize_4bit,
-                **kwargs,
             )
             return cls(model, processor, inference_method=method)
 

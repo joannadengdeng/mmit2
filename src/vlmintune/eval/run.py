@@ -130,14 +130,6 @@ def eval_ids_path(output_dir: str) -> str:
     return os.path.join(output_dir, "eval_ids.json")
 
 
-def emit_eval_debug_examples(records: list[dict[str, Any]]) -> None:
-    if not records:
-        return
-    print()
-    print("First 5 eval examples")
-    print(json.dumps(records, indent=2, ensure_ascii=False))
-
-
 def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, Any]:
     from vlmintune.data.hf_datasets import HFDatasetsAdapter
     from vlmintune.data.types import EvalSample
@@ -160,7 +152,6 @@ def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, A
 
     metric_sums: Dict[str, float] = {}
     num_predictions = 0
-    debug_records: list[dict[str, Any]] = []
     eval_ids: list[str] = []
     prediction_word_counts: list[int] = []
     prediction_counter: Counter[str] = Counter()
@@ -203,12 +194,9 @@ def evaluate_dataset(method, target: EvalTarget, output_dir: str) -> Dict[str, A
                 "ground_truth": eval_answers,
                 "scores": scores,
             }
-            if len(debug_records) < 5:
-                debug_records.append(record)
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             num_predictions += 1
 
-    emit_eval_debug_examples(debug_records)
     with open(eval_ids_path(output_dir), "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -277,7 +265,13 @@ def resolve_experiment_source(
     tracker = ExperimentTracker.load_by_name(base_dir, experiment_name)
     model_cfg = raw_cfg.get("model", {}) or {}
     configured_model_name = str(model_cfg.get("name", "")).strip()
-    checkpoint_path = tracker.get_checkpoint_dir()
+    eval_cfg = raw_cfg.get("eval", {}) or {}
+    checkpoint_path = str(eval_cfg.get("checkpoint_path", "")).strip()
+    checkpoint_path = (
+        os.path.expanduser(checkpoint_path)
+        if checkpoint_path
+        else tracker.get_checkpoint_dir()
+    )
 
     checkpoint_meta: Dict[str, Any] = {}
     if os.path.isdir(checkpoint_path):

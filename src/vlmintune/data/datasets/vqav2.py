@@ -11,6 +11,7 @@ class VQAv2Spec(HFDatasetSpec):
         default_train_split="train",
         default_eval_split="validation",
         metric_family="vqa_accuracy",
+        split_file_pattern="data/{split}-*",
     )
     mapping = ColumnMapping(
         id_col="question_id",

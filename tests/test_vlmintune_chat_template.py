@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.data.types import CanonicalSample
 from vlmintune.training.chat_template import ChatTemplatePreprocessor
+from vlmintune.training.methods.base import TrainingMethod
+from vlmintune.training.methods.l2t import L2TMethod
+from vlmintune.training.methods.mores import MoReSMethod
+from vlmintune.training.methods.reft import ReFTMethod
 
 
 class _FakeProcessor:
@@ -41,15 +45,34 @@ class _FakeProcessor:
             "attention_mask": torch.tensor([[1, 1, 1, 1]]),
         }
 
-    def decode(self, token_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
-        del skip_special_tokens, clean_up_tokenization_spaces
-        vocab = {
-            99: "<image>",
-            12: "Question?",
-            13: "assistant:",
-            14: "Answer.",
-        }
-        return " ".join(vocab.get(token_id, str(token_id)) for token_id in token_ids)
+
+class _FakePrefixL2TProcessor(_FakeProcessor):
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        assert tokenize is False
+        if add_generation_prompt:
+            return "PREFIXQuestion?SUFFIX"
+        return "PREFIXQuestion?SUFFIXAnswer."
+
+    def __call__(
+        self,
+        text,
+        images=None,
+        return_tensors=None,
+        truncation=None,
+        max_length=None,
+        add_special_tokens=True,
+    ):
+        del images, return_tensors, truncation, max_length, add_special_tokens
+        input_ids = {
+            "PREFIX": [11],
+            "PREFIXQuestion?": [11, 12],
+            "PREFIXQuestion?SUFFIX": [11, 12, 20],
+            "PREFIXQuestion?SUFFIXAnswer.": [11, 12, 20, 13, 14],
+        }[text]
+        result = {"input_ids": torch.tensor([input_ids])}
+        if text == "PREFIXQuestion?SUFFIXAnswer.":
+            result["attention_mask"] = torch.ones(1, len(input_ids), dtype=torch.long)
+        return result
 
 
 class _FakeImageProcessor(_FakeProcessor):
@@ -74,16 +97,20 @@ class _FakeImageProcessor(_FakeProcessor):
             "attention_mask": torch.tensor([[1, 1, 1, 1, 1, 1, 1]]),
         }
 
-    def decode(self, token_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
-        del skip_special_tokens, clean_up_tokenization_spaces
-        vocab = {
-            99: "<|image_pad|>",
-            12: "What",
-            13: "is",
-            14: "shown?",
-            15: "Answer.",
-        }
-        return " ".join(vocab.get(token_id, str(token_id)) for token_id in token_ids)
+class _FakeMMTokenTypeProcessor(_FakeProcessor):
+    def __call__(self, *args, **kwargs):
+        result = super().__call__(*args, **kwargs)
+        if result["input_ids"].shape[1] == 4:
+            result["mm_token_type_ids"] = torch.tensor([[1, 0, 0, 0]])
+        return result
+
+
+class _FakeLlavaPixelProcessor(_FakeProcessor):
+    def __call__(self, *args, **kwargs):
+        result = super().__call__(*args, **kwargs)
+        if result["input_ids"].shape[1] == 4:
+            result["pixel_values"] = torch.arange(12).reshape(1, 3, 2, 2)
+        return result
 
 
 class _FakeLargeImageProcessor(_FakeImageProcessor):
@@ -141,12 +168,6 @@ class _FakeProcessorWithoutTemplateEos(_FakeProcessor):
             }
         raise AssertionError(f"unexpected text: {text!r}")
 
-    def decode(self, token_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
-        del skip_special_tokens, clean_up_tokenization_spaces
-        vocab = {11: "USER:", 12: "Question?", 13: "ASSISTANT:", 14: "Answer.", 2: "</s>"}
-        return " ".join(vocab.get(token_id, str(token_id)) for token_id in token_ids)
-
-
 class _FakeProcessorWithTemplateEos(_FakeProcessorWithoutTemplateEos):
     def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
         assert tokenize is False
@@ -174,7 +195,7 @@ class _FakeProcessorWithTemplateEos(_FakeProcessorWithoutTemplateEos):
         raise AssertionError(f"unexpected text: {text!r}")
 
 
-def test_chat_template_tokenize_includes_rendered_prompt_preview():
+def test_chat_template_tokenize_emits_l2t_method_mask():
     model_config = types.SimpleNamespace(image_token_id=99)
     sample = CanonicalSample(
         id="sample-1",
@@ -183,23 +204,56 @@ def test_chat_template_tokenize_includes_rendered_prompt_preview():
         train_answer="Answer.",
     )
 
-    result = ChatTemplatePreprocessor(enable_instruction_supervision=True).tokenize(
+    result = ChatTemplatePreprocessor(L2TMethod).tokenize(
         sample,
-        _FakeProcessor(),
+        _FakePrefixL2TProcessor(),
         model_config,
     )
 
-    assert result["input_ids"].tolist() == [99, 12, 13, 14]
-    assert result["prompt_preview"]["sample_id"] == "sample-1"
-    assert result["prompt_preview"]["full_text"] == "FULL"
-    assert result["prompt_preview"]["prompt_text"] == "PROMPT"
-    assert result["prompt_preview"]["has_image"] is False
+    assert result["input_ids"].tolist() == [11, 12, 20, 13, 14]
+    assert result["labels"].tolist() == [-100, -100, -100, 13, 14]
     assert "attention_mask" not in result
-    assert result["prompt_preview"]["instruction_texts"] == ["Question?"]
-    assert result["prompt_preview"]["instruction_supervision_spans"] == [
-        {"start": 1, "end": 2, "token_count": 1, "text": "Question?"}
+    assert result["method_mask"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+        False,
     ]
-    assert result["instruction_supervision_mask"].tolist() == [False, True, False, False]
+
+
+def test_chat_template_preserves_qwen_mm_token_type_ids():
+    sample = CanonicalSample(
+        id="sample-mm-rope",
+        image_path="",
+        question="Question?",
+        train_answer="Answer.",
+    )
+
+    result = ChatTemplatePreprocessor(TrainingMethod).tokenize(
+        sample,
+        _FakeMMTokenTypeProcessor(),
+        types.SimpleNamespace(image_token_id=99),
+    )
+
+    assert result["mm_token_type_ids"].tolist() == [1, 0, 0, 0]
+
+
+def test_chat_template_preserves_processor_pixel_batch_axis():
+    sample = CanonicalSample(
+        id="sample-pixels",
+        image_path="",
+        question="Question?",
+        train_answer="Answer.",
+    )
+
+    result = ChatTemplatePreprocessor(TrainingMethod).tokenize(
+        sample,
+        _FakeLlavaPixelProcessor(),
+        types.SimpleNamespace(image_token_id=99),
+    )
+
+    assert result["pixel_values"].shape == (1, 3, 2, 2)
 
 
 def test_chat_template_appends_eos_when_full_template_omits_it():
@@ -211,13 +265,16 @@ def test_chat_template_appends_eos_when_full_template_omits_it():
         train_answer="Answer.",
     )
 
-    result = ChatTemplatePreprocessor(append_eos_to_training_answer=True).tokenize(
+    result = ChatTemplatePreprocessor(
+        TrainingMethod,
+        append_eos_to_training_answer=True,
+    ).tokenize(
         sample,
         _FakeProcessorWithoutTemplateEos(),
         model_config,
     )
 
-    assert result["prompt_preview"]["full_text"].endswith("</s>")
+    assert result["input_ids"].tolist() == [11, 12, 13, 14, 2]
     assert result["labels"].tolist() == [-100, -100, -100, 14, 2]
 
 
@@ -230,16 +287,20 @@ def test_chat_template_does_not_duplicate_existing_template_eos():
         train_answer="Answer.",
     )
 
-    result = ChatTemplatePreprocessor(append_eos_to_training_answer=True).tokenize(
+    result = ChatTemplatePreprocessor(
+        TrainingMethod,
+        append_eos_to_training_answer=True,
+    ).tokenize(
         sample,
         _FakeProcessorWithTemplateEos(),
         model_config,
     )
 
-    assert result["prompt_preview"]["full_text"].count("</s>") == 1
+    assert result["input_ids"].tolist() == [11, 12, 13, 14, 2, 15]
+    assert result["labels"].tolist() == [-100, -100, -100, 14, 2, 15]
 
 
-def test_chat_template_tokenize_emits_mores_intervention_mask_for_visual_tokens():
+def test_chat_template_tokenize_emits_mores_method_mask_for_visual_tokens():
     model_config = types.SimpleNamespace(image_token_id=99)
     sample = CanonicalSample(
         id="sample-image",
@@ -249,25 +310,34 @@ def test_chat_template_tokenize_emits_mores_intervention_mask_for_visual_tokens(
         metadata={"_pil_image": Image.new("RGB", (4, 4), color="white")},
     )
 
-    result = ChatTemplatePreprocessor(enable_mores_intervention=True).tokenize(
+    result = ChatTemplatePreprocessor(MoReSMethod).tokenize(
         sample,
         _FakeImageProcessor(),
         model_config,
     )
 
-    assert result["intervention_mask"].tolist() == [True, True, True, False, False, False, False]
-    assert result["prompt_preview"]["intervention_mask"] == [
-        True,
-        True,
-        True,
-        False,
-        False,
-        False,
-        False,
-    ]
+    assert result["method_mask"].tolist() == [True, True, True, False, False, False, False]
 
 
-def test_chat_template_retries_with_smaller_image_on_image_token_truncation():
+def test_chat_template_reft_method_mask_uses_prompt_boundary_not_full_sequence():
+    model_config = types.SimpleNamespace(image_token_id=99)
+    sample = CanonicalSample(
+        id="sample-reft",
+        image_path="",
+        question="Question?",
+        train_answer="Answer.",
+    )
+
+    result = ChatTemplatePreprocessor(ReFTMethod).tokenize(
+        sample,
+        _FakeProcessor(),
+        model_config,
+    )
+
+    assert result["method_mask"].tolist() == [True, True, False, False]
+
+
+def test_chat_template_propagates_image_token_truncation_error():
     model_config = types.SimpleNamespace(image_token_id=99)
     sample = CanonicalSample(
         id="sample-large-image",
@@ -277,37 +347,30 @@ def test_chat_template_retries_with_smaller_image_on_image_token_truncation():
         metadata={"_pil_image": Image.new("RGB", (1200, 800), color="white")},
     )
 
-    result = ChatTemplatePreprocessor().tokenize(
-        sample,
-        _FakeLargeImageProcessor(),
-        model_config,
-        max_length=4096,
-    )
-
-    assert result["input_ids"].tolist() == [99, 99, 99, 12, 13, 14, 15]
-    assert result["prompt_preview"]["image_tokenization_retry_count"] > 0
-    assert result["prompt_preview"]["original_image_size"] == [1200, 800]
-    assert max(result["prompt_preview"]["tokenized_image_size"]) <= 512
+    with pytest.raises(ValueError, match="Mismatch in `image` token count"):
+        ChatTemplatePreprocessor(TrainingMethod).tokenize(
+            sample,
+            _FakeLargeImageProcessor(),
+            model_config,
+            max_length=4096,
+        )
 
 
-def test_chat_template_collate_pads_intervention_mask():
-    preprocessor = ChatTemplatePreprocessor(
-        enable_instruction_supervision=True,
-        enable_mores_intervention=True,
-    )
+def test_chat_template_collate_pads_method_mask():
+    preprocessor = ChatTemplatePreprocessor(TrainingMethod)
     batch = preprocessor.collate(
         [
             {
                 "input_ids": torch.tensor([1, 2, 3]),
                 "labels": torch.tensor([1, 2, 3]),
-                "instruction_supervision_mask": torch.tensor([False, True, False]),
-                "intervention_mask": torch.tensor([False, True, True]),
+                "method_mask": torch.tensor([False, True, True]),
+                "mm_token_type_ids": torch.tensor([1, 0, 0]),
             },
             {
                 "input_ids": torch.tensor([4, 5]),
                 "labels": torch.tensor([4, 5]),
-                "instruction_supervision_mask": torch.tensor([False, True]),
-                "intervention_mask": torch.tensor([True, False]),
+                "method_mask": torch.tensor([True, False]),
+                "mm_token_type_ids": torch.tensor([1, 0]),
             },
         ]
     )
@@ -316,10 +379,65 @@ def test_chat_template_collate_pads_intervention_mask():
         [1, 1, 1],
         [1, 1, 0],
     ]
-    assert batch["intervention_mask"].tolist() == [
+    assert batch["method_mask"].tolist() == [
         [False, True, True],
         [True, False, False],
     ]
+    assert batch["mm_token_type_ids"].tolist() == [
+        [1, 0, 0],
+        [1, 0, 0],
+    ]
+
+
+def test_chat_template_collate_concatenates_qwen_visual_inputs():
+    preprocessor = ChatTemplatePreprocessor(TrainingMethod)
+    first_pixels = torch.arange(8).reshape(2, 4)
+    second_pixels = torch.arange(8, 16).reshape(2, 4)
+
+    batch = preprocessor.collate(
+        [
+            {
+                "input_ids": torch.tensor([1, 2]),
+                "labels": torch.tensor([1, 2]),
+                "pixel_values": first_pixels,
+                "image_grid_thw": torch.tensor([[1, 1, 2]]),
+            },
+            {
+                "input_ids": torch.tensor([3, 4]),
+                "labels": torch.tensor([3, 4]),
+                "pixel_values": second_pixels,
+                "image_grid_thw": torch.tensor([[1, 1, 2]]),
+            },
+        ]
+    )
+
+    assert torch.equal(batch["pixel_values"], torch.cat([first_pixels, second_pixels]))
+    assert batch["pixel_values"].shape == (4, 4)
+    assert batch["image_grid_thw"].tolist() == [[1, 1, 2], [1, 1, 2]]
+
+
+def test_chat_template_collate_concatenates_llava_visual_inputs():
+    preprocessor = ChatTemplatePreprocessor(TrainingMethod)
+    first_pixels = torch.zeros(1, 3, 2, 2)
+    second_pixels = torch.ones(1, 3, 2, 2)
+
+    batch = preprocessor.collate(
+        [
+            {
+                "input_ids": torch.tensor([1, 2]),
+                "labels": torch.tensor([1, 2]),
+                "pixel_values": first_pixels,
+            },
+            {
+                "input_ids": torch.tensor([3, 4]),
+                "labels": torch.tensor([3, 4]),
+                "pixel_values": second_pixels,
+            },
+        ]
+    )
+
+    assert torch.equal(batch["pixel_values"], torch.cat([first_pixels, second_pixels]))
+    assert batch["pixel_values"].shape == (2, 3, 2, 2)
 
 
 def test_chat_template_default_preprocessor_skips_l2t_only_fields():
@@ -331,17 +449,13 @@ def test_chat_template_default_preprocessor_skips_l2t_only_fields():
         train_answer="Answer.",
     )
 
-    result = ChatTemplatePreprocessor().tokenize(
+    result = ChatTemplatePreprocessor(TrainingMethod).tokenize(
         sample,
         _FakeProcessor(),
         model_config,
     )
 
-    assert "instruction_supervision_mask" not in result
-    assert "intervention_mask" not in result
-    assert "instruction_texts" not in result["prompt_preview"]
-    assert "instruction_supervision_spans" not in result["prompt_preview"]
-    assert "intervention_mask" not in result["prompt_preview"]
+    assert "method_mask" not in result
 
 
 def test_chat_template_tokenize_rejects_empty_question():
@@ -354,7 +468,7 @@ def test_chat_template_tokenize_rejects_empty_question():
     )
 
     with pytest.raises(ValueError, match="Question text is empty"):
-        ChatTemplatePreprocessor().tokenize(
+        ChatTemplatePreprocessor(TrainingMethod).tokenize(
             sample,
             _FakeProcessor(),
             model_config,

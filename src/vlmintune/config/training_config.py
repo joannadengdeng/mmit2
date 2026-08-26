@@ -1,280 +1,123 @@
-"""Training configuration: YAML loading, validation, and conversion.
-
-Loads a YAML config file and produces the single-stage dict structure expected
-by ``vlmintune.training.__main__.main()``.
-
-Usage::
-
-    from vlmintune.config.training_config import load_config, config_to_trainer_dict
-
-    cfg = load_config("experiment_setup/my_experiment/train_config.yaml")
-    trainer_dict = config_to_trainer_dict(cfg)
-"""
+"""Strict public training configuration for the initial release."""
 from __future__ import annotations
 
 import os
-import warnings
-from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from dataclasses import asdict, dataclass
+from typing import Any, Dict
 
 import yaml
 
 from vlmintune.models.registry import get_model_spec, list_model_names
 from vlmintune.training.methods.registry import (
-    get_training_method_defaults,
+    get_training_method_cls,
     list_training_methods,
 )
 
-_LORA_FAMILY_METHODS = {"lora", "qlora", "dora", "l2t", "mole"}
 
-
-# ── Dataclasses ──────────────────────────────────────────────────────
-
-@dataclass
-class ModelConfig:
-    name: str = ""
-
-
-@dataclass
-class TrainingParams:
-    ft_method: str = "qlora"
-    num_epochs: int = 3
-    per_device_batch_size: int = 4
-    gradient_accumulation_steps: int = 4
-    max_length: int = 2048
-    dataloader_num_workers: int = 0
-    dataloader_pin_memory: bool = False
-    dataloader_persistent_workers: bool = False
-    learning_rate: float = 2e-4
-    warmup_ratio: float = 0.03
-    weight_decay: float = 0.0
-    max_grad_norm: float = 1.0
-    save_steps: int = 500
-    output_dir: str = "output"
-    params: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ExperimentConfig:
-    name: str = ""
-    base_dir: str = "experiments"
-    setup_dir: str = ""
-
-
-@dataclass
-class DataConfig:
-    dataset_name: str = ""
-    split: str = ""
-    max_samples: int = 0
-    visnec_score_file: str = ""
-    visnec_top_ratio: float = 1.0
+PUBLIC_CONFIG_FIELDS = {
+    "model",
+    "dataset",
+    "method",
+    "epochs",
+    "learning_rate",
+    "batch_size",
+    "gradient_accumulation_steps",
+    "max_length",
+    "max_samples",
+    "seed",
+    "output_dir",
+}
 
 
 @dataclass
 class TrainingConfig:
-    model: ModelConfig = field(default_factory=ModelConfig)
-    training: TrainingParams = field(default_factory=TrainingParams)
-    experiment: ExperimentConfig = field(default_factory=ExperimentConfig)
-    data: DataConfig = field(default_factory=DataConfig)
-
-
-# ── YAML loading ─────────────────────────────────────────────────────
+    model: str = ""
+    dataset: str = ""
+    method: str = ""
+    epochs: int = 1
+    learning_rate: float = 2e-4
+    batch_size: int = 4
+    gradient_accumulation_steps: int = 4
+    max_length: int = 2048
+    max_samples: int = 0
+    seed: int = 42
+    output_dir: str = "output"
 
 
 def load_config_dict(raw: Dict[str, Any]) -> TrainingConfig:
-    """Load and validate a training config from an in-memory mapping."""
+    """Load one strict flat config mapping."""
+
     raw = raw or {}
+    unknown = set(raw) - PUBLIC_CONFIG_FIELDS
+    if unknown:
+        raise ValueError(f"Unknown training config fields: {sorted(unknown)}")
 
-    raw_model = raw.get("model", {})
-    raw_training = raw.get("training", {})
-    raw_experiment = raw.get("experiment", {})
-    raw_data = raw.get("data", {})
-
-    cfg = TrainingConfig(
-        model=ModelConfig(
-            name=str(raw_model.get("name", "")).strip(),
-        ),
-        training=TrainingParams(
-            ft_method=str(raw_training.get("ft_method", "qlora")),
-            num_epochs=int(raw_training.get("num_epochs", 3)),
-            per_device_batch_size=int(raw_training.get("per_device_batch_size", 4)),
-            gradient_accumulation_steps=int(raw_training.get("gradient_accumulation_steps", 4)),
-            max_length=int(raw_training.get("max_length", 2048)),
-            dataloader_num_workers=int(raw_training.get("dataloader_num_workers", 0)),
-            dataloader_pin_memory=bool(raw_training.get("dataloader_pin_memory", False)),
-            dataloader_persistent_workers=bool(raw_training.get("dataloader_persistent_workers", False)),
-            learning_rate=float(raw_training.get("learning_rate", 2e-4)),
-            warmup_ratio=float(raw_training.get("warmup_ratio", 0.03)),
-            weight_decay=float(raw_training.get("weight_decay", 0.0)),
-            max_grad_norm=float(raw_training.get("max_grad_norm", 1.0)),
-            save_steps=int(raw_training.get("save_steps", 500)),
-            output_dir=str(raw_training.get("output_dir", "output")),
-            params=dict(raw_training.get("params", {})),
-        ),
-        experiment=ExperimentConfig(
-            name=str(raw_experiment.get("name", "")).strip(),
-            base_dir=str(raw_experiment.get("base_dir", "experiments")).strip() or "experiments",
-            setup_dir=str(raw_experiment.get("setup_dir", "")).strip(),
-        ),
-        data=DataConfig(
-            dataset_name=str(raw_data.get("dataset_name", "")).strip(),
-            split=str(raw_data.get("split", "")).strip(),
-            max_samples=int(raw_data.get("max_samples", 0)),
-            visnec_score_file=str(raw_data.get("visnec_score_file", "")).strip(),
-            visnec_top_ratio=float(raw_data.get("visnec_top_ratio", 1.0)),
-        ),
+    config = TrainingConfig(
+        model=str(raw.get("model", "")).strip(),
+        dataset=str(raw.get("dataset", "")).strip(),
+        method=str(raw.get("method", "")).strip(),
+        epochs=int(raw.get("epochs", 1)),
+        learning_rate=float(raw.get("learning_rate", 2e-4)),
+        batch_size=int(raw.get("batch_size", 4)),
+        gradient_accumulation_steps=int(raw.get("gradient_accumulation_steps", 4)),
+        max_length=int(raw.get("max_length", 2048)),
+        max_samples=int(raw.get("max_samples", 0)),
+        seed=int(raw.get("seed", 42)),
+        output_dir=str(raw.get("output_dir", "output")).strip(),
     )
-
-    validate(cfg)
-    merge_method_defaults(cfg)
-    return cfg
+    validate(config)
+    return config
 
 
 def load_config(path: str) -> TrainingConfig:
-    """Load and validate a YAML training config file.
-
-    Parameters
-    ----------
-    path : str
-        Path to the YAML config file.
-
-    Returns
-    -------
-    TrainingConfig
-        Validated config with method defaults merged into ``training.params``.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the config file does not exist.
-    ValueError
-        If required fields are missing or invalid.
-    """
     path = os.path.expanduser(path)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Config file not found: {path}")
-
-    with open(path, "r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
-    cfg = load_config_dict(raw)
-    if not cfg.experiment.setup_dir:
-        cfg.experiment.setup_dir = infer_setup_dir_from_config_path(path)
-    return cfg
+    with open(path, "r", encoding="utf-8") as file:
+        return load_config_dict(yaml.safe_load(file) or {})
 
 
-def infer_setup_dir_from_config_path(path: str) -> str:
-    config_dir = os.path.dirname(os.path.normpath(path))
-    if not config_dir:
-        return ""
-
-    cwd = os.path.normpath(os.getcwd())
-    abs_config_dir = os.path.normpath(os.path.abspath(config_dir))
-    try:
-        rel = os.path.relpath(abs_config_dir, cwd)
-    except ValueError:
-        return config_dir
-    if rel == ".":
-        return config_dir
-    if not rel.startswith(".."):
-        return rel
-    return config_dir
-
-
-def validate(cfg: TrainingConfig) -> None:
-    """Validate config fields; raise ValueError with all issues at once."""
-    errors: List[str] = []
-
-    if not cfg.model.name:
-        errors.append("model.name: required field is empty")
-    elif cfg.model.name:
+def validate(config: TrainingConfig) -> None:
+    errors = []
+    if not config.model:
+        errors.append("model: required field is empty")
+    else:
         try:
-            get_model_spec(cfg.model.name)
+            get_model_spec(config.model)
         except KeyError:
             errors.append(
-                f"model.name: unknown built-in model '{cfg.model.name}'. "
-                f"Available: {list_model_names()}"
+                f"model: unknown built-in model '{config.model}'. Available: {list_model_names()}"
             )
 
-    if not cfg.data.dataset_name:
-        errors.append("data.dataset_name: required field is empty")
+    if not config.dataset:
+        errors.append("dataset: required field is empty")
 
-    if not cfg.experiment.name:
-        errors.append("experiment.name: required field is empty")
-
-    available = list_training_methods()
-    if available and cfg.training.ft_method not in available:
+    available_methods = list_training_methods()
+    if not config.method:
+        errors.append("method: required field is empty")
+    elif config.method not in available_methods:
         errors.append(
-            f"training.ft_method: '{cfg.training.ft_method}' is not registered. "
-            f"Available: {available}"
+            f"method: '{config.method}' is not registered. Available: {available_methods}"
         )
+    else:
+        supported_models = get_training_method_cls(config.method).supported_model_names
+        if supported_models is not None and config.model not in supported_models:
+            supported = ", ".join(repr(model) for model in supported_models)
+            errors.append(
+                f"method: '{config.method}' only supports model(s): {supported}"
+            )
 
-    method_name = cfg.training.ft_method
-    method_params = cfg.training.params
-    requires_targets = method_name in _LORA_FAMILY_METHODS
-    if requires_targets and not method_params.get("target_modules"):
-        errors.append(
-            "training.params.target_modules: required non-empty list for "
-            f"method '{method_name}'"
-        )
+    if not config.output_dir:
+        errors.append("output_dir: required field is empty")
+
+    if config.max_samples < 0:
+        errors.append("max_samples: must be >= 0 (0 means the full training split)")
 
     if errors:
-        msg = "Config validation errors:\n" + "\n".join(f"  - {e}" for e in errors)
-        raise ValueError(msg)
+        raise ValueError("Config validation errors:\n" + "\n".join(f"  - {error}" for error in errors))
 
 
-def merge_method_defaults(cfg: TrainingConfig) -> None:
-    """Merge method default params into cfg.training.params."""
-    defaults = get_training_method_defaults(cfg.training.ft_method)
-    unknown = set(cfg.training.params) - set(defaults)
-    if unknown:
-        warnings.warn(
-            f"Unknown params for method '{cfg.training.ft_method}': {unknown}. "
-            f"Known params: {set(defaults)}",
-            stacklevel=3,
-        )
-    cfg.training.params = {**defaults, **cfg.training.params}
+def config_to_trainer_dict(config: TrainingConfig) -> dict:
+    """Return the strict flat representation consumed by the CLI."""
 
-
-# ── Conversion ───────────────────────────────────────────────────────
-
-def config_to_trainer_dict(cfg: TrainingConfig) -> dict:
-    """Convert TrainingConfig to the trainer dict format expected by __main__.py."""
-    data_config = {
-        "dataset_name": cfg.data.dataset_name,
-    }
-    if cfg.data.split:
-        data_config["split"] = cfg.data.split
-    if cfg.data.max_samples:
-        data_config["max_samples"] = cfg.data.max_samples
-    if cfg.data.visnec_score_file:
-        data_config["visnec_score_file"] = cfg.data.visnec_score_file
-        data_config["visnec_top_ratio"] = cfg.data.visnec_top_ratio
-
-    return {
-        "model": {
-            "name": cfg.model.name,
-        },
-        "experiment": {
-            "name": cfg.experiment.name,
-            "base_dir": cfg.experiment.base_dir,
-            "setup_dir": cfg.experiment.setup_dir,
-        },
-        "data": data_config,
-        "training_method": cfg.training.ft_method,
-        "method_params": cfg.training.params,
-        "training": {
-            "num_epochs": cfg.training.num_epochs,
-            "per_device_batch_size": cfg.training.per_device_batch_size,
-            "gradient_accumulation_steps": cfg.training.gradient_accumulation_steps,
-            "max_length": cfg.training.max_length,
-            "dataloader_num_workers": cfg.training.dataloader_num_workers,
-            "dataloader_pin_memory": cfg.training.dataloader_pin_memory,
-            "dataloader_persistent_workers": cfg.training.dataloader_persistent_workers,
-            "learning_rate": cfg.training.learning_rate,
-            "warmup_ratio": cfg.training.warmup_ratio,
-            "weight_decay": cfg.training.weight_decay,
-            "max_grad_norm": cfg.training.max_grad_norm,
-            "save_steps": cfg.training.save_steps,
-            "output_dir": cfg.training.output_dir,
-        },
-    }
+    return asdict(config)

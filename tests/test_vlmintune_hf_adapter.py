@@ -86,6 +86,7 @@ def test_rejects_unavailable_requested_split():
     try:
         adapter = module.HFDatasetsAdapter.__new__(module.HFDatasetsAdapter)
         adapter.dataset_name = "lmms-lab/textvqa"
+        adapter._split_data_files = None
         with pytest.raises(ValueError, match="Requested split 'train'"):
             adapter.load_dataset(DatasetsMod, ("lmms-lab/textvqa",), "train", True, True)
     finally:
@@ -122,6 +123,7 @@ def test_does_not_fallback_to_other_split_when_requested_split_fails():
     try:
         adapter = module.HFDatasetsAdapter.__new__(module.HFDatasetsAdapter)
         adapter.dataset_name = "lmms-lab/textvqa"
+        adapter._split_data_files = None
         with pytest.raises(RuntimeError, match="Failed to load dataset 'lmms-lab/textvqa' split 'train'"):
             adapter.load_dataset(DatasetsMod, ("lmms-lab/textvqa",), "train", True, True)
         assert calls

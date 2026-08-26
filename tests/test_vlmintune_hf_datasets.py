@@ -1,9 +1,185 @@
 import os
 import sys
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from vlmintune.data.hf_datasets import HFDatasetsAdapter
+import vlmintune.data.hf_datasets as hf_datasets_module
+
+
+def test_vqav2_loads_only_the_requested_split_files(monkeypatch):
+    calls = []
+
+    class FakeDatasets:
+        @staticmethod
+        def load_dataset_builder(*args, **kwargs):
+            calls.append(("builder", args, kwargs))
+            return SimpleNamespace(info=SimpleNamespace(splits={}))
+
+        @staticmethod
+        def load_dataset(*args, **kwargs):
+            calls.append(("dataset", args, kwargs))
+            return []
+
+    monkeypatch.setattr(hf_datasets_module, "datasets", FakeDatasets)
+
+    HFDatasetsAdapter(
+        dataset_name="pingzhili/vqa_v2",
+        split="validation",
+        max_samples=1,
+        load_images=False,
+    )
+
+    expected = {"validation": "data/validation-*"}
+    assert calls[0][0] == "builder"
+    assert calls[0][2]["data_files"] == expected
+    assert calls[1][0] == "dataset"
+    assert calls[1][2]["data_files"] == expected
+
+
+def _make_vqav2_snapshot(tmp_path, revision="test-revision"):
+    snapshot = (
+        tmp_path
+        / "hub"
+        / "datasets--pingzhili--vqa_v2"
+        / "snapshots"
+        / revision
+    )
+    (snapshot / "data").mkdir(parents=True)
+    (snapshot / "README.md").write_text("cached", encoding="utf-8")
+    return snapshot
+
+
+def test_vqav2_local_snapshot_uses_parquet_loader(monkeypatch, tmp_path):
+    snapshot = _make_vqav2_snapshot(tmp_path)
+    shard_a = snapshot / "data" / "validation-00001-of-00002.parquet"
+    shard_b = snapshot / "data" / "validation-00000-of-00002.parquet"
+    shard_a.write_bytes(b"a")
+    shard_b.write_bytes(b"b")
+    calls = []
+
+    class FakeDatasets:
+        @staticmethod
+        def load_dataset_builder(*args, **kwargs):
+            calls.append(("builder", args, kwargs))
+            return SimpleNamespace(info=SimpleNamespace(splits={}))
+
+        @staticmethod
+        def load_dataset(*args, **kwargs):
+            calls.append(("dataset", args, kwargs))
+            return []
+
+    def fake_snapshot_download(**kwargs):
+        assert kwargs["repo_id"] == "pingzhili/vqa_v2"
+        assert kwargs["repo_type"] == "dataset"
+        assert kwargs["revision"] == "test-revision"
+        assert kwargs["local_files_only"] is True
+        assert kwargs["allow_patterns"] == ["README.md", "data/validation-*"]
+        return str(snapshot)
+
+    monkeypatch.setenv("VLMINTUNE_VQAV2_SNAPSHOT", str(snapshot))
+    monkeypatch.setattr(hf_datasets_module, "datasets", FakeDatasets)
+    monkeypatch.setattr(hf_datasets_module, "snapshot_download", fake_snapshot_download)
+
+    HFDatasetsAdapter(
+        dataset_name="pingzhili/vqa_v2",
+        split="validation",
+        max_samples=1,
+        load_images=False,
+    )
+
+    expected_files = [str(shard_b.absolute()), str(shard_a.absolute())]
+    assert calls[0][1] == ("parquet",)
+    assert calls[0][2]["data_files"] == {"validation": expected_files}
+    assert calls[1][1] == ("parquet",)
+    assert calls[1][2]["data_files"] == {"validation": expected_files}
+
+
+def test_vqav2_local_snapshot_missing_split_fails_without_hub_fallback(
+    monkeypatch, tmp_path
+):
+    snapshot = _make_vqav2_snapshot(tmp_path)
+    dataset_calls = []
+
+    monkeypatch.setenv("VLMINTUNE_VQAV2_SNAPSHOT", str(snapshot))
+    monkeypatch.setattr(
+        hf_datasets_module,
+        "snapshot_download",
+        lambda **kwargs: str(snapshot),
+    )
+    monkeypatch.setattr(
+        hf_datasets_module.datasets,
+        "load_dataset",
+        lambda *args, **kwargs: dataset_calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="no non-empty Parquet shards"):
+        HFDatasetsAdapter(
+            dataset_name="pingzhili/vqa_v2",
+            split="validation",
+            max_samples=1,
+            load_images=False,
+        )
+
+    assert dataset_calls == []
+
+
+def test_vqav2_local_parquet_streaming_integration(monkeypatch, tmp_path):
+    pyarrow = pytest.importorskip("pyarrow")
+    parquet = pytest.importorskip("pyarrow.parquet")
+    snapshot = _make_vqav2_snapshot(tmp_path)
+    shard = snapshot / "data" / "train-00000-of-00001.parquet"
+    parquet.write_table(
+        pyarrow.table({"question_id": [7], "question": ["What is shown?"]}),
+        shard,
+    )
+
+    monkeypatch.setenv("VLMINTUNE_VQAV2_SNAPSHOT", str(snapshot))
+    monkeypatch.setattr(
+        hf_datasets_module,
+        "snapshot_download",
+        lambda **kwargs: str(snapshot),
+    )
+
+    adapter = HFDatasetsAdapter(
+        dataset_name="pingzhili/vqa_v2",
+        split="train",
+        max_samples=1,
+        load_images=False,
+    )
+
+    assert adapter.streaming is True
+    assert next(iter(adapter._hf_dataset))["question_id"] == 7
+
+
+def test_other_datasets_do_not_override_data_files(monkeypatch):
+    calls = []
+
+    class FakeDatasets:
+        @staticmethod
+        def load_dataset_builder(*args, **kwargs):
+            calls.append(("builder", args, kwargs))
+            return SimpleNamespace(info=SimpleNamespace(splits={}))
+
+        @staticmethod
+        def load_dataset(*args, **kwargs):
+            calls.append(("dataset", args, kwargs))
+            return []
+
+    monkeypatch.setattr(hf_datasets_module, "datasets", FakeDatasets)
+
+    HFDatasetsAdapter(
+        dataset_name="lmms-lab/textvqa",
+        split="validation",
+        max_samples=1,
+        load_images=False,
+    )
+
+    assert "data_files" not in calls[0][2]
+    assert "data_files" not in calls[1][2]
 
 
 def test_limited_sample_training_prefers_streaming(monkeypatch):

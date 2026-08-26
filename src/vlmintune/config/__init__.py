@@ -6,13 +6,14 @@ from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "TrainingConfig": ("vlmintune.config.training_config", "TrainingConfig"),
-    "ModelConfig": ("vlmintune.config.training_config", "ModelConfig"),
-    "TrainingParams": ("vlmintune.config.training_config", "TrainingParams"),
-    "ExperimentConfig": ("vlmintune.config.training_config", "ExperimentConfig"),
-    "DataConfig": ("vlmintune.config.training_config", "DataConfig"),
+    "PUBLIC_CONFIG_FIELDS": (
+        "vlmintune.config.training_config",
+        "PUBLIC_CONFIG_FIELDS",
+    ),
     "load_config": ("vlmintune.config.training_config", "load_config"),
     "load_config_dict": ("vlmintune.config.training_config", "load_config_dict"),
     "config_to_trainer_dict": ("vlmintune.config.training_config", "config_to_trainer_dict"),
+    "validate": ("vlmintune.config.training_config", "validate"),
 }
 
 __all__ = list(_EXPORTS)

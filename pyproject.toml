@@ -6,13 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "vlmintune"
 version = "0.1.0"
 description = "Multimodal Instruction Tuning library v2 — pluggable training, inference, and evaluation for VLMs"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "torch~=2.11.0",
     "torchvision~=0.26.0",
     "transformers~=5.7.0",
     "pillow>=9.0",
     "peft~=0.19.1",
+    "safetensors>=0.4",
     "accelerate~=1.13.0",
     "datasets>=2.14,<4.0",
     "pyyaml>=6.0",

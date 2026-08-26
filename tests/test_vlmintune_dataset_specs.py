@@ -28,6 +28,7 @@ def test_textvqa_spec_majority_vote_and_default_splits():
 
 def test_vqav2_spec_uses_majority_vote_for_train_answer():
     spec = get_dataset_spec("pingzhili/vqa_v2")
+    assert spec.data_model.split_file_pattern == "data/{split}-*"
     sample = spec.parse_row(
         {
             "question_id": 20,
@@ -133,7 +134,4 @@ def test_scienceqa_image_spec_uses_choice_index_answer():
     )
     assert sample.train_answer == "1"
     assert sample.eval_answers == ["1"]
-    assert sample.metadata["answer_index"] == 1
-    assert sample.metadata["answer_text"] == "iron nail"
-    assert sample.metadata["choices"] == ["wooden spoon", "iron nail", "plastic cup"]
-    assert sample.metadata["hint"] == "Think about metals."
+    assert sample.metadata == {}

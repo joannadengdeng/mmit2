@@ -8,10 +8,11 @@ import torch.nn as nn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vlmintune.config.training_config import load_config_dict
 from vlmintune.models.registry import get_model_spec
 from vlmintune.training.methods.mores import (
     MORES_CHECKPOINT_FORMAT,
+    MORES_RANK,
+    MORES_VISUAL_TOKEN_INDICES,
     MoReSAdapter,
     MoReSMethod,
     compact_mores_state,
@@ -20,18 +21,8 @@ from vlmintune.training.methods.mores import (
 from vlmintune.training.methods.registry import list_training_methods
 
 
-class _FakeTokenizer:
-    def convert_tokens_to_ids(self, token):
-        return {"<|image_pad|>": 42}[token]
-
-    def get_added_vocab(self):
-        return {"<|image_pad|>": 42}
-
-
 class _FakeProcessor:
-    def __init__(self):
-        self.image_token_id = 42
-        self.tokenizer = _FakeTokenizer()
+    pass
 
 
 class _ToyBlock(nn.Module):
@@ -50,12 +41,18 @@ class _ToyLanguageModel(nn.Module):
         self.layers = nn.ModuleList([_ToyBlock(hidden_size) for _ in range(num_layers)])
 
 
-class _ToyQwenVL(nn.Module):
-    def __init__(self, hidden_size: int = 4, vocab_size: int = 64, num_layers: int = 1):
+class _ToyVLM(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int = 4,
+        vocab_size: int = 64,
+        num_layers: int = 1,
+        image_token_id: int = 42,
+    ):
         super().__init__()
         self.config = types.SimpleNamespace(
             text_config=types.SimpleNamespace(hidden_size=hidden_size),
-            image_token_id=42,
+            image_token_id=image_token_id,
         )
         self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
         with torch.no_grad():
@@ -71,200 +68,152 @@ class _ToyQwenVL(nn.Module):
         return hidden_states
 
 
-class _ToyLlava(nn.Module):
-    def __init__(self, hidden_size: int = 4, vocab_size: int = 64, num_layers: int = 1):
-        super().__init__()
-        self.config = types.SimpleNamespace(
-            text_config=types.SimpleNamespace(hidden_size=hidden_size),
-            image_token_id=32000,
-        )
-        self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
-        with torch.no_grad():
-            self.embed_tokens.weight.zero_()
-        self.model = nn.Module()
-        self.model.language_model = _ToyLanguageModel(hidden_size, num_layers)
-
-    def forward(self, input_ids=None, inputs_embeds=None, attention_mask=None, **kwargs):
-        del attention_mask, kwargs
-        hidden_states = inputs_embeds if inputs_embeds is not None else self.embed_tokens(input_ids)
-        for layer in self.model.language_model.layers:
-            hidden_states = layer(hidden_states)
-        return hidden_states
-
-
-def test_mores_registers_as_built_in_training_method():
-    assert "mores" in list_training_methods()
-
-
-def test_mores_prepare_model_freezes_backbone_and_adds_adapters():
-    model = _ToyQwenVL(num_layers=2)
+def prepare(model=None, model_name="qwen25vl_3b_instruct"):
+    model = model or _ToyVLM()
     method = MoReSMethod()
-
-    prepared_model, info = method.prepare_model(
+    prepared, info = method.prepare_model(
         model,
         _FakeProcessor(),
-        {},
-        model_spec=get_model_spec("qwen25vl_3b_instruct"),
+        model_spec=get_model_spec(model_name),
+    )
+    return prepared, method, info
+
+
+def test_mores_is_registered_with_fixed_recipe():
+    assert "mores" in list_training_methods()
+    assert MORES_RANK == 1
+
+
+def test_mores_mask_is_fixed_first_four_last_five_without_duplicates():
+    config = types.SimpleNamespace(image_token_id=42)
+    input_ids = torch.tensor([7, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 8])
+
+    mask = MoReSMethod.build_method_mask(
+        model_config=config,
+        input_ids=input_ids,
     )
 
-    assert prepared_model is model
-    assert hasattr(model, "mores_adapters")
-    assert len(model.mores_adapters) == 2
-    assert "backbone=qwen25vl_3b_instruct" in info
-    assert "Transformer layers: 2" in info
-    assert "positions=f4+l5" in info
+    assert MORES_VISUAL_TOKEN_INDICES == (1, 2, 3, 4, -5, -4, -3, -2, -1)
+    assert mask.tolist() == [
+        False,
+        True,
+        True,
+        True,
+        True,
+        False,
+        True,
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
 
-    base_params = [
-        param
-        for name, param in model.named_parameters()
+    short_mask = MoReSMethod.build_method_mask(
+        model_config=config,
+        input_ids=torch.tensor([42, 3, 42, 42]),
+    )
+    assert short_mask.tolist() == [True, False, True, True]
+
+
+def test_mores_freezes_backbone_and_installs_rank_one_adapter_on_every_layer():
+    model, _, info = prepare(_ToyVLM(num_layers=3))
+
+    assert len(model.mores_adapters) == 3
+    assert all(adapter.linear.out_features == MORES_RANK for adapter in model.mores_adapters)
+    assert "rank=1" in info
+    assert "layers=all (3)" in info
+    assert "visual positions=f4+l5" in info
+
+    base_parameters = [
+        parameter
+        for name, parameter in model.named_parameters()
         if not name.startswith("mores_adapters")
     ]
-    assert base_params
-    assert all(not param.requires_grad for param in base_params)
-    assert all(param.requires_grad for param in model.mores_adapters.parameters())
-    assert all(
-        next(adapter.parameters()).device == next(layer.parameters()).device
-        for adapter, layer in zip(model.mores_adapters, model.model.language_model.layers)
-    )
+    assert base_parameters
+    assert all(not parameter.requires_grad for parameter in base_parameters)
+    assert all(parameter.requires_grad for parameter in model.mores_adapters.parameters())
 
 
-def test_mores_only_steers_visual_tokens_during_forward():
-    model = _ToyQwenVL(num_layers=1)
-    method = MoReSMethod()
-    method.prepare_model(
-        model,
-        _FakeProcessor(),
-        {},
-        model_spec=get_model_spec("qwen25vl_3b_instruct"),
-    )
-
-    adapter = model.mores_adapters[0]
+def test_mores_training_only_changes_selected_visual_rows_and_drops_runtime_mask():
+    model, method, _ = prepare()
     with torch.no_grad():
-        adapter.w_down.weight.zero_()
-        adapter.w_down.weight[0, 0] = 1.0
-        adapter.linear.weight.zero_()
-        adapter.linear.bias.fill_(2.0)
+        model.mores_adapters[0].linear.weight.zero_()
+        model.mores_adapters[0].linear.bias.fill_(2.0)
 
-    batch = {
-        "input_ids": torch.tensor([[3, 42, 5, 42]]),
-        "attention_mask": torch.tensor([[1, 1, 1, 1]]),
-        "intervention_mask": torch.tensor([[False, True, False, False]]),
-    }
-    forward_batch = method.build_forward_batch(batch)
+    input_ids = torch.tensor([[3, 42, 4, 42]])
+    runtime_mask = torch.tensor([[False, True, False, False]])
+    forward_batch = method.build_forward_batch(
+        {
+            "input_ids": input_ids,
+            "attention_mask": torch.ones_like(input_ids),
+            "labels": input_ids.clone(),
+            "method_mask": runtime_mask,
+        }
+    )
     output = model(**forward_batch)
 
-    assert output.shape == (1, 4, 4)
-    assert torch.allclose(output[0, 0], torch.zeros(4))
-    assert torch.allclose(output[0, 2], torch.zeros(4))
+    assert "method_mask" not in forward_batch
     assert not torch.allclose(output[0, 1], torch.zeros(4))
-    assert torch.allclose(output[0, 3], torch.zeros(4))
+    for token_index in (0, 2, 3):
+        assert torch.allclose(output[0, token_index], torch.zeros(4))
 
 
-def test_mores_build_forward_batch_keeps_intervention_mask():
-    method = MoReSMethod()
-    batch = {
-        "input_ids": torch.tensor([[1, 2]]),
-        "attention_mask": torch.tensor([[1, 1]]),
-        "instruction_supervision_mask": torch.tensor([[False, True]]),
-        "intervention_mask": torch.tensor([[True, False]]),
-    }
+def test_mores_eval_prefill_builds_mask_and_decode_token_is_not_steered():
+    model, method, _ = prepare()
+    model.eval()
+    with torch.no_grad():
+        model.mores_adapters[0].linear.weight.zero_()
+        model.mores_adapters[0].linear.bias.fill_(2.0)
 
-    forward_batch = method.build_forward_batch(batch)
-
-    assert torch.equal(forward_batch["intervention_mask"], batch["intervention_mask"])
-    assert "instruction_supervision_mask" not in forward_batch
-
-
-def test_mores_forward_builds_intervention_mask_when_missing():
-    model = _ToyQwenVL(num_layers=1)
-    method = MoReSMethod()
-    method.prepare_model(
-        model,
-        _FakeProcessor(),
-        {},
-        model_spec=get_model_spec("qwen25vl_3b_instruct"),
+    prefill = model(
+        input_ids=torch.tensor([[3, 42, 42, 4]]),
+        attention_mask=torch.ones(1, 4, dtype=torch.long),
     )
 
-    model(input_ids=torch.tensor([[3, 42, 5, 42]]))
+    class _Cache:
+        @staticmethod
+        def get_seq_length():
+            return 4
 
-    assert method.current_intervention_mask.tolist() == [[False, True, False, True]]
-
-
-def test_mores_inference_inputs_do_not_pass_intervention_mask_to_generate():
-    method = MoReSMethod()
-    inputs = {
-        "input_ids": torch.tensor([[3, 42, 5, 42]]),
-        "attention_mask": torch.tensor([[1, 1, 1, 1]]),
-    }
-
-    prepared = method.prepare_inference_inputs(
-        _ToyQwenVL(),
-        _FakeProcessor(),
-        inputs,
+    decode = model(
+        input_ids=torch.tensor([[5]]),
+        attention_mask=torch.ones(1, 5, dtype=torch.long),
+        past_key_values=_Cache(),
     )
 
-    assert prepared is inputs
-    assert "intervention_mask" not in prepared
+    assert prefill.abs().sum(dim=-1).ne(0).tolist() == [[False, True, True, False]]
+    assert torch.allclose(decode, torch.zeros_like(decode))
 
 
-def test_mores_compact_checkpoint_omits_orthogonal_parametrization_buffers():
-    adapters = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(2)])
+def test_mores_compact_checkpoint_has_only_fixed_recipe_tensors_and_round_trips():
+    source = nn.ModuleList([MoReSAdapter(hidden_size=4)])
+    target = nn.ModuleList([MoReSAdapter(hidden_size=4)])
+    inputs = torch.randn(3, 4)
+    with torch.no_grad():
+        source[0].linear.weight.fill_(0.25)
+        source[0].linear.bias.fill_(0.5)
 
-    state = compact_mores_state(adapters)
+    state = compact_mores_state(source)
+    expected = source[0](inputs)
+    load_compact_mores_state(target, state)
 
     assert state["format"] == MORES_CHECKPOINT_FORMAT
-    assert len(state["layers"]) == 2
     assert set(state["layers"][0]) == {
         "w_down_weight",
         "linear_weight",
         "linear_bias",
     }
-    assert state["layers"][0]["w_down_weight"].shape == (1, 4)
-
-
-def test_mores_compact_checkpoint_round_trips_adapter_outputs():
-    source = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(1)])
-    target = nn.ModuleList([MoReSAdapter(hidden_size=4, rank=1) for _ in range(1)])
-    inputs = torch.randn(3, 4)
-
-    with torch.no_grad():
-        source[0].w_down.weight.zero_()
-        source[0].w_down.weight[0, 2] = 1.0
-        source[0].linear.weight.fill_(0.25)
-        source[0].linear.bias.fill_(0.5)
-
-    expected = source[0](inputs)
-    load_compact_mores_state(target, compact_mores_state(source))
-
     assert torch.allclose(target[0](inputs), expected, atol=1e-6, rtol=1e-5)
 
+    with pytest.raises(ValueError, match="MoReS checkpoint"):
+        load_compact_mores_state(target, {"layers": state["layers"]})
 
-def test_mores_supports_llava_layout():
-    model = _ToyLlava(num_layers=2)
-    method = MoReSMethod()
 
-    prepared_model, info = method.prepare_model(
-        model,
-        _FakeProcessor(),
-        {},
-        model_spec=get_model_spec("llava15_7b"),
-    )
+def test_mores_supports_llava_language_layer_layout():
+    model = _ToyVLM(image_token_id=32)
+    prepared, _, info = prepare(model, model_name="llava15_7b")
 
-    assert prepared_model is model
-    assert hasattr(model, "mores_adapters")
-    assert len(model.mores_adapters) == 2
+    assert prepared is model
+    assert len(model.mores_adapters) == 1
     assert "backbone=llava15_7b" in info
-
-
-def test_mores_config_accepts_model_name_only():
-    cfg = load_config_dict(
-        {
-            "model": {"name": "qwen25vl_3b_instruct"},
-            "experiment": {"name": "demo"},
-            "training": {"ft_method": "mores"},
-            "data": {"dataset_name": "lmms-lab/textvqa", "split": "train"},
-        }
-    )
-
-    assert cfg.model.name == "qwen25vl_3b_instruct"
-    assert cfg.training.params == {}

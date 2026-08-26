@@ -1,0 +1,2272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="vlmintune 中文使用与开发指南">
+  <title>vlmintune 使用与开发指南</title>
+  <script>document.documentElement.classList.add("js");</script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --ink: #172033;
+      --muted: #64748b;
+      --border: #dce5f0;
+      --accent: #4f46e5;
+      --accent-soft: #eef2ff;
+      --accent-2: #0891b2;
+      --code-bg: #111827;
+      --code-ink: #e5eef9;
+      --shadow: 0 18px 50px rgba(30, 41, 59, 0.08);
+      --topbar-height: 64px;
+    }
+
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0b1120;
+      --surface: #111827;
+      --surface-soft: #172033;
+      --ink: #e5edf7;
+      --muted: #9aa9bc;
+      --border: #29364a;
+      --accent: #8b87ff;
+      --accent-soft: #242451;
+      --accent-2: #40c9e8;
+      --code-bg: #070b13;
+      --code-ink: #dce8f6;
+      --shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: calc(var(--topbar-height) + 24px);
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 82% -10%, rgba(79, 70, 229, 0.13), transparent 30rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.78;
+      text-rendering: optimizeLegibility;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    .reading-progress {
+      position: fixed;
+      inset: 0 auto auto 0;
+      z-index: 100;
+      width: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 80ms linear;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      height: var(--topbar-height);
+      border-bottom: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+      background: color-mix(in srgb, var(--surface) 86%, transparent);
+      backdrop-filter: blur(16px);
+    }
+
+    .topbar-inner {
+      width: min(1440px, 100%);
+      height: 100%;
+      margin: 0 auto;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand {
+      color: var(--ink);
+      font-size: 19px;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+      text-decoration: none;
+    }
+
+    .topbar-spacer { flex: 1; }
+
+    .icon-button {
+      min-width: 40px;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .nav-toggle { display: none; }
+
+    .layout {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 32px 28px 72px;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 930px);
+      justify-content: center;
+      gap: 44px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: calc(var(--topbar-height) + 28px);
+      align-self: start;
+      max-height: calc(100vh - var(--topbar-height) - 56px);
+      overflow: auto;
+      scrollbar-width: thin;
+    }
+
+    .sidebar-title {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .toc {
+      display: grid;
+      gap: 2px;
+      border-left: 1px solid var(--border);
+    }
+
+    .toc-link {
+      margin-left: -1px;
+      padding: 6px 12px;
+      border-left: 2px solid transparent;
+      border-radius: 0 8px 8px 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+      text-decoration: none;
+      transition: 140ms ease;
+    }
+
+    .toc-link:hover {
+      color: var(--ink);
+      background: var(--surface-soft);
+    }
+
+    .toc-link.active {
+      border-left-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 650;
+    }
+
+    .toc-group {
+      display: grid;
+    }
+
+    .toc-sublist {
+      display: none;
+      gap: 1px;
+      padding: 5px 0 10px 14px;
+    }
+
+    .toc-group.is-active .toc-sublist {
+      display: grid;
+    }
+
+    .toc-sub-link {
+      padding: 5px 9px;
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+      text-decoration: none;
+    }
+
+    .toc-sub-link:hover {
+      color: var(--ink);
+      background: var(--surface-soft);
+    }
+
+    .toc-sub-link.active {
+      color: var(--accent);
+      background: var(--accent-soft);
+      font-weight: 650;
+    }
+
+    .toc-sub-link[data-level="4"] {
+      padding-left: 24px;
+      font-size: 12.5px;
+    }
+
+    .doc {
+      min-width: 0;
+      min-height: calc(100vh - var(--topbar-height) - 104px);
+      padding: 52px 58px 64px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    html.js .doc-page:not(.is-active) {
+      display: none;
+    }
+
+    .doc-page > h1 {
+      margin: 0;
+      max-width: 780px;
+      font-size: clamp(34px, 5vw, 54px);
+      line-height: 1.12;
+      letter-spacing: -0.045em;
+    }
+
+    .doc-page > h1 + p {
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.8;
+    }
+
+    h2, h3, h4 {
+      position: relative;
+      color: var(--ink);
+      line-height: 1.32;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin: 66px 0 20px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 29px;
+    }
+
+    .doc-page > h2:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    h1, h2, h3, h4 {
+      scroll-margin-top: calc(var(--topbar-height) + 24px);
+    }
+
+    h3 {
+      margin: 42px 0 14px;
+      font-size: 21px;
+    }
+
+    h4 {
+      margin: 30px 0 12px;
+      font-size: 17px;
+    }
+
+    .heading-anchor {
+      margin-left: 9px;
+      color: var(--muted);
+      font-size: 0.7em;
+      font-weight: 500;
+      opacity: 0;
+      text-decoration: none;
+      transition: opacity 120ms ease;
+    }
+
+    h1:hover .heading-anchor,
+    h2:hover .heading-anchor,
+    h3:hover .heading-anchor,
+    h4:hover .heading-anchor {
+      opacity: 0.7;
+    }
+
+    p, ul, ol { margin: 0 0 18px; }
+    li + li { margin-top: 6px; }
+    strong { font-weight: 720; }
+
+    code {
+      padding: 0.16em 0.38em;
+      border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+      border-radius: 6px;
+      background: var(--surface-soft);
+      color: color-mix(in srgb, var(--accent) 78%, var(--ink));
+      font: 0.9em/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .code-shell {
+      position: relative;
+      margin: 22px 0;
+      border: 1px solid #263248;
+      border-radius: 13px;
+      background: var(--code-bg);
+      overflow: hidden;
+    }
+
+    .code-shell pre {
+      margin: 0;
+      padding: 42px 20px 20px;
+      overflow: auto;
+      color: var(--code-ink);
+      font-size: 13px;
+      line-height: 1.66;
+      tab-size: 2;
+    }
+
+    .code-shell pre code {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+      overflow-wrap: normal;
+    }
+
+    .code-language {
+      position: absolute;
+      top: 10px;
+      left: 15px;
+      color: #8ea0b8;
+      font: 650 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .copy-button {
+      position: absolute;
+      top: 8px;
+      right: 9px;
+      z-index: 2;
+      padding: 4px 9px;
+      border: 1px solid #34445e;
+      border-radius: 7px;
+      background: #182235;
+      color: #aebdd0;
+      cursor: pointer;
+      font: 600 11px/1.5 ui-sans-serif, system-ui, sans-serif;
+    }
+
+    .copy-button:hover {
+      color: white;
+      border-color: #526681;
+    }
+
+    .table-scroll {
+      margin: 22px 0 30px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 660px;
+      border-collapse: collapse;
+      background: var(--surface);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--surface-soft);
+      color: var(--ink);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    tbody tr:hover {
+      background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
+    }
+
+    .flow-diagram {
+      margin: 24px 0 30px;
+      padding: 22px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 64%, transparent), transparent),
+        var(--surface-soft);
+    }
+
+    .flow-node {
+      flex: 0 0 auto;
+      max-width: 170px;
+      padding: 9px 12px;
+      border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--ink);
+      font: 650 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+      text-align: center;
+    }
+
+    .flow-arrow {
+      flex: 0 0 auto;
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .dataflow-overview {
+      display: grid;
+      align-items: stretch;
+      gap: 16px;
+      overflow: visible;
+    }
+
+    .dataflow-common,
+    .dataflow-lane-steps {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .dataflow-common .flow-node {
+      flex: 1 1 0;
+      max-width: none;
+    }
+
+    .dataflow-branches {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .dataflow-lane {
+      min-width: 0;
+      padding: 15px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .dataflow-lane-label {
+      display: inline-block;
+      margin-bottom: 11px;
+      color: var(--accent);
+      font: 750 11px/1.2 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .dataflow-lane-steps .flow-node {
+      flex: 1 1 0;
+      max-width: none;
+      padding-inline: 7px;
+    }
+
+    .dataflow-lane-note {
+      margin: 11px 0 0;
+      color: var(--ink-soft);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 960px) {
+      .nav-toggle {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .layout {
+        display: block;
+        padding: 20px 16px 56px;
+      }
+
+      .sidebar {
+        position: fixed;
+        inset: var(--topbar-height) 0 0 auto;
+        z-index: 40;
+        width: min(330px, 88vw);
+        max-height: none;
+        padding: 24px;
+        border-left: 1px solid var(--border);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        transform: translateX(105%);
+        transition: transform 180ms ease;
+      }
+
+      .sidebar.open { transform: translateX(0); }
+
+      .doc { padding: 42px 34px 54px; }
+    }
+
+    @media (max-width: 760px) {
+      .dataflow-common { overflow-x: auto; }
+      .dataflow-common .flow-node { flex: 0 0 132px; }
+      .dataflow-branches { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 600px) {
+      .topbar-inner { padding: 0 15px; }
+      .doc {
+        padding: 32px 20px 42px;
+        border-radius: 16px;
+      }
+      .doc-page > h1 { font-size: 35px; }
+      .doc-page > h1 + p { font-size: 16px; }
+      h2 {
+        margin-top: 54px;
+        font-size: 25px;
+      }
+      h3 { font-size: 19px; }
+
+    }
+
+    @media print {
+      :root {
+        --bg: #fff;
+        --surface: #fff;
+        --ink: #111827;
+        --muted: #4b5563;
+        --border: #d1d5db;
+      }
+
+      .topbar,
+      .sidebar,
+      .reading-progress,
+      .copy-button,
+      .heading-anchor {
+        display: none !important;
+      }
+
+      body {
+        background: white;
+        font-size: 10.5pt;
+      }
+
+      .layout {
+        display: block;
+        width: 100%;
+        padding: 0;
+      }
+
+      .doc {
+        width: 100%;
+        padding: 0;
+        border: 0;
+        box-shadow: none;
+      }
+
+      html.js .doc-page {
+        display: block !important;
+      }
+
+      .doc-page + .doc-page {
+        break-before: page;
+      }
+
+      h2, h3 { break-after: avoid; }
+      pre, table, .flow-diagram { break-inside: avoid; }
+    }
+
+    /* AWS-style documentation shell. */
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-soft: #f2f3f3;
+      --ink: #0f141a;
+      --muted: #5f6b7a;
+      --border: #d5dbdb;
+      --accent: #0972d3;
+      --accent-soft: #f1f8ff;
+      --accent-2: #ec7211;
+      --code-bg: #161d26;
+      --code-ink: #f1f3f3;
+      --shadow: none;
+      --topbar-height: 96px;
+    }
+
+    html[data-theme="dark"] {
+      --bg: #0f141a;
+      --surface: #151a21;
+      --surface-soft: #20262d;
+      --ink: #f1f3f3;
+      --muted: #aab7b8;
+      --border: #414d5c;
+      --accent: #69aeff;
+      --accent-soft: #172b43;
+      --accent-2: #ff9900;
+      --code-bg: #080c11;
+      --code-ink: #f1f3f3;
+    }
+
+    body {
+      background: var(--surface);
+      font-family: Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.62;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover { text-decoration: underline; }
+
+    .reading-progress {
+      height: 2px;
+      background: var(--accent);
+    }
+
+    .topbar {
+      height: var(--topbar-height);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      backdrop-filter: none;
+    }
+
+    .utility-strip {
+      height: 28px;
+      background: #161d26;
+      color: #f1f3f3;
+      font-size: 12px;
+      line-height: 28px;
+    }
+
+    .utility-strip-inner {
+      width: min(1600px, 100%);
+      height: 100%;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .utility-spacer { flex: 1; }
+
+    .global-nav { height: 68px; }
+
+    .topbar-inner {
+      width: min(1600px, 100%);
+      height: 68px;
+      padding: 0 24px;
+      gap: 24px;
+    }
+
+    .brand {
+      color: var(--ink);
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+    }
+
+    .brand:hover { text-decoration: none; }
+
+    .guide-search {
+      width: min(300px, 24vw);
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 11px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    .guide-search:focus-within {
+      outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+      outline-offset: 1px;
+    }
+
+    .guide-search input {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .guide-search input::placeholder { color: var(--muted); }
+
+    .icon-button {
+      height: 36px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .layout {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: 0;
+      grid-template-columns: 296px minmax(0, 1fr);
+      justify-content: stretch;
+      gap: 0;
+    }
+
+    .sidebar {
+      top: var(--topbar-height);
+      max-height: calc(100vh - var(--topbar-height));
+      min-height: calc(100vh - var(--topbar-height));
+      padding: 0 0 36px;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .sidebar-product {
+      padding: 24px 26px 22px;
+      display: grid;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-product strong {
+      font-size: 21px;
+      line-height: 1.2;
+    }
+
+    .sidebar-product span {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .sidebar-title {
+      margin: 20px 26px 8px;
+      color: var(--ink);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: none;
+    }
+
+    .toc {
+      gap: 0;
+      padding: 0 18px;
+      border-left: 0;
+    }
+
+    .toc-link {
+      margin-left: 0;
+      padding: 7px 10px;
+      border-left: 3px solid transparent;
+      border-radius: 0;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .toc-link:hover,
+    .toc-link.active {
+      background: transparent;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .toc-link.active {
+      border-left-color: var(--accent);
+      font-weight: 700;
+    }
+
+    .toc-sublist {
+      gap: 0;
+      padding: 2px 0 10px 17px;
+    }
+
+    .toc-group.is-searching .toc-sublist { display: grid; }
+
+    .toc-sub-link {
+      padding: 5px 10px;
+      border-radius: 0;
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .toc-sub-link:hover,
+    .toc-sub-link.active {
+      background: transparent;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .toc-sub-link.active { font-weight: 700; }
+
+    .layout > main {
+      min-width: 0;
+      padding: 24px 40px 72px;
+    }
+
+    .doc {
+      width: min(860px, 100%);
+      min-height: calc(100vh - var(--topbar-height) - 128px);
+      margin: 0 auto;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .doc-page > h1,
+    .doc-page > h2:first-child {
+      margin: 0 0 18px;
+      padding: 0 0 17px;
+      border: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: clamp(36px, 4vw, 48px);
+      font-weight: 800;
+      line-height: 1.13;
+      letter-spacing: -0.035em;
+    }
+
+    .doc-page > h1 + p,
+    .doc-page > h2:first-child + p {
+      margin-top: 26px;
+      color: var(--ink);
+      font-size: 17px;
+      line-height: 1.65;
+    }
+
+    h2, h3, h4 {
+      letter-spacing: -0.012em;
+    }
+
+    h3 {
+      margin: 42px 0 14px;
+      font-size: 26px;
+      font-weight: 780;
+    }
+
+    h4 {
+      margin: 30px 0 11px;
+      font-size: 20px;
+      font-weight: 760;
+    }
+
+    p, ul, ol { margin-bottom: 16px; }
+
+    .heading-anchor { color: var(--accent); }
+
+    code { border-radius: 2px; }
+
+    .code-shell {
+      margin: 20px 0 24px;
+      border-radius: 3px;
+    }
+
+    .copy-button { border-radius: 2px; }
+
+    .table-scroll {
+      margin: 20px 0 28px;
+      border-radius: 2px;
+    }
+
+    th { background: var(--surface-soft); }
+
+    tbody tr:hover {
+      background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+    }
+
+    .flow-diagram { border-radius: 3px; }
+
+    .package-diagram {
+      margin: 22px 0 34px;
+      padding: 26px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 48%, transparent), transparent 58%),
+        color-mix(in srgb, var(--surface-soft) 72%, var(--surface));
+      box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 78%, transparent);
+    }
+
+    .diagram-lane {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .diagram-lane-heading {
+      padding: 13px 14px;
+      display: grid;
+      align-content: center;
+      gap: 4px;
+      border-left: 4px solid var(--accent);
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface));
+    }
+
+    .diagram-lane-heading strong { font-size: 14px; }
+
+    .diagram-lane-heading span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .diagram-lane-eval .diagram-lane-heading {
+      border-left-color: var(--accent-2);
+      background: color-mix(in srgb, var(--accent-2) 11%, var(--surface));
+    }
+
+    .diagram-flow {
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1fr) 22px minmax(0, 1fr) 22px
+        minmax(0, 1fr) 22px minmax(0, 1fr);
+      gap: 4px;
+      align-items: center;
+    }
+
+    .diagram-flow-eval {
+      grid-template-columns:
+        minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr);
+    }
+
+    .diagram-node {
+      min-width: 0;
+      min-height: 82px;
+      padding: 11px 10px;
+      display: grid;
+      align-content: center;
+      gap: 3px;
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--accent);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: 0 6px 16px color-mix(in srgb, var(--ink) 7%, transparent);
+      text-align: center;
+    }
+
+    .diagram-lane-eval .diagram-node { border-top-color: var(--accent-2); }
+
+    .diagram-node-label {
+      color: var(--accent);
+      width: fit-content;
+      justify-self: center;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .diagram-lane-eval .diagram-node-label {
+      color: var(--accent-2);
+      background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+    }
+
+    .diagram-node strong { font-size: 13px; }
+
+    .diagram-node small {
+      color: var(--muted);
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+
+    .diagram-flow-arrow,
+    .diagram-bridge-arrow {
+      color: var(--accent);
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .diagram-flow-arrow {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--accent-soft);
+    }
+
+    .diagram-lane-eval .diagram-flow-arrow {
+      color: var(--accent-2);
+      background: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+    }
+
+    .diagram-bridge {
+      margin-left: 132px;
+      padding: 8px 0;
+      display: grid;
+      justify-items: center;
+      gap: 5px;
+    }
+
+    .diagram-checkpoint {
+      width: min(300px, 100%);
+      padding: 14px 18px;
+      display: grid;
+      gap: 4px;
+      border: 0;
+      border-radius: 11px;
+      background: linear-gradient(135deg, #2563eb, #6d28d9);
+      color: white;
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent);
+      text-align: center;
+    }
+
+    .diagram-checkpoint .diagram-node-label {
+      color: white;
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .diagram-checkpoint small {
+      color: rgba(255, 255, 255, 0.84);
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+
+    .diagram-bridge-arrow {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--accent-soft);
+    }
+
+    .diagram-bridge-note {
+      padding: 3px 8px;
+      border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .feature-list {
+      margin: 18px 0 30px;
+      display: grid;
+      grid-template-columns: 165px minmax(0, 1fr);
+      border-top: 1px solid var(--border);
+    }
+
+    .feature-list dt,
+    .feature-list dd {
+      margin: 0;
+      padding: 14px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .feature-list dt {
+      color: var(--ink);
+      font-weight: 750;
+    }
+
+    .feature-list dd { color: var(--muted); }
+
+    .prerequisite-note {
+      margin: 20px 0 24px;
+      padding: 15px 18px;
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+      border-left-width: 4px;
+      border-radius: 3px;
+      background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface));
+    }
+
+    .prerequisite-note strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .prerequisite-note p { margin: 0; }
+
+    .tutorial-tasks {
+      margin: 10px 0 30px;
+      padding-left: 24px;
+    }
+
+    .tutorial-tasks li + li { margin-top: 4px; }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 276px minmax(0, 1fr); }
+      .layout > main { padding-right: 32px; padding-left: 32px; }
+    }
+
+    @media (max-width: 960px) {
+      :root { --topbar-height: 68px; }
+
+      .utility-strip,
+      .guide-search { display: none; }
+
+      .global-nav,
+      .topbar-inner { height: 68px; }
+
+      .layout {
+        display: block;
+        padding: 0;
+      }
+
+      .sidebar {
+        inset: var(--topbar-height) 0 0 auto;
+        min-height: 0;
+        padding: 0 0 32px;
+      }
+
+      .layout > main { padding: 22px 20px 56px; }
+
+    }
+
+    @media (max-width: 600px) {
+      .topbar-inner { padding: 0 15px; gap: 10px; }
+      .doc-page > h1,
+      .doc-page > h2:first-child { font-size: 34px; }
+      h3 { font-size: 23px; }
+      h4 { font-size: 18px; }
+
+      .diagram-lane { grid-template-columns: 1fr; }
+
+      .diagram-lane-heading {
+        grid-template-columns: auto 1fr;
+        align-items: baseline;
+        column-gap: 10px;
+      }
+
+      .diagram-flow,
+      .diagram-flow-eval { grid-template-columns: 1fr; }
+
+      .diagram-flow-arrow { transform: rotate(90deg); }
+      .diagram-node { min-height: 0; }
+      .diagram-bridge { margin-left: 0; }
+
+      .feature-list { grid-template-columns: 1fr; }
+      .feature-list dt { padding-bottom: 2px; border-bottom: 0; }
+      .feature-list dd { padding-top: 2px; }
+    }
+
+    @media print {
+      .utility-strip { display: none !important; }
+      .layout > main { padding: 0; }
+      .doc { max-width: none; }
+      .package-diagram,
+      .feature-list,
+      .prerequisite-note { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="reading-progress" id="reading-progress" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="utility-strip">
+      <div class="utility-strip-inner">
+        <span>vlmintune documentation</span>
+        <span class="utility-spacer"></span>
+        <span>中文</span>
+      </div>
+    </div>
+    <div class="global-nav">
+      <div class="topbar-inner">
+        <a class="brand" href="#vlmintune-是什么">vlmintune</a>
+        <span class="topbar-spacer"></span>
+        <label class="guide-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="doc-search" type="search" placeholder="搜索本指南" aria-label="搜索本指南">
+        </label>
+        <button class="icon-button nav-toggle" id="nav-toggle" type="button" aria-expanded="false">目录</button>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="切换颜色主题">◐ 外观</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-product">
+        <strong>vlmintune</strong>
+        <span>使用与开发指南</span>
+      </div>
+      <p class="sidebar-title">目录</p>
+      <nav class="toc" aria-label="文档目录">
+<div class="toc-group is-active" data-page-id="vlmintune-是什么">
+<a class="toc-link toc-page-link" href="#vlmintune-是什么" aria-current="page">概览</a>
+<div class="toc-sublist">
+<a class="toc-sub-link" data-level="3" href="#vlmintune-工作方式">1. 工作方式</a>
+<a class="toc-sub-link" data-level="3" href="#vlmintune-核心功能">2. 核心功能</a>
+</div>
+</div>
+<div class="toc-group" data-page-id="2-快速开始">
+<a class="toc-link toc-page-link" href="#2-快速开始">快速开始</a>
+<div class="toc-sublist">
+<a class="toc-sub-link" data-level="3" href="#21-概览">概览</a>
+<a class="toc-sub-link" data-level="3" href="#22-step-1安装">1. 安装</a>
+<a class="toc-sub-link" data-level="3" href="#23-step-2创建训练配置">2. 创建训练配置</a>
+<a class="toc-sub-link" data-level="3" href="#24-step-3运行训练">3. 运行训练</a>
+<a class="toc-sub-link" data-level="3" href="#25-step-4评估-checkpoint">4. 评估 checkpoint</a>
+</div>
+</div>
+<div class="toc-group" data-page-id="3-数据流">
+<a class="toc-link toc-page-link" href="#3-数据流">数据流</a>
+<div class="toc-sublist">
+<a class="toc-sub-link" data-level="3" href="#12-数据集">1. 数据集</a>
+<a class="toc-sub-link" data-level="3" href="#31-样本格式">2. 样本如何进入模型</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-hf-row">1. Hugging Face row</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-canonical-sample">2. CanonicalSample</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-chat-messages">3. Chat messages</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-rendered-text">4. Chat template 输出</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-processor-output">5. Processor 输出</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-labels-masks">6. Labels 与 mask</a>
+<a class="toc-sub-link" data-level="3" href="#11-模型">3. 模型</a>
+<a class="toc-sub-link" data-level="3" href="#13-训练方法">4. 训练方法</a>
+<a class="toc-sub-link" data-level="3" href="#dataflow-training-batch">5. Batch、forward 与 loss</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-collate">1. 组成 batch</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-forward-loss">2. Forward 与 loss</a>
+<a class="toc-sub-link" data-level="3" href="#32-checkpoint-保存与恢复">6. Checkpoint 保存与恢复</a>
+<a class="toc-sub-link" data-level="3" href="#14-评估方法">7. Evaluation</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-generation">1. Generation</a>
+<a class="toc-sub-link" data-level="4" href="#dataflow-scoring">2. Prediction 与评分</a>
+</div>
+</div>
+<div class="toc-group" data-page-id="4-扩展开发">
+<a class="toc-link toc-page-link" href="#4-扩展开发">扩展开发</a>
+<div class="toc-sublist">
+<a class="toc-sub-link" data-level="3" href="#41-数据集">1. 数据集</a>
+<a class="toc-sub-link" data-level="4" href="#411-hugging-face-数据集">1. Hugging Face 数据集</a>
+<a class="toc-sub-link" data-level="4" href="#412-自有数据集">2. 自有数据集</a>
+<a class="toc-sub-link" data-level="3" href="#42-模型">2. 模型</a>
+<a class="toc-sub-link" data-level="3" href="#43-训练方法">3. 训练方法</a>
+<a class="toc-sub-link" data-level="4" href="#431-vladapter-示例">1. vl_adapter 示例</a>
+<a class="toc-sub-link" data-level="3" href="#44-评估方法">4. 评估方法</a>
+</div>
+</div>
+</nav>
+    </aside>
+
+    <main>
+      <article class="doc">
+<section class="doc-page is-active" data-page-id="vlmintune-是什么" data-page-index="0" data-nav-title="概览" aria-labelledby="vlmintune-是什么">
+<h1 id="vlmintune-是什么">vlmintune 是什么？<a class="heading-anchor" href="#vlmintune-是什么" aria-label="链接到 vlmintune 是什么">#</a></h1>
+<p><code>vlmintune</code> 是一个面向视觉语言模型（VLM）的 instruction tuning library。它将数据集、模型、训练方法和评估方法连接为一套完整的训练与评估 pipeline，覆盖从数据加载、模型训练到 checkpoint 评估的全过程。</p>
+<p>统一的组件接口让不同实验共享相同的数据处理、训练、保存和评估逻辑。使用者可以按需替换其中任意组件，从而减少重复代码和手工配置，更方便地复用实验流程，并在一致的环境中比较不同模型与方法。</p>
+<h3 id="vlmintune-工作方式">1. 工作方式<a class="heading-anchor" href="#vlmintune-工作方式" aria-label="链接到 1. 工作方式">#</a></h3>
+<p>数据进入 pipeline 后，依次经过所选模型、训练方法和训练流程。训练结果保存为 checkpoint，需要评估时再加载 checkpoint 并运行指定的评估方法。</p>
+<div class="package-diagram" role="img" aria-label="数据输入依次经过模型、训练方法和训练流程生成 checkpoint；评估时加载 checkpoint，运行评估方法并输出预测和指标">
+  <div class="diagram-lane">
+    <div class="diagram-lane-heading"><strong>训练</strong><span>选择组件并执行训练</span></div>
+    <div class="diagram-flow">
+      <div class="diagram-node"><span class="diagram-node-label">Input</span><strong>Dataset</strong><small>加载训练数据</small></div>
+      <span class="diagram-flow-arrow" aria-hidden="true">→</span>
+      <div class="diagram-node"><span class="diagram-node-label">Select</span><strong>Model</strong><small>选择视觉语言模型</small></div>
+      <span class="diagram-flow-arrow" aria-hidden="true">→</span>
+      <div class="diagram-node"><span class="diagram-node-label">Apply</span><strong>Method</strong><small>应用训练方法</small></div>
+      <span class="diagram-flow-arrow" aria-hidden="true">→</span>
+      <div class="diagram-node"><span class="diagram-node-label">Run</span><strong>Training</strong><small>执行统一训练流程</small></div>
+    </div>
+  </div>
+  <div class="diagram-bridge">
+    <span class="diagram-bridge-arrow" aria-hidden="true">↓</span>
+    <div class="diagram-checkpoint"><span class="diagram-node-label">Training output</span><strong>Checkpoint</strong><small>保存训练权重与恢复信息</small></div>
+    <span class="diagram-bridge-note">可选：加载并评估</span>
+    <span class="diagram-bridge-arrow" aria-hidden="true">↓</span>
+  </div>
+  <div class="diagram-lane diagram-lane-eval">
+    <div class="diagram-lane-heading"><strong>评估</strong><span>从 checkpoint 生成结果</span></div>
+    <div class="diagram-flow diagram-flow-eval">
+      <div class="diagram-node"><span class="diagram-node-label">Restore</span><strong>Load</strong><small>恢复模型与训练方法</small></div>
+      <span class="diagram-flow-arrow" aria-hidden="true">→</span>
+      <div class="diagram-node"><span class="diagram-node-label">Evaluate</span><strong>Evaluation method</strong><small>运行所选评估方法</small></div>
+      <span class="diagram-flow-arrow" aria-hidden="true">→</span>
+      <div class="diagram-node"><span class="diagram-node-label">Output</span><strong>Results</strong><small>输出预测结果与指标</small></div>
+    </div>
+  </div>
+</div>
+<h3 id="vlmintune-核心功能">2. 核心功能<a class="heading-anchor" href="#vlmintune-核心功能" aria-label="链接到 2. 核心功能">#</a></h3>
+<dl class="feature-list">
+  <dt>Dataset</dt>
+  <dd>在不同的内置数据集之间选择，或通过 dataset API 接入新的数据来源。</dd>
+  <dt>Model</dt>
+  <dd>加载不同的已注册视觉语言模型，或通过 model API 接入新的 Hugging Face 模型。</dd>
+  <dt>Training method</dt>
+  <dd>切换不同的内置训练方法，或通过 method API 实现并注册新的方法。</dd>
+  <dt>Evaluation method</dt>
+  <dd>选择不同的内置评估方法，或通过 evaluation API 添加新的评估逻辑与指标。</dd>
+</dl>
+</section>
+<section class="doc-page" data-page-id="2-快速开始" data-page-index="1" data-nav-title="快速开始" aria-labelledby="2-快速开始">
+<h2 id="2-快速开始">快速开始<a class="heading-anchor" href="#2-快速开始" aria-label="链接到快速开始">#</a></h2>
+<p>使用本教程开始使用 <code>vlmintune</code>。你将安装 library，使用 LoRA 在 8 个 TextVQA 样本上完成一次最小训练，然后重新加载生成的 checkpoint 并运行 evaluation。</p>
+<h3 id="21-概览">概览<a class="heading-anchor" href="#21-概览" aria-label="链接到概览">#</a></h3>
+<p>本教程使用内置的 <code>qwen25vl_3b_instruct</code> 模型、<code>lmms-lab/textvqa</code> 数据集和 <code>lora</code> 方法。所有命令均在仓库根目录执行。</p>
+<div class="prerequisite-note">
+  <strong>开始前</strong>
+  <p>需要 Python 3.10 或更高版本，以及支持 BF16 且具有足够显存的 CUDA GPU。首次运行还需要下载 Qwen2.5-VL 3B 模型和 TextVQA 数据。</p>
+</div>
+<p>本教程包含以下任务：</p>
+<ol class="tutorial-tasks">
+  <li><a href="#22-step-1安装">Step 1：安装</a></li>
+  <li><a href="#23-step-2创建训练配置">Step 2：创建训练配置</a></li>
+  <li><a href="#24-step-3运行训练">Step 3：运行训练</a></li>
+  <li><a href="#25-step-4评估-checkpoint">Step 4：评估 checkpoint</a></li>
+</ol>
+<h3 id="22-step-1安装">1. 安装<a class="heading-anchor" href="#22-step-1安装" aria-label="链接到 1. 安装">#</a></h3>
+<p>从 <a href="">anonymous repository</a> 下载源码，进入项目目录并安装：</p>
+<pre><code class="language-bash">cd vlmintune
+pip install -e .
+</code></pre>
+<p>本教程使用 LoRA，不需要额外安装 bitsandbytes。</p>
+<h3 id="23-step-2创建训练配置">2. 创建训练配置<a class="heading-anchor" href="#23-step-2创建训练配置" aria-label="链接到 2. 创建训练配置">#</a></h3>
+<p>在仓库根目录创建 <code>train_config.yaml</code>：</p>
+<pre><code class="language-yaml">model: qwen25vl_3b_instruct
+dataset: lmms-lab/textvqa
+method: lora
+batch_size: 1
+max_samples: 8
+output_dir: experiments/textvqa_lora_demo/checkpoint
+</code></pre>
+<p>未写出的字段使用默认值：训练 1 个 epoch、learning rate 为 <code>2e-4</code>、gradient accumulation 为 <code>4</code>、最大序列长度为 <code>2048</code>。</p>
+<h3 id="24-step-3运行训练">3. 运行训练<a class="heading-anchor" href="#24-step-3运行训练" aria-label="链接到 3. 运行训练">#</a></h3>
+<p>运行训练 CLI：</p>
+<pre><code class="language-bash">python -m vlmintune.training --config train_config.yaml
+</code></pre>
+<p>训练完成后，checkpoint 位于 <code>experiments/textvqa_lora_demo/checkpoint</code>。其中的 <code>vlmintune_meta.json</code> 记录模型和训练方法，其他文件保存 LoRA 权重。</p>
+<h3 id="25-step-4评估-checkpoint">4. 评估 checkpoint<a class="heading-anchor" href="#25-step-4评估-checkpoint" aria-label="链接到 4. 评估 checkpoint">#</a></h3>
+<p>在仓库根目录创建最小的 <code>eval_config.yaml</code>：</p>
+<pre><code class="language-yaml">experiment:
+  name: textvqa_lora_demo
+
+eval:
+  source: trained
+  dataset_name: lmms-lab/textvqa
+  max_samples: 8
+</code></pre>
+<p>运行 evaluation CLI：</p>
+<pre><code class="language-bash">python -m vlmintune.eval --config eval_config.yaml
+</code></pre>
+<p>Evaluation 会从约定路径自动找到 checkpoint，并从 <code>vlmintune_meta.json</code> 恢复模型与 LoRA 方法。运行完成后可以查看：</p>
+<pre><code class="language-text">experiments/textvqa_lora_demo/eval_trained/
+├── eval.json
+├── predictions.jsonl
+├── eval_ids.json
+└── run.log
+</code></pre>
+<p><code>eval.json</code> 包含汇总指标，<code>predictions.jsonl</code> 保存每个样本的预测、ground truth 和单样本分数。</p>
+</section>
+<section class="doc-page" data-page-id="3-数据流" data-page-index="2" data-nav-title="数据流" aria-labelledby="3-数据流">
+<h2 id="3-数据流">数据流<a class="heading-anchor" href="#3-数据流" aria-label="链接到数据流">#</a></h2>
+<p>训练与评估共用同一个 dataset adapter、模型 processor 和方法 registry。训练会同时构造包含答案的完整对话和只包含问题的 prompt；评估只构造 prompt，并在生成后解码新增 token。</p>
+<div class="flow-diagram dataflow-overview" role="img" aria-label="Hugging Face row 经过统一预处理后分为训练和评估两条数据流">
+  <div class="dataflow-common">
+    <div class="flow-node">Hugging Face row</div><span class="flow-arrow">→</span>
+    <div class="flow-node">CanonicalSample</div><span class="flow-arrow">→</span>
+    <div class="flow-node">Chat messages</div><span class="flow-arrow">→</span>
+    <div class="flow-node">Chat template text</div><span class="flow-arrow">→</span>
+    <div class="flow-node">Processor tensors</div>
+  </div>
+  <div class="dataflow-branches">
+    <div class="dataflow-lane">
+      <span class="dataflow-lane-label">Training path</span>
+      <div class="dataflow-lane-steps">
+        <div class="flow-node">Labels + masks</div><span class="flow-arrow">→</span>
+        <div class="flow-node">Batch + forward</div><span class="flow-arrow">→</span>
+        <div class="flow-node">Loss + checkpoint</div>
+      </div>
+      <p class="dataflow-lane-note">Full input 提供监督；prompt-only input 用来确定答案边界。</p>
+    </div>
+    <div class="dataflow-lane">
+      <span class="dataflow-lane-label">Evaluation path</span>
+      <div class="dataflow-lane-steps">
+        <div class="flow-node">Prompt inputs</div><span class="flow-arrow">→</span>
+        <div class="flow-node">Generate + decode</div><span class="flow-arrow">→</span>
+        <div class="flow-node">Prediction + metric</div>
+      </div>
+      <p class="dataflow-lane-note">Base source 直接加载模型；trained source 先从 checkpoint 恢复方法权重。</p>
+    </div>
+  </div>
+</div>
+
+<table>
+<thead>
+<tr><th>阶段</th><th>主要入口</th><th>输出</th></tr>
+</thead>
+<tbody>
+<tr><td>加载与标准化</td><td><code>HFDatasetsAdapter</code>、<code>HFDatasetSpec.parse_row()</code></td><td><code>CanonicalSample</code></td></tr>
+<tr><td>构造对话</td><td><code>build_prompt_messages()</code>、<code>build_full_messages()</code></td><td>prompt-only 和 full message list</td></tr>
+<tr><td>渲染模板</td><td><code>processor.apply_chat_template()</code></td><td><code>prompt_text</code> 和 <code>full_text</code></td></tr>
+<tr><td>多模态处理</td><td><code>processor(text=..., images=...)</code></td><td><code>input_ids</code>、视觉 tensor 与模型相关字段</td></tr>
+<tr><td>建立监督</td><td><code>ChatTemplatePreprocessor.tokenize()</code></td><td><code>labels</code> 及可选的 L2T、MoReS、ReFT mask</td></tr>
+<tr><td>组成 batch</td><td><code>ChatTemplatePreprocessor.collate()</code></td><td>右侧补齐的 tensor batch 与 <code>attention_mask</code></td></tr>
+<tr><td>训练</td><td><code>TrainingMethod</code>、<code>model(**forward_batch)</code></td><td>logits、loss、gradient 与更新后的方法参数</td></tr>
+<tr><td>保存</td><td><code>TrainingMethod.save_checkpoint()</code></td><td>方法权重与 <code>vlmintune_meta.json</code></td></tr>
+<tr><td>评估</td><td><code>LocalMethod.generate()</code>、<code>score_prediction()</code></td><td>prediction、单样本分数与汇总指标</td></tr>
+</tbody>
+</table>
+<h3 id="12-数据集">1. 数据集<a class="heading-anchor" href="#12-数据集" aria-label="链接到 1. 数据集">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>配置中的 <code>dataset</code></th>
+<th>实际 Hugging Face 数据集</th>
+<th>默认训练 split</th>
+<th>默认评估 split</th>
+<th>指标</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>lmms-lab/textvqa</code></td>
+<td><code>lmms-lab/textvqa</code></td>
+<td><code>train</code></td>
+<td><code>validation</code></td>
+<td><code>vqa_accuracy</code></td>
+</tr>
+<tr>
+<td><code>pingzhili/vqa_v2</code></td>
+<td><code>pingzhili/vqa_v2</code></td>
+<td><code>train</code></td>
+<td><code>validation</code></td>
+<td><code>vqa_accuracy</code></td>
+</tr>
+<tr>
+<td><code>ebrukilic/vizwiz_vqa_dataset</code></td>
+<td><code>ebrukilic/vizwiz_vqa_dataset</code></td>
+<td><code>train</code></td>
+<td><code>validation</code></td>
+<td><code>vqa_accuracy</code></td>
+</tr>
+<tr>
+<td><code>Mineru/GQA</code></td>
+<td><code>Mineru/GQA</code></td>
+<td><code>train_balanced</code></td>
+<td><code>val_balanced</code></td>
+<td><code>normalized_exact_match</code></td>
+</tr>
+<tr>
+<td><code>scienceqa_image</code></td>
+<td><code>derek-thomas/ScienceQA</code> 中带图样本</td>
+<td><code>train</code></td>
+<td><code>validation</code></td>
+<td><code>normalized_exact_match</code></td>
+</tr>
+</tbody></table>
+<p>设置正数 <code>max_samples</code> 时，adapter 自动使用 streaming。公共训练会把训练 <code>seed</code> 作为 <code>sample_seed</code> 传入，所以先 shuffle，再截取目标数量；直接使用 Python data API 时需要显式传入 <code>sample_seed</code> 才会 shuffle。完整训练通常使用 map-style dataset。</p>
+<p>直接从 Python 读取统一样本：</p>
+<pre><code class="language-python">from vlmintune import HFDatasetsAdapter
+
+adapter = HFDatasetsAdapter(
+    dataset_name=&quot;lmms-lab/textvqa&quot;,
+    usage=&quot;train&quot;,
+    max_samples=100,
+    sample_seed=42,
+)
+
+for sample in adapter:
+    print(sample.id, sample.question, sample.train_answer)
+</code></pre>
+<h3 id="31-样本格式">2. 样本如何进入模型<a class="heading-anchor" href="#31-样本格式" aria-label="链接到 2. 样本如何进入模型">#</a></h3>
+<p>下面使用一个简化的 TextVQA 样本贯穿整个预处理过程。示例值用于说明数据结构，不对应数据集中的特定样本。</p>
+
+<h4 id="dataflow-hf-row">Hugging Face row<a class="heading-anchor" href="#dataflow-hf-row" aria-label="链接到 Hugging Face row">#</a></h4>
+<pre><code class="language-python">row = {
+    &quot;question_id&quot;: &quot;demo-1&quot;,
+    &quot;image&quot;: pil_image,  # PIL.Image.Image
+    &quot;question&quot;: &quot;What word is written on the sign?&quot;,
+    &quot;answers&quot;: [
+        {&quot;answer&quot;: &quot;stop&quot;},
+        {&quot;answer&quot;: &quot;stop&quot;},
+        {&quot;answer&quot;: &quot;STOP&quot;},
+        {&quot;answer&quot;: &quot;stop&quot;},
+    ],
+}
+</code></pre>
+
+<h4 id="dataflow-canonical-sample"><code>CanonicalSample</code><a class="heading-anchor" href="#dataflow-canonical-sample" aria-label="链接到 CanonicalSample">#</a></h4>
+<p><code>TextVQASpec.parse_row()</code> 根据列映射读取 row。训练答案使用原始答案字符串的多数票，评估答案保留全部标注；PIL 图像暂存在 metadata 中：</p>
+<pre><code class="language-python">CanonicalSample(
+    id=&quot;demo-1&quot;,
+    image_path=&quot;&lt;in_memory&gt;&quot;,
+    question=&quot;What word is written on the sign?&quot;,
+    train_answer=&quot;stop&quot;,
+    eval_answers=[&quot;stop&quot;, &quot;stop&quot;, &quot;STOP&quot;, &quot;stop&quot;],
+    metadata={&quot;_pil_image&quot;: pil_image},
+)
+</code></pre>
+<p>图像也可以来自文件路径或 Hugging Face 的 bytes/path 字段；<code>load_sample_image()</code> 会在送入 processor 前把它统一转换为 RGB。</p>
+
+<h4 id="dataflow-chat-messages">Chat messages<a class="heading-anchor" href="#dataflow-chat-messages" aria-label="链接到 Chat messages">#</a></h4>
+<p>训练会从同一个样本构造两份对话。<code>full_messages</code> 包含答案，<code>prompt_messages</code> 只包含用户问题：</p>
+<pre><code class="language-python">prompt_messages = [
+    {
+        &quot;role&quot;: &quot;user&quot;,
+        &quot;content&quot;: [
+            {&quot;type&quot;: &quot;image&quot;},
+            {&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: &quot;What word is written on the sign?&quot;},
+        ],
+    }
+]
+
+full_messages = [
+    *prompt_messages,
+    {
+        &quot;role&quot;: &quot;assistant&quot;,
+        &quot;content&quot;: [{&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: &quot;stop&quot;}],
+    },
+]
+</code></pre>
+
+<h4 id="dataflow-rendered-text">应用 chat template 后<a class="heading-anchor" href="#dataflow-rendered-text" aria-label="链接到应用 chat template 后">#</a></h4>
+<p><code>apply_chat_template()</code> 把结构化 messages 转成模型自己的对话字符串。<code>full_messages</code> 使用 <code>add_generation_prompt=False</code>，<code>prompt_messages</code> 使用 <code>add_generation_prompt=True</code>。同一份消息在两个内置模型上会得到不同结果。</p>
+<p><strong>Qwen2.5-VL</strong></p>
+<pre><code class="language-text"># prompt_text
+&lt;|im_start|&gt;system
+You are a helpful assistant.&lt;|im_end|&gt;
+&lt;|im_start|&gt;user
+&lt;|vision_start|&gt;&lt;|image_pad|&gt;&lt;|vision_end|&gt;What word is written on the sign?&lt;|im_end|&gt;
+&lt;|im_start|&gt;assistant
+
+# full_text
+&lt;|im_start|&gt;system
+You are a helpful assistant.&lt;|im_end|&gt;
+&lt;|im_start|&gt;user
+&lt;|vision_start|&gt;&lt;|image_pad|&gt;&lt;|vision_end|&gt;What word is written on the sign?&lt;|im_end|&gt;
+&lt;|im_start|&gt;assistant
+stop&lt;|im_end|&gt;
+</code></pre>
+<p><strong>LLaVA 1.5</strong></p>
+<pre><code class="language-text"># prompt_text
+USER: &lt;image&gt;
+What word is written on the sign? ASSISTANT:
+
+# full_text
+USER: &lt;image&gt;
+What word is written on the sign? ASSISTANT: stop &lt;/s&gt;
+</code></pre>
+<p>这一步仍然只是字符串渲染：Qwen 中只有一个 <code>&lt;|image_pad|&gt;</code>，LLaVA 中只有一个 <code>&lt;image&gt;</code>。下一步 processor 才会根据图像分辨率和 patch 设置把该占位符展开为模型实际需要的多个 image token。特殊 token、空白和结束符来自所选 Hugging Face processor，Library 不硬编码模板文本。</p>
+
+<h4 id="dataflow-processor-output">Processor 输出<a class="heading-anchor" href="#dataflow-processor-output" aria-label="链接到 Processor 输出">#</a></h4>
+<p><code>full_text</code> 和 <code>prompt_text</code> 会带着同一张 RGB 图像分别进入 processor：</p>
+<pre><code class="language-python">full_inputs = processor(
+    text=full_text,
+    images=[image],
+    return_tensors=&quot;pt&quot;,
+    truncation=True,
+    max_length=max_length,
+)
+
+prompt_inputs = processor(
+    text=prompt_text,
+    images=[image],
+    return_tensors=&quot;pt&quot;,
+    truncation=True,
+    max_length=max_length,
+)
+</code></pre>
+<p>Processor 同时完成文本 tokenization、图像预处理和 image-token 展开。共同字段包括 <code>input_ids</code> 和 <code>attention_mask</code>；有图像时还会包含 <code>pixel_values</code>。具体 shape 由 processor、图像尺寸和模型配置决定。</p>
+<table>
+<thead><tr><th>模型</th><th>典型 processor 输出</th><th>图像占位符的变化</th></tr></thead>
+<tbody>
+<tr><td>Qwen2.5-VL</td><td><code>input_ids</code>、<code>attention_mask</code>、<code>mm_token_type_ids</code>、<code>pixel_values</code>、<code>image_grid_thw</code></td><td><code>&lt;|image_pad|&gt;</code> 按视觉网格展开</td></tr>
+<tr><td>LLaVA 1.5</td><td><code>input_ids</code>、<code>attention_mask</code>、<code>pixel_values</code></td><td><code>&lt;image&gt;</code> 按图像 patch 数展开</td></tr>
+</tbody>
+</table>
+<p>因此 token 序列可以概括为：</p>
+<pre><code class="language-text">[system/chat tokens | image-start | image token × N | image-end |
+ question tokens | assistant-start | answer tokens | end token]
+</code></pre>
+
+<h4 id="dataflow-labels-masks">Labels 与方法 mask<a class="heading-anchor" href="#dataflow-labels-masks" aria-label="链接到 Labels 与方法 mask">#</a></h4>
+<p>答案边界来自两次 processor 调用产生的 token 长度：</p>
+<pre><code class="language-python">input_ids = full_inputs[&quot;input_ids&quot;][0]
+prompt_len = min(prompt_inputs[&quot;input_ids&quot;].shape[1], input_ids.shape[0])
+
+labels = input_ids.clone()
+labels[:prompt_len] = -100
+
+# 概念上：
+# input_ids = [ prompt tokens | answer tokens ]
+# labels    = [ -100 ... -100 | answer token ids ]
+</code></pre>
+<p><code>-100</code> 表示该位置不参与 causal language-model loss。普通 LoRA、QLoRA、DoRA 和 VL-Adapter 只监督 answer token；L2T 会额外把 <code>CanonicalSample.question</code> 的完整文本 token 写回 labels，但仍排除 system、图片占位符和 chat role/control token。L2T、MoReS 和 ReFT 都通过统一的 <code>method_mask</code> 传递逐 token 选择结果：L2T 用它扩展监督位置，MoReS 和 ReFT 用它控制 layer hook。</p>
+<h3 id="11-模型">3. 模型<a class="heading-anchor" href="#11-模型" aria-label="链接到 3. 模型">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>配置名</th>
+<th>Hugging Face model ID</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>qwen25vl_3b_instruct</code></td>
+<td><code>Qwen/Qwen2.5-VL-3B-Instruct</code></td>
+</tr>
+<tr>
+<td><code>llava15_7b</code></td>
+<td><code>llava-hf/llava-1.5-7b-hf</code></td>
+</tr>
+</tbody></table>
+<p>你也可以根据需要添加新的模型，具体方法见<a href="#42-模型">扩展开发中的“2. 模型”</a>。</p>
+<h3 id="13-训练方法">4. 训练方法<a class="heading-anchor" href="#13-训练方法" aria-label="链接到 4. 训练方法">#</a></h3>
+<table>
+<thead>
+<tr>
+<th><code>method</code></th>
+<th>固定 recipe</th>
+<th>模型支持</th>
+<th>对应论文</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>lora</code></td>
+<td>rank 8、alpha 16、dropout 0.05；适配所有语言层的 q/k/v/o 与 gate/up/down projection</td>
+<td>Qwen、LLaVA</td>
+<td><a href="https://openreview.net/forum?id=nZeVKeeFYf9">LoRA: Low-Rank Adaptation of Large Language Models</a></td>
+</tr>
+<tr>
+<td><code>qlora</code></td>
+<td>rank 64、alpha 16、dropout 0；NF4 4-bit、double quant、BF16 compute、PagedAdamW8bit</td>
+<td>Qwen、LLaVA</td>
+<td><a href="https://proceedings.neurips.cc/paper_files/paper/2023/hash/1feb87871436031bdc0f2beaa62a049b-Abstract-Conference.html">QLoRA: Efficient Finetuning of Quantized LLMs</a></td>
+</tr>
+<tr>
+<td><code>dora</code></td>
+<td>LoRA 固定结构加 DoRA weight decomposition</td>
+<td>Qwen、LLaVA</td>
+<td><a href="https://proceedings.mlr.press/v235/liu24bn.html">DoRA: Weight-Decomposed Low-Rank Adaptation</a></td>
+</tr>
+<tr>
+<td><code>reft</code></td>
+<td>tied LoReFT，rank 4；所有语言层的 prompt 前 4、后 4 个位置</td>
+<td>Qwen、LLaVA</td>
+<td><a href="https://proceedings.neurips.cc/paper_files/paper/2024/hash/75008a0fba53bf13b0bb3b7bff986e0e-Abstract-Conference.html">ReFT: Representation Finetuning for Language Models</a></td>
+</tr>
+<tr>
+<td><code>mores</code></td>
+<td>rank 1；所有语言层中前 4、后 5 个视觉 token</td>
+<td>Qwen、LLaVA</td>
+<td><a href="https://aclanthology.org/2025.acl-long.739/">LLaVA Steering: Visual Instruction Tuning with 500x Fewer Parameters through Modality Linear Representation-Steering</a></td>
+</tr>
+<tr>
+<td><code>vl_adapter</code></td>
+<td>attention/FFN 各一个 bottleneck adapter，reduction factor 8；同时训练 LayerNorm 与 visual merger</td>
+<td>仅 Qwen</td>
+<td><a href="https://openaccess.thecvf.com/content/CVPR2022/html/Sung_VL-Adapter_Parameter-Efficient_Transfer_Learning_for_Vision-and-Language_Tasks_CVPR_2022_paper.html">VL-Adapter: Parameter-Efficient Transfer Learning for Vision-and-Language Tasks</a></td>
+</tr>
+<tr>
+<td><code>l2t</code></td>
+<td>full-SFT；训练语言模型、LM head 和视觉投影，冻结视觉编码器；监督完整 user prompt 文本与 answer</td>
+<td>Qwen、LLaVA</td>
+<td><a href="https://proceedings.neurips.cc/paper_files/paper/2025/hash/43c18853329c7504996b255252b6cb1f-Abstract-Conference.html">Learning to Instruct for Visual Instruction Tuning</a></td>
+</tr>
+</tbody></table>
+<h3 id="dataflow-training-batch">5. Batch、forward 与 loss<a class="heading-anchor" href="#dataflow-training-batch" aria-label="链接到 5. Batch、forward 与 loss">#</a></h3>
+
+<h4 id="dataflow-collate">组成 batch<a class="heading-anchor" href="#dataflow-collate" aria-label="链接到组成 batch">#</a></h4>
+<p>Tokenization 是 lazy 的；DataLoader 取到样本后才执行上述处理。失败的样本会被记录并过滤，剩余样本由 <code>collate()</code> 在序列右侧补齐：</p>
+<pre><code class="language-python">batch = {
+    &quot;input_ids&quot;: LongTensor[batch_size, max_seq_len],
+    &quot;labels&quot;: LongTensor[batch_size, max_seq_len],
+    &quot;attention_mask&quot;: LongTensor[batch_size, max_seq_len],
+    &quot;pixel_values&quot;: Tensor[...],
+    # 模型或方法需要时还会包含：
+    &quot;image_grid_thw&quot;: LongTensor[..., 3],
+    &quot;mm_token_type_ids&quot;: LongTensor[batch_size, max_seq_len],
+    &quot;method_mask&quot;: BoolTensor[batch_size, max_seq_len],
+}
+</code></pre>
+<p><code>input_ids</code> 的补齐值为 0，<code>labels</code> 的补齐值为 <code>-100</code>，<code>attention_mask</code> 对真实 token 标 1、对 padding 标 0。<code>pixel_values</code> 和 <code>image_grid_thw</code> 都沿第一维 concatenate。</p>
+
+<h4 id="dataflow-forward-loss">进入模型并计算 loss<a class="heading-anchor" href="#dataflow-forward-loss" aria-label="链接到进入模型并计算 loss">#</a></h4>
+<pre><code class="language-python">batch = to_device(batch, device)
+batch[&quot;labels&quot;] = method.preprocess_labels(
+    batch[&quot;input_ids&quot;],
+    batch[&quot;labels&quot;],
+    batch_meta=batch,
+)
+forward_batch = method.build_forward_batch(batch)
+outputs = model(**forward_batch)
+loss, metrics = method.compute_loss(model, batch, outputs)
+loss.backward()
+</code></pre>
+<p><code>build_forward_batch()</code> 会移除模型本身不接受的方法 metadata。MoReS 和 ReFT 会先保存各自的 intervention mask，再由注册在语言层上的 hook 修改选中位置的 hidden states。Loss 优先使用模型返回的 <code>outputs.loss</code>；否则对 logits 和 labels 做一位 causal shift，并以 <code>-100</code> 作为 ignore index。达到 gradient accumulation 数量后，Trainer 才执行 gradient clipping、optimizer step 和 scheduler step。</p>
+<p>模型内部先把文本 token 映射为 embedding，同时由 vision encoder 提取图像特征并投影到语言模型的 hidden size；投影后的视觉向量按 image-token 位置写回序列。Language model 随后输出 <code>logits[batch, sequence, vocabulary]</code>，有 labels 时再得到 scalar loss。Qwen 使用 <code>image_grid_thw</code> 与多模态 RoPE 对齐视觉网格，LLaVA 则把 CLIP patch features 经过 multimodal projector 后与 <code>&lt;image&gt;</code> token 一一对应。</p>
+
+<h3 id="32-checkpoint-保存与恢复">6. Checkpoint 保存与恢复<a class="heading-anchor" href="#32-checkpoint-保存与恢复" aria-label="链接到 6. Checkpoint 保存与恢复">#</a></h3>
+<p>公共保存与恢复流程由 <code>TrainingMethod</code> 基类统一实现：</p>
+<pre><code class="language-text">save_checkpoint(model, path, metadata)
+├── _save_weights(model, path)             # 方法实现
+└── vlmintune_meta.json                     # 基类统一写入
+
+load_for_inference(path, model_name)
+├── 从 ModelSpec 重新加载 processor 和 base model
+├── 按 requires_quantization() 决定是否 4-bit
+├── _restore_model(...)                     # 方法实现
+└── model.eval()
+</code></pre>
+<p>checkpoint 不保存一份可独立加载的完整 base model 或 processor；恢复时仍会根据 model spec 从 Hugging Face 加载基础组件。它也不包含 optimizer、scheduler、随机数和 dataloader 状态，因此用于 inference/evaluation restore，不是精确续训。<code>vlmintune_meta.json</code> 至少让 evaluator 知道：</p>
+<pre><code class="language-json">{
+  &quot;model_name&quot;: &quot;qwen25vl_3b_instruct&quot;,
+  &quot;hf_model_id&quot;: &quot;Qwen/Qwen2.5-VL-3B-Instruct&quot;,
+  &quot;ft_method&quot;: &quot;mores&quot;,
+  &quot;recipe&quot;: &quot;mores&quot;,
+  &quot;final_loss&quot;: 1.234567
+}
+</code></pre>
+<p>方法权重布局：</p>
+<table>
+<thead>
+<tr>
+<th>方法组</th>
+<th>主要权重文件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>lora</code>、<code>qlora</code>、<code>dora</code></td>
+<td>PEFT <code>adapter_config.json</code>、<code>adapter_model.safetensors</code></td>
+</tr>
+<tr>
+<td><code>l2t</code></td>
+<td><code>l2t_tuned.pt</code></td>
+</tr>
+<tr>
+<td><code>vl_adapter</code></td>
+<td><code>vl_adapter_tuned.pt</code></td>
+</tr>
+<tr>
+<td><code>mores</code></td>
+<td><code>mores_tuned.pt</code></td>
+</tr>
+<tr>
+<td><code>reft</code></td>
+<td><code>reft_tuned.pt</code></td>
+</tr>
+<tr>
+<td><code>mores_lora</code>、<code>mores_dora</code></td>
+<td>PEFT adapter 文件 + <code>mores_tuned.pt</code></td>
+</tr>
+<tr>
+<td><code>reft_lora</code></td>
+<td>PEFT adapter 文件 + <code>reft_tuned.pt</code></td>
+</tr>
+</tbody></table>
+<p>每个目录还包含统一的 <code>vlmintune_meta.json</code>。普通 LoRA/DoRA 推理恢复后会 merge adapter；QLoRA 保留量化 PEFT model；联合方法恢复两个结构组件。</p>
+<h3 id="14-评估方法">7. Evaluation<a class="heading-anchor" href="#14-评估方法" aria-label="链接到 7. Evaluation">#</a></h3>
+<p>Evaluation 包含两个彼此独立的选择：从哪里加载模型，以及使用什么 metric 评分。<code>source=base</code> 直接加载 model spec；<code>source=trained</code> 从 <code>vlmintune_meta.json</code> 取得模型名和方法名，再恢复方法权重。</p>
+
+<h4 id="dataflow-generation">Prompt-only generation<a class="heading-anchor" href="#dataflow-generation" aria-label="链接到 Prompt-only generation">#</a></h4>
+<p>评估样本不包含 <code>train_answer</code>。它只经过 prompt messages、<code>add_generation_prompt=True</code> 的 chat template 和 multimodal processor，然后执行确定性的 greedy generation：</p>
+<pre><code class="language-python">prepared = processor(text=prompt_text, images=[image], return_tensors=&quot;pt&quot;)
+prepared = method.prepare_inference_inputs(model, processor, prepared)
+
+output_ids = model.generate(
+    **prepared,
+    max_new_tokens=max_new_tokens,
+    do_sample=False,
+)
+prompt_len = prepared[&quot;input_ids&quot;].shape[1]
+prediction = processor.decode(
+    output_ids[0][prompt_len:],
+    skip_special_tokens=True,
+).strip()
+</code></pre>
+<p>MoReS 和 ReFT 会在 generation 的第一次 forward 自动重建 inference intervention mask；后续 KV-cache step 不再重复干预 prompt。当前 evaluation 始终使用 <code>do_sample=False</code>，因此配置中的 temperature 不改变生成结果。</p>
+
+<h4 id="dataflow-scoring">Prediction 与评分<a class="heading-anchor" href="#dataflow-scoring" aria-label="链接到 Prediction 与评分">#</a></h4>
+<p>每个样本会立即写入一行 <code>predictions.jsonl</code>：</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;demo-1&quot;,
+  &quot;question&quot;: &quot;What word is written on the sign?&quot;,
+  &quot;prediction&quot;: &quot;stop&quot;,
+  &quot;ground_truth&quot;: [&quot;stop&quot;, &quot;stop&quot;, &quot;STOP&quot;, &quot;stop&quot;],
+  &quot;scores&quot;: {&quot;vqa_accuracy&quot;: 1.0}
+}
+</code></pre>
+<p>Dataset spec 的 <code>metric_family</code> 决定 <code>score_prediction()</code> 调用哪种指标。循环结束后，单样本分数取平均并乘以 100，连同 generation diagnostics 写入 <code>eval.json</code>；被评估的样本 ID 与采样参数写入 <code>eval_ids.json</code>。</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>名称</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>source</td>
+<td><code>base</code></td>
+<td>直接加载 model spec 指向的 Hugging Face base model</td>
+</tr>
+<tr>
+<td>source</td>
+<td><code>trained</code></td>
+<td>读取 <code>vlmintune_meta.json</code>，恢复 checkpoint 对应的训练方法与权重</td>
+</tr>
+<tr>
+<td>metric</td>
+<td><code>vqa_accuracy</code></td>
+<td>对多标注答案做 VQA leave-one-out 评分；TextVQA、VQAv2、VizWiz 使用</td>
+</tr>
+<tr>
+<td>metric</td>
+<td><code>normalized_exact_match</code></td>
+<td>规范化后与任一 ground truth 完全相同即得 1；GQA、image-only ScienceQA 使用</td>
+</tr>
+</tbody></table>
+<p>Metric 由 dataset spec 的 <code>metric_family</code> 自动选择，evaluation YAML 没有 <code>eval.metric</code>。规范化会处理大小写、标点、冠词、英文 0 到 10 的数字和常见缩写。<code>predictions.jsonl</code> 中单条分数范围为 0 到 1；<code>eval.json</code> 中汇总分数乘以 100，并保留两位小数。</p>
+<p>可以从 Python 查看当前 registry：</p>
+<pre><code class="language-python">from vlmintune.models import list_model_names
+from vlmintune.data.datasets import DATASET_SPECS
+from vlmintune.training.methods.registry import list_training_methods
+
+print(list_model_names())
+print(sorted(DATASET_SPECS))
+print(list_training_methods())
+</code></pre>
+</section>
+<section class="doc-page" data-page-id="4-扩展开发" data-page-index="3" data-nav-title="扩展开发" aria-labelledby="4-扩展开发">
+<h2 id="4-扩展开发">扩展开发<a class="heading-anchor" href="#4-扩展开发" aria-label="链接到扩展开发">#</a></h2>
+<p>扩展一个组件只做两件事：实现最小接口，然后加入对应的 registry。</p>
+<h3 id="41-数据集">1. 数据集<a class="heading-anchor" href="#41-数据集" aria-label="链接到 1. 数据集">#</a></h3>
+<h4 id="411-hugging-face-数据集">1. Hugging Face 数据集<a class="heading-anchor" href="#411-hugging-face-数据集" aria-label="链接到 1. Hugging Face 数据集">#</a></h4>
+<p>普通 Hugging Face VQA 数据集不需要新增 function。<code>HFDatasetSpec</code> 已经实现了 row 解析，只需声明 dataset 信息和列映射。</p>
+<p>例如，一个包含 <code>sample_id</code>、<code>image</code>、<code>prompt</code> 和 <code>answers</code> 四列的数据集：</p>
+<pre><code class="language-python">from vlmintune.data.datasets.base import (
+    ColumnMapping,
+    DatasetDataModel,
+    HFDatasetSpec,
+)
+
+
+class MyVQASpec(HFDatasetSpec):
+    dataset_name = &quot;owner/my-vqa&quot;
+    data_model = DatasetDataModel(dataset_name=dataset_name)
+    mapping = ColumnMapping(
+        id_col=&quot;sample_id&quot;,
+        image_col=&quot;image&quot;,
+        question_col=&quot;prompt&quot;,
+        answer_col=&quot;answers&quot;,
+    )
+</code></pre>
+<p>在 <code>src/vlmintune/data/datasets/registry.py</code> 中导入它，并加入 <code>_SPEC_CLASSES</code>：</p>
+<pre><code class="language-python">from vlmintune.data.datasets.my_vqa import MyVQASpec
+
+_SPEC_CLASSES = (
+    # existing dataset specs
+    MyVQASpec,
+)
+</code></pre>
+<p>只有 question 或 answer 不是普通字符串或字符串列表时，才需要覆盖 <code>parse_question(row)</code> 或 <code>parse_answers(row)</code>。</p>
+<h4 id="412-自有数据集">2. 自有数据集<a class="heading-anchor" href="#412-自有数据集" aria-label="链接到 2. 自有数据集">#</a></h4>
+<h3 id="42-模型">2. 模型<a class="heading-anchor" href="#42-模型" aria-label="链接到 2. 模型">#</a></h3>
+<p>一个 <code>ModelSpec</code> 只需要实现三个 function：</p>
+<pre><code class="language-python">def get_transformer_layers(self, model): ...
+def get_hidden_size(self, model): ...
+def get_image_token_id(self, model): ...
+</code></pre>
+<p>例如，Qwen 风格的 Hugging Face VLM：</p>
+<pre><code class="language-python">from vlmintune.models.base import ModelSpec
+
+
+class MyModelSpec(ModelSpec):
+    name = &quot;my_model&quot;
+    hf_model_id = &quot;owner/my-vlm&quot;
+
+    def get_transformer_layers(self, model):
+        return model.model.language_model.layers
+
+    def get_hidden_size(self, model):
+        return model.config.text_config.hidden_size
+
+    def get_image_token_id(self, model):
+        return model.config.image_token_id
+
+
+MY_MODEL_SPEC = MyModelSpec()
+</code></pre>
+<p>然后在 <code>src/vlmintune/models/registry.py</code> 中加入：</p>
+<pre><code class="language-python">from vlmintune.models.my_model import MY_MODEL_SPEC
+
+
+_MODEL_SPECS = {
+    # existing model specs
+    MY_MODEL_SPEC.name: MY_MODEL_SPEC,
+}
+</code></pre>
+<p>三个属性路径要按目标模型的真实结构填写；该模型需要能被 Transformers 的 <code>AutoProcessor</code> 和 image-to-text AutoModel 加载。</p>
+<h3 id="43-训练方法">3. 训练方法<a class="heading-anchor" href="#43-训练方法" aria-label="链接到 3. 训练方法">#</a></h3>
+<p>一个 <code>TrainingMethod</code> 必须实现五个 function：</p>
+<pre><code class="language-python">class MyMethod(TrainingMethod):
+    def prepare_model_impl(self, model, processor, model_spec): ...
+    def compute_loss(self, model, batch, outputs): ...
+    def get_trainable_params(self, model): ...
+    def _save_weights(self, model, path): ...
+    def _restore_model(self, model, processor, model_spec, path): ...
+</code></pre>
+<p><code>save_checkpoint()</code> 和 <code>load_for_inference()</code> 已由基类实现，子类不需要重写。</p>
+<h4 id="431-vladapter-示例">1. <code>vl_adapter</code> 示例<a class="heading-anchor" href="#431-vladapter-示例" aria-label="链接到 1. vl_adapter 示例">#</a></h4>
+<p><code>vl_adapter</code> 的 adapter block 是 <code>x + Up(GELU(Down(x)))</code>。block 和 forward hook 都是普通 PyTorch 代码；下面只展示它如何实现 <code>TrainingMethod</code> 的五个接口。</p>
+<pre><code class="language-python">class VLAdapterMethod(TrainingMethod):
+    name = &quot;vl_adapter&quot;
+    display_name = &quot;Single Adapter (VL-Adapter style)&quot;
+    supported_model_names = (&quot;qwen25vl_3b_instruct&quot;,)
+
+    def prepare_model_impl(self, model, _processor, model_spec):
+        model.requires_grad_(False)
+        layers = list(model_spec.get_transformer_layers(model))
+        hidden_size = model_spec.get_hidden_size(model)
+
+        adapter_layers = []
+        for layer in layers:
+            reference = next(layer.parameters())
+            adapter_layers.append(
+                VLAdapterLayer(hidden_size).to(
+                    device=reference.device,
+                    dtype=reference.dtype,
+                )
+            )
+
+        model.vl_adapter_layers = nn.ModuleList(adapter_layers)
+        for layer, adapters in zip(layers, model.vl_adapter_layers):
+            layer.self_attn.register_forward_hook(
+                self.attention_hook(adapters.attention)
+            )
+            layer.mlp.register_forward_hook(
+                self.mlp_hook(adapters.mlp)
+            )
+            layer.input_layernorm.requires_grad_(True)
+            layer.post_attention_layernorm.requires_grad_(True)
+
+        model.model.language_model.norm.requires_grad_(True)
+        model.model.visual.merger.requires_grad_(True)
+        return model, &quot;vl_adapter&quot;
+
+    def compute_loss(self, model, batch, outputs):
+        return CROSS_ENTROPY_LOSS.compute(model, batch, outputs)
+
+    def get_trainable_params(self, model):
+        params = [p for p in model.parameters() if p.requires_grad]
+        return [{&quot;params&quot;: params}]
+
+    def _save_weights(self, model, path):
+        state_dict = {
+            name: parameter.detach().cpu()
+            for name, parameter in model.named_parameters()
+            if parameter.requires_grad
+        }
+        torch.save(state_dict, os.path.join(path, &quot;vl_adapter_tuned.pt&quot;))
+
+    def _restore_model(self, model, processor, model_spec, path):
+        model, _ = self.prepare_model(
+            model, processor, model_spec=model_spec
+        )
+        state_dict = torch.load(
+            os.path.join(path, &quot;vl_adapter_tuned.pt&quot;),
+            map_location=&quot;cpu&quot;,
+            weights_only=True,
+        )
+        model.load_state_dict(state_dict, strict=False)
+        return model
+</code></pre>
+<p>这五个 function 分别负责安装 adapter、计算 loss、返回 optimizer 参数、保存方法权重和恢复方法权重。最后在 <code>src/vlmintune/training/methods/registry.py</code> 中注册：</p>
+<pre><code class="language-python">from vlmintune.training.methods.vl_adapter import VLAdapterMethod
+
+_TRAINING_METHODS = {
+    # existing training methods
+    &quot;vl_adapter&quot;: VLAdapterMethod,
+}
+</code></pre>
+<p>之后训练配置可以直接使用 <code>method: vl_adapter</code>。</p>
+<h3 id="44-评估方法">4. 评估方法<a class="heading-anchor" href="#44-评估方法" aria-label="链接到 4. 评估方法">#</a></h3>
+<p>当前 evaluation 的扩展单位是 metric。最基本的 function 接收 prediction 和 ground truths，返回 0 到 1 的分数：</p>
+<pre><code class="language-python">def answer_contains(prediction: str, ground_truths: list[str]) -&gt; float:
+    pred = normalize_answer(prediction)
+    answers = [normalize_answer(answer) for answer in ground_truths]
+    return float(any(answer and answer in pred for answer in answers))
+</code></pre>
+<p>在 <code>src/vlmintune/eval/vqa.py</code> 中接入三处：</p>
+<pre><code class="language-python">_SUPPORTED_METRICS = {
+    &quot;vqa_accuracy&quot;,
+    &quot;normalized_exact_match&quot;,
+    &quot;answer_contains&quot;,
+}
+
+
+def score_prediction(metric, prediction, ground_truth):
+    ...
+    if metric == &quot;answer_contains&quot;:
+        ground_truths = coerce_ground_truths(ground_truth)
+        if not ground_truths:
+            return {}
+        score = answer_contains(prediction, ground_truths)
+        return {&quot;answer_contains&quot;: score}
+</code></pre>
+<p>最后让目标 dataset 使用这个 metric：</p>
+<pre><code class="language-python">data_model = DatasetDataModel(
+    dataset_name=&quot;owner/my-vqa&quot;,
+    metric_family=&quot;answer_contains&quot;,
+)
+</code></pre>
+</section>
+</article>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.getElementById("theme-toggle");
+      const savedTheme = localStorage.getItem("vlmintune-doc-theme");
+      if (savedTheme === "dark" || savedTheme === "light") {
+        root.dataset.theme = savedTheme;
+      } else {
+        root.dataset.theme = "light";
+      }
+
+      themeButton.addEventListener("click", () => {
+        const next = root.dataset.theme === "dark" ? "light" : "dark";
+        root.dataset.theme = next;
+        localStorage.setItem("vlmintune-doc-theme", next);
+      });
+
+      document.querySelectorAll(".doc pre").forEach((pre) => {
+        const code = pre.querySelector("code");
+        if (!code) return;
+        const shell = document.createElement("div");
+        shell.className = "code-shell";
+        pre.parentNode.insertBefore(shell, pre);
+        shell.appendChild(pre);
+
+        const languageMatch = [...code.classList]
+          .find((name) => name.startsWith("language-"));
+        const language = languageMatch
+          ? languageMatch.replace("language-", "")
+          : "text";
+        const label = document.createElement("span");
+        label.className = "code-language";
+        label.textContent = language;
+        shell.appendChild(label);
+
+        const button = document.createElement("button");
+        button.className = "copy-button";
+        button.type = "button";
+        button.textContent = "复制";
+        button.addEventListener("click", async () => {
+          await navigator.clipboard.writeText(code.textContent);
+          button.textContent = "已复制";
+          window.setTimeout(() => { button.textContent = "复制"; }, 1400);
+        });
+        shell.appendChild(button);
+      });
+
+      document.querySelectorAll(".doc table").forEach((table) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "table-scroll";
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+      });
+
+      const article = document.querySelector(".doc");
+      const pages = [...article.querySelectorAll(":scope > .doc-page")];
+      const tocGroups = [...document.querySelectorAll(".toc-group")];
+      const sidebar = document.getElementById("sidebar");
+      const navToggle = document.getElementById("nav-toggle");
+      const docSearch = document.getElementById("doc-search");
+      const progress = document.getElementById("reading-progress");
+      let currentPage = pages[0];
+
+      const targetIdFromLink = (link) => {
+        const href = link.getAttribute("href") || "";
+        if (!href.startsWith("#") || href.length === 1) return "";
+        try {
+          return decodeURIComponent(href.slice(1));
+        } catch (_error) {
+          return href.slice(1);
+        }
+      };
+
+      const currentHashId = () => {
+        if (!window.location.hash) return pages[0].dataset.pageId;
+        try {
+          return decodeURIComponent(window.location.hash.slice(1));
+        } catch (_error) {
+          return window.location.hash.slice(1);
+        }
+      };
+
+      const pageForTarget = (targetId) => {
+        const target = document.getElementById(targetId);
+        return target ? target.closest(".doc-page") : null;
+      };
+
+      const closeSidebar = () => {
+        sidebar.classList.remove("open");
+        navToggle.setAttribute("aria-expanded", "false");
+      };
+
+      navToggle.addEventListener("click", () => {
+        const open = sidebar.classList.toggle("open");
+        navToggle.setAttribute("aria-expanded", String(open));
+      });
+
+      const filterToc = () => {
+        const query = docSearch.value.trim().toLocaleLowerCase();
+        tocGroups.forEach((group) => {
+          const matches = !query || group.textContent.toLocaleLowerCase().includes(query);
+          group.hidden = !matches;
+          group.classList.toggle("is-searching", Boolean(query && matches));
+        });
+      };
+
+      const clearTocSearch = () => {
+        if (!docSearch.value) return;
+        docSearch.value = "";
+        filterToc();
+      };
+
+      docSearch.addEventListener("input", filterToc);
+      docSearch.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        const firstMatch = tocGroups
+          .find((group) => !group.hidden)
+          ?.querySelector(".toc-page-link, .toc-sub-link");
+        if (firstMatch) firstMatch.click();
+      });
+
+      const setActiveNavigation = (page, targetId) => {
+        tocGroups.forEach((group) => {
+          const active = group.dataset.pageId === page.dataset.pageId;
+          group.classList.toggle("is-active", active);
+          const pageLink = group.querySelector(".toc-page-link");
+          pageLink.classList.toggle("active", active);
+          if (active) {
+            pageLink.setAttribute("aria-current", "page");
+          } else {
+            pageLink.removeAttribute("aria-current");
+          }
+          group.querySelectorAll(".toc-sub-link").forEach((link) => {
+            const selected = active && targetIdFromLink(link) === targetId;
+            link.classList.toggle("active", selected);
+            if (selected) {
+              link.setAttribute("aria-current", "location");
+            } else {
+              link.removeAttribute("aria-current");
+            }
+          });
+        });
+      };
+
+      const updateProgress = () => {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const percentage = max > 0 ? (window.scrollY / max) * 100 : 0;
+        progress.style.width = Math.min(100, Math.max(0, percentage)) + "%";
+      };
+
+      const updateSubheading = () => {
+        if (!currentPage) return;
+        const group = tocGroups.find(
+          (item) => item.dataset.pageId === currentPage.dataset.pageId,
+        );
+        if (!group) return;
+
+        const threshold = Number.parseFloat(
+          getComputedStyle(root).getPropertyValue("--topbar-height"),
+        ) + 180;
+        let activeId = "";
+        currentPage.querySelectorAll("h3, h4").forEach((heading) => {
+          if (heading.getBoundingClientRect().top <= threshold) {
+            activeId = heading.id;
+          }
+        });
+
+        group.querySelectorAll(".toc-sub-link").forEach((link) => {
+          const selected = activeId && targetIdFromLink(link) === activeId;
+          link.classList.toggle("active", Boolean(selected));
+          if (selected) {
+            link.setAttribute("aria-current", "location");
+          } else {
+            link.removeAttribute("aria-current");
+          }
+        });
+
+      };
+
+      const showPage = (page, targetId, shouldScroll) => {
+        pages.forEach((candidate) => {
+          candidate.classList.toggle("is-active", candidate === page);
+        });
+        currentPage = page;
+        article.setAttribute("aria-labelledby", page.dataset.pageId);
+        setActiveNavigation(page, targetId);
+        document.title = page.dataset.pageIndex === "0"
+          ? "vlmintune 使用与开发指南"
+          : page.dataset.navTitle + " — vlmintune";
+        clearTocSearch();
+        closeSidebar();
+
+        window.requestAnimationFrame(() => {
+          if (shouldScroll) {
+            const target = document.getElementById(targetId);
+            const pageHeading = page.querySelector("h1, h2");
+            if (!target || target === pageHeading) {
+              window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+            } else {
+              target.scrollIntoView({ block: "start", behavior: "auto" });
+            }
+          }
+          updateSubheading();
+          updateProgress();
+        });
+      };
+
+      const routeTo = (requestedId, pushHistory) => {
+        const target = document.getElementById(requestedId);
+        const page = target ? target.closest(".doc-page") : pages[0];
+        const targetId = target ? target.id : pages[0].dataset.pageId;
+        if (pushHistory) {
+          window.history.pushState(null, "", "#" + targetId);
+        }
+        showPage(page, targetId, true);
+      };
+
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest("a[href^=\"#\"]");
+        if (!link) return;
+        const targetId = targetIdFromLink(link);
+        if (!targetId || !pageForTarget(targetId)) return;
+        event.preventDefault();
+        routeTo(targetId, true);
+      });
+
+      window.addEventListener("popstate", () => {
+        routeTo(currentHashId(), false);
+      });
+
+      window.addEventListener("scroll", () => {
+        updateSubheading();
+        updateProgress();
+      }, { passive: true });
+      window.addEventListener("resize", updateProgress);
+
+      routeTo(currentHashId(), false);
+    })();
+  </script>
+</body>
+</html>

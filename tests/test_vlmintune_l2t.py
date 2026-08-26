@@ -1,13 +1,20 @@
+import json
 import os
 import sys
 
+import pytest
 import torch
+import torch.nn as nn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from vlmintune.data.types import CanonicalSample
-from vlmintune.training.methods.l2t import L2TMethod, build_instruction_supervision_mask
-from vlmintune.training.trainer.helpers import build_label_supervision_debug
+from vlmintune.models.registry import get_model_spec
+from vlmintune.training.methods import base as method_base
+from vlmintune.training.methods.l2t import (
+    L2T_CHECKPOINT_NAME,
+    L2T_SUPERVISION_RECIPE,
+    L2TMethod,
+)
 
 
 def test_l2t_unmasks_instruction_only():
@@ -15,99 +22,156 @@ def test_l2t_unmasks_instruction_only():
     input_ids = torch.tensor([[11, 12, 13, 14, 0]])
     labels = torch.tensor([[-100, -100, -100, 14, -100]])
     batch_meta = {
-        "instruction_supervision_mask": torch.tensor([[1, 0, 1, 0, 0]], dtype=torch.bool),
+        "method_mask": torch.tensor([[1, 0, 1, 0, 0]], dtype=torch.bool),
         "attention_mask": torch.tensor([[1, 1, 1, 1, 0]]),
     }
 
     updated = method.preprocess_labels(input_ids, labels, batch_meta=batch_meta)
+    forward_batch = method.build_forward_batch(
+        {
+            "input_ids": input_ids,
+            "labels": updated,
+            **batch_meta,
+        }
+    )
 
     assert updated.tolist() == [[11, -100, 13, 14, -100]]
+    assert "method_mask" not in forward_batch
+    assert torch.equal(forward_batch["labels"], updated)
 
 
-def test_l2t_defaults_match_lora_shape():
-    defaults = L2TMethod().default_config()
+def test_l2t_is_standalone():
+    method = L2TMethod()
 
-    assert "base_method" not in defaults
-    assert "train_layer_range" not in defaults
-    assert defaults["target_modules"] == []
+    assert not hasattr(method, "base")
 
 
-class _PrefixSensitiveTokenizer:
-    def __call__(
-        self,
-        text,
-        add_special_tokens=False,
-        return_tensors=None,
-        truncation=None,
-        max_length=None,
-    ):
-        del add_special_tokens, return_tensors, truncation, max_length
-        if text == "what brand?":
-            return {"input_ids": torch.tensor([[20, 21]])}
-        if text == "\nwhat brand?":
-            return {"input_ids": torch.tensor([[12, 13]])}
-        if text == " what brand?":
-            return {"input_ids": torch.tensor([[30, 31]])}
-        return {"input_ids": torch.tensor([[]], dtype=torch.long)}
+class _FakeProcessor:
+    pass
 
 
-class _PrefixSensitiveProcessor:
-    tokenizer = _PrefixSensitiveTokenizer()
+class _ToyQwenL2T(nn.Module):
+    def __init__(self, hidden_size=4):
+        super().__init__()
+        self.model = nn.Module()
+        self.model.language_model = nn.Linear(hidden_size, hidden_size)
+        self.model.visual = nn.Module()
+        self.model.visual.encoder = nn.Linear(hidden_size, hidden_size)
+        self.model.visual.merger = nn.Linear(hidden_size, hidden_size)
+        self.lm_head = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, inputs):
+        hidden_states = self.model.visual.merger(inputs)
+        hidden_states = self.model.language_model(hidden_states)
+        return self.lm_head(hidden_states)
 
 
-def test_l2t_instruction_mask_matches_newline_tokenized_question_variant():
-    sample = CanonicalSample(id="1", image_path="", question="what brand?")
-    input_ids = torch.tensor([99, 12, 13, 98, 77])
+class _ToyLlavaL2T(nn.Module):
+    def __init__(self, hidden_size=4):
+        super().__init__()
+        self.model = nn.Module()
+        self.model.language_model = nn.Linear(hidden_size, hidden_size)
+        self.model.vision_tower = nn.Linear(hidden_size, hidden_size)
+        self.model.multi_modal_projector = nn.Linear(hidden_size, hidden_size)
+        self.lm_head = nn.Linear(hidden_size, hidden_size)
 
-    mask = build_instruction_supervision_mask(
-        processor=_PrefixSensitiveProcessor(),
-        sample=sample,
-        input_ids=input_ids,
-        prompt_len=4,
-        max_length=16,
+    def forward(self, inputs):
+        hidden_states = self.model.multi_modal_projector(inputs)
+        hidden_states = self.model.language_model(hidden_states)
+        return self.lm_head(hidden_states)
+
+
+def _prepare_l2t(model, model_name):
+    method = L2TMethod()
+    prepared, info = method.prepare_model(
+        model,
+        _FakeProcessor(),
+        model_spec=get_model_spec(model_name),
+    )
+    return prepared, method, info
+
+
+@pytest.mark.parametrize(
+    ("model_name", "model_factory", "trainable_prefixes", "frozen_prefix"),
+    [
+        (
+            "qwen25vl_3b_instruct",
+            _ToyQwenL2T,
+            ("model.language_model.", "model.visual.merger.", "lm_head."),
+            "model.visual.encoder.",
+        ),
+        (
+            "llava15_7b",
+            _ToyLlavaL2T,
+            ("model.language_model.", "model.multi_modal_projector.", "lm_head."),
+            "model.vision_tower.",
+        ),
+    ],
+)
+def test_l2t_fixed_full_sft_trainable_scope(
+    model_name,
+    model_factory,
+    trainable_prefixes,
+    frozen_prefix,
+):
+    model, _, info = _prepare_l2t(model_factory(), model_name)
+    trainable_names = {
+        name for name, parameter in model.named_parameters() if parameter.requires_grad
+    }
+
+    assert trainable_names
+    assert all(name.startswith(trainable_prefixes) for name in trainable_names)
+    assert all(any(name.startswith(prefix) for name in trainable_names) for prefix in trainable_prefixes)
+    assert not any(name.startswith(frozen_prefix) for name in trainable_names)
+    assert "vision encoder frozen" in info
+
+def test_l2t_checkpoint_round_trip_uses_bf16_unquantized_base(tmp_path, monkeypatch):
+    torch.manual_seed(123)
+    source, method, _ = _prepare_l2t(_ToyQwenL2T(), "qwen25vl_3b_instruct")
+    with torch.no_grad():
+        for index, parameter in enumerate(
+            parameter for parameter in source.parameters() if parameter.requires_grad
+        ):
+            parameter.fill_(0.01 * (index + 1))
+
+    inputs = torch.randn(2, 4)
+    expected = source(inputs).detach()
+    method.save_checkpoint(
+        source,
+        str(tmp_path),
+        {"model_name": "qwen25vl_3b_instruct", "final_loss": 0.25},
     )
 
-    assert mask.tolist() == [False, True, True, False, False]
+    state_dict = torch.load(
+        tmp_path / L2T_CHECKPOINT_NAME,
+        map_location="cpu",
+        weights_only=True,
+    )
+    assert state_dict
+    assert not any(name.startswith("model.visual.encoder.") for name in state_dict)
+    metadata = json.loads((tmp_path / "vlmintune_meta.json").read_text())
+    assert metadata["ft_method"] == "l2t"
+    assert metadata["recipe"] == "l2t_full_sft_v1"
+    assert metadata["supervision_recipe"] == L2T_SUPERVISION_RECIPE
+    assert "config" not in metadata
 
+    load_calls = []
 
-class _FakeDecodeProcessor:
-    def decode(self, token_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
-        del skip_special_tokens, clean_up_tokenization_spaces
-        vocab = {
-            11: "what",
-            12: "brand",
-            13: "is",
-            14: "this",
-            15: "nokia",
-        }
-        return " ".join(vocab.get(token_id, str(token_id)) for token_id in token_ids)
+    def load_base_model(model_id, **kwargs):
+        load_calls.append({"model_id": model_id, **kwargs})
+        torch.manual_seed(123)
+        return _ToyQwenL2T()
 
+    monkeypatch.setattr(method_base, "load_processor", lambda model_id: _FakeProcessor())
+    monkeypatch.setattr(method_base, "load_vlm", load_base_model)
 
-def test_build_label_supervision_debug_shows_restored_text():
-    processor = _FakeDecodeProcessor()
-    input_ids = torch.tensor([[11, 12, 13, 14, 15]])
-    labels_before = torch.tensor([[-100, -100, -100, -100, 15]])
-    labels_after = torch.tensor([[-100, 12, 13, 14, 15]])
-    instruction_mask = torch.tensor([[0, 1, 1, 1, 0]], dtype=torch.bool)
-
-    debug = build_label_supervision_debug(
-        processor,
-        input_ids,
-        labels_before,
-        labels_after,
-        instruction_mask,
+    loaded, _, info = L2TMethod().load_for_inference(
+        str(tmp_path),
+        "qwen25vl_3b_instruct",
     )
 
-    assert debug["supervised_tokens_before"] == 1
-    assert debug["supervised_tokens_after"] == 4
-    assert debug["restored_tokens_into_loss"] == 3
-    assert debug["instruction_mask_tokens"] == 3
-    assert debug["first_sample_supervised_spans_before"] == [
-        {"start": 4, "end": 5, "token_count": 1, "text": "nokia"}
-    ]
-    assert debug["first_sample_supervised_spans_after"] == [
-        {"start": 1, "end": 5, "token_count": 4, "text": "brand is this nokia"}
-    ]
-    assert debug["first_sample_restored_spans"] == [
-        {"start": 1, "end": 4, "token_count": 3, "text": "brand is this"}
-    ]
+    actual = loaded(inputs).detach()
+    assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
+    assert load_calls[-1]["quantize_4bit"] is False
+    assert load_calls[-1]["torch_dtype"] is torch.bfloat16
+    assert "L2T" in info["model_id"]

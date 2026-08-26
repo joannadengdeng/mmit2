@@ -1,225 +1,220 @@
 # vlmintune
 
-This repository is the official implementation of **vlmintune**, a compact multimodal instruction tuning toolkit for vision-language models. The project is organized around reproducible local fine-tuning and evaluation rather than a single monolithic training script.
+`vlmintune` is a compact initial-release toolkit for parameter-efficient and
+supervision-based visual instruction tuning. A training run uses one built-in
+vision-language model, one dataset, and one fixed method recipe.
 
-`vlmintune` currently supports LoRA-family fine-tuning, freeze tuning, label-to-target (L2T) composition, Hugging Face VQA-style datasets, and a small experiment workflow for training and evaluation.
+Chinese documentation: [Library usage and development guide](docs/library_guide_zh.html).
 
-## Requirements
+The public training configuration is deliberately small. Method architecture,
+target modules, ranks, intervention positions, expert layout, and model-specific
+compatibility are fixed in code rather than exposed as user options.
 
-- Python `>=3.9`
-- A CUDA-capable GPU for practical training and evaluation
-- Core dependencies:
-  - `torch~=2.11.0`
-  - `torchvision~=0.26.0`
-  - `transformers~=5.7.0`
-  - `peft~=0.19.1`
-  - `accelerate~=1.13.0`
-  - `datasets>=2.14`
-  - `pillow>=9.0`
-  - `pyyaml>=6.0`
+## Installation
 
-The package pins the tested LoRA-family stack directly, and `qlora` additionally expects `bitsandbytes~=0.49.2`. This repository does not depend on `torchao`.
-
-To install the package in editable mode:
+Python 3.10 or newer and a CUDA GPU are recommended for training.
 
 ```bash
 pip install -e .
 ```
 
-To install fine-tuning extras:
+QLoRA requires bitsandbytes, included in the fine-tuning extra:
 
 ```bash
 pip install -e ".[finetune]"
 ```
 
-To install development extras:
+For development and tests:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-## What Is Included
+## Built-in models and datasets
 
-### Training methods
+Models:
 
-- `lora`
-- `qlora`
-- `dora`
-- `freeze`
-- `l2t`
-- `mores`
+- `qwen25vl_3b_instruct` — Qwen2.5-VL-3B-Instruct
+- `llava15_7b` — LLaVA-1.5-7B
 
-### Dataset support
-
-Built-in dataset specs currently cover:
+Datasets:
 
 - `lmms-lab/textvqa`
 - `pingzhili/vqa_v2`
-- `HuggingFaceM4/VizWiz`
+- `ebrukilic/vizwiz_vqa_dataset`
 - `Mineru/GQA`
+- `scienceqa_image`
 
-Training uses the built-in Hugging Face dataset loader in `src/vlmintune/data/hf_datasets.py`. Each built-in dataset spec declares a default training split and default evaluation split, so configs can omit `split`.
+Each run trains exactly one dataset. Its built-in dataset spec selects the default
+training split.
 
-### Evaluation support
+## Seven standalone methods plus three fixed combinations
 
-- `TextVQA` via `vqa_accuracy`
-- `VQAv2` via `vqa_accuracy`
-- `VizWiz` via `vqa_accuracy`
-- `GQA` via `normalized_exact_match`
+| Config name | Fixed initial-release recipe | Model support |
+| --- | --- | --- |
+| `lora` | Rank 8, alpha 16, dropout 0.05; q/k/v/o and gate/up/down in every language Transformer layer | Qwen and LLaVA |
+| `qlora` | Rank 64, alpha 16, dropout 0; NF4 4-bit base, double quantization, BF16 compute, paged AdamW 8-bit | Qwen and LLaVA |
+| `dora` | The fixed LoRA recipe with DoRA weight decomposition | Qwen and LLaVA |
+| `reft` | Tied LoReFT, rank 4, prompt prefix 4 plus suffix 4, every language layer; generation intervenes only during prompt prefill | Qwen and LLaVA |
+| `mores` | Rank 1 steering at the first 4 and last 5 visual tokens in every language layer | Qwen and LLaVA |
+| `vl_adapter` | Single Adapter (VL-Adapter style), reduction factor 8, GELU-new, separate attention/FFN adapters; trains adapters, LayerNorm, and visual merger | **Qwen only** |
+| `l2t` | Standalone full-SFT over the complete user-message text and answer; vision encoder frozen | Qwen and LLaVA |
+| `mores_lora` | Joint MoReS representation steering and LoRA weight adaptation | Qwen and LLaVA |
+| `mores_dora` | Joint MoReS representation steering and DoRA weight adaptation | Qwen and LLaVA |
+| `reft_lora` | Joint ReFT representation intervention and LoRA weight adaptation | Qwen and LLaVA |
 
-## Repository Layout
+`vl_adapter` is a Qwen structural adaptation named Single Adapter (VL-Adapter
+style), not a full reproduction of the original VL-T5/VL-BART multi-task system.
+The release supports the three fixed structural combinations `mores_lora`,
+`mores_dora`, and `reft_lora`. Free-form and arbitrary combinations are rejected.
 
-```text
-src/vlmintune/
-  training/      fine-tuning methods, trainer, local CLI entry point
-  eval/          inference methods and scoring helpers
-  data/          dataset specs, Hugging Face dataset loader, canonical sample types
-experiment_setup/
-  <experiment>/  per-experiment configs and run scripts
-tests/           lightweight regression tests
+## Strict training configuration
+
+Training accepts exactly these eleven top-level fields:
+
+```yaml
+model: qwen25vl_3b_instruct
+dataset: lmms-lab/textvqa
+method: lora
+epochs: 1
+learning_rate: 0.0002
+batch_size: 1
+gradient_accumulation_steps: 4
+max_length: 2048
+max_samples: 0  # 0 means the full training split
+seed: 42
+output_dir: experiments/textvqa_lora/checkpoint
 ```
 
-## Training
-
-All training flows are config-driven. Each experiment keeps its own YAML configs and run scripts under `experiment_setup/<experiment_name>/`.
-
-### Local training
-
-To run one experiment:
+Run it with:
 
 ```bash
-python -m vlmintune.training --config experiment_setup/textvqa_qwen25vl3b_lora_full/train_config.yaml
+python -m vlmintune.training --config train_config.yaml
 ```
 
-The recommended setup layout is:
+Unknown fields are rejected. In particular, the initial release has no
+`method_params`, `target_modules`, layer ranges, method-specific aliases,
+multi-dataset list, or legacy nested `model/training/data/experiment` schema.
 
-```text
-experiment_setup/<experiment_name>/
-  train_config.yaml
-  eval_config.yaml
-  base_eval_config.yaml
-  run_train.sh
-  run_eval_trained.sh
-  run_eval_base.sh
+The checkpoint and its `vlmintune_meta.json` are written directly to
+`output_dir`. Using `experiments/<run-name>/checkpoint` keeps the checkpoint
+compatible with the current experiment-based evaluation loader.
+
+## Minimal runner
+
+The repository includes a small wrapper that creates the strict config and starts
+one training run:
+
+```bash
+MODEL=qwen25vl_3b_instruct \
+DATASET=lmms-lab/textvqa \
+METHOD=lora \
+RUN_NAME=textvqa_lora \
+bash experiment_setup/paper_benchmark/run_paper_benchmark.sh
 ```
 
-Notes:
+Single Adapter example:
 
-- Run the commands on the machine that actually has the model weights, GPU, and dependencies installed.
-- Training dataset selection lives under `data.dataset_name`.
-- `data.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default training split.
-- Training sample count lives under `data.max_samples`. Set it to `0` or omit it for the full split.
-- `experiment.name` is required and becomes the experiment folder name under `experiment.base_dir` (default `experiments/`).
-- Training writes into one fixed experiment layout:
-
-```text
-experiments/<experiment_name>/
-  checkpoint/
-  train/
-    train_summary.json
-    run.log
-  eval_trained/
-    eval.json
-    predictions.jsonl
-    run.log
-  eval_base/
-    eval.json
-    predictions.jsonl
-    run.log
+```bash
+MODEL=qwen25vl_3b_instruct METHOD=vl_adapter RUN_NAME=textvqa_single_adapter \
+bash experiment_setup/paper_benchmark/run_paper_benchmark.sh
 ```
 
-- The trainer emits a small amount of runtime information by design, including dataset resolution, estimated training plan, and the first batch tensor shapes.
-- The first 5 debug examples are written into `run.log`; there is no separate `debug/` folder.
-- There is no separate `fullrun` command in the initial release. Training the full dataset is just a normal training run with `data.max_samples` omitted or set to `0`.
-- Use the experiment-local wrappers in `experiment_setup/<experiment_name>/` when you want one-command train / eval runs.
+Standalone L2T example:
+
+```bash
+MODEL=qwen25vl_3b_instruct METHOD=l2t RUN_NAME=textvqa_l2t \
+bash experiment_setup/paper_benchmark/run_paper_benchmark.sh
+```
+
+Validate generated configs for all ten release recipes without loading a model or GPU:
+
+```bash
+bash experiment_setup/paper_benchmark/run_smoke_all.sh
+```
+
+## AutoDL sync and staged Qwen TextVQA validation
+
+The AutoDL helper synchronizes the working tree without copying local secrets,
+model weights, experiment outputs, or Git metadata, then runs the remote tests in
+the dedicated Torch 2.11 environment:
+
+```bash
+AUTODL_HOST=your-host.example AUTODL_PORT=22 \
+AUTODL_KEY="$HOME/.ssh/id_ed25519" \
+scripts/autodl_sync_test.sh
+```
+
+On the AutoDL machine, run the standalone Qwen-compatible recipes with a small
+stage first. Every method must train, save, reload, and
+produce the requested number of validation predictions before the next method
+starts:
+
+```bash
+STAGE_SAMPLES=8 EVAL_SAMPLES=8 \
+bash scripts/run_qwen_textvqa_stage.sh
+
+STAGE_SAMPLES=256 EVAL_SAMPLES=32 GRADIENT_ACCUMULATION_STEPS=4 \
+bash scripts/run_qwen_textvqa_stage.sh
+
+STAGE_SAMPLES=1000 EVAL_SAMPLES=100 GRADIENT_ACCUMULATION_STEPS=4 \
+bash scripts/run_qwen_textvqa_stage.sh
+```
+
+MoReS + LoRA has its own strict progressive pipeline:
+
+```bash
+bash scripts/run_qwen_textvqa_mores_lora_pipeline.sh
+```
+
+It runs `8/8`, `256/32`, `1000/100`, and full `34602/5000` stages, requires
+both LoRA and MoReS checkpoint components, and shares the TextVQA combination
+lock so it cannot contend with another combination run on the same GPU.
+
+Joint-method names are included in run names, so their checkpoints and evaluation
+artifacts cannot collide with the corresponding standalone method.
+
+Completed runs are skipped when their checkpoint and evaluation summary pass
+validation. Set `FORCE=1` or change `RUN_PREFIX` after changing learning rates,
+sequence length, epochs, or other run-defining settings. For a full TextVQA run,
+use the explicit split sizes `STAGE_SAMPLES=34602 EVAL_SAMPLES=5000`; the public
+trainer does not yet provide periodic checkpoint/resume within a method.
+
+The initial release does not include target sweeps, layer sweeps, free-form method
+combinations, or multi-dataset benchmark orchestration.
 
 ## Evaluation
 
-The intended workflow is:
+Evaluation still uses one dataset per run. If training wrote to
+`experiments/textvqa_lora/checkpoint`, a trained-checkpoint eval config can use:
 
-1. Run `python -m vlmintune.training --config ...`
-2. Run `python -m vlmintune.eval --config ...` for the trained checkpoint
-3. Run `python -m vlmintune.eval --config ...` for the base-model comparison
-
-### Evaluate A Saved Experiment
-
-To evaluate the trained checkpoint inside an experiment folder:
-
-```bash
-python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/eval_config.yaml
+```yaml
+model:
+  name: qwen25vl_3b_instruct
+experiment:
+  name: textvqa_lora
+  base_dir: experiments
+eval:
+  source: trained
+  checkpoint_path: experiments/textvqa_lora/checkpoint
+  dataset_name: lmms-lab/textvqa
+  max_new_tokens: 32
+  temperature: 0.0
 ```
 
-In that config:
-
-- `experiment.name` selects the saved experiment
-- `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
-- `model.name` is optional; if omitted, the trained checkpoint must include `vlmintune_meta.json` with `model_name`
-- `eval.source` is required and must be `"trained"`
-- `eval.dataset_name` selects the eval dataset
-- `eval.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default eval split
-- Eval metric is chosen automatically from the dataset spec:
-  - `vqa_accuracy` for `TextVQA / VQAv2 / VizWiz`
-  - `normalized_exact_match` for `GQA`
-- `eval.max_samples` limits the eval sample count
-
-### Evaluate A Base-Model Baseline
-
-To evaluate the corresponding unfine-tuned base model under the same experiment folder:
-
 ```bash
-python -m vlmintune.eval --config experiment_setup/textvqa_qwen25vl3b_lora_full/base_eval_config.yaml
+python -m vlmintune.eval --config eval_config.yaml
 ```
 
-In that config:
+The evaluation schema is separate from the strict eleven-field training schema.
+`eval.checkpoint_path` may point directly at any training `output_dir`; if it is
+omitted, evaluation falls back to `experiments/<experiment.name>/checkpoint`.
 
-- `experiment.name` is required
-- `experiment.base_dir` points at the experiment root directory and defaults to `experiments`
-- `model.name` is required
-- `eval.source` is required and must be `"base"`
-- `eval.dataset_name` selects the eval dataset
-- `eval.split` is optional for built-in datasets; if omitted, the dataset spec chooses the default eval split
-- Eval metric is chosen automatically from the dataset spec:
-  - `vqa_accuracy` for `TextVQA / VQAv2 / VizWiz`
-  - `normalized_exact_match` for `GQA`
-- `eval.max_samples` limits the eval sample count
-
-This release evaluates exactly one dataset per run.
-
-## Pre-trained Models
-
-No pre-trained or fine-tuned checkpoints are currently published from this repository.
-
-Produced adapters and checkpoints are written to `experiments/<experiment_name>/checkpoint/` on the current machine.
-
-## Results
-
-This repository does not currently ship a paper-specific leaderboard table or released benchmark checkpoints.
-
-## Contributing
-
-Issues and pull requests are welcome, especially for:
-
-- new training methods
-- additional dataset specs or adapters
-- benchmark integrations
-- regression tests
-- documentation and reproducibility improvements
-
-For development work, install the dev extras and run targeted tests:
+## Development
 
 ```bash
-pip install -e ".[dev]"
-python -m pytest tests
+python -m pytest -q
 ```
 
-If you change training or serialization behavior, please run an appropriate targeted validation command and include the result in your PR description.
-
-## Project Status
-
-`vlmintune` is usable today for small-to-medium multimodal fine-tuning experiments, but it is still early-stage infrastructure. In particular:
-
-- the repository does not yet ship published pre-trained adapters
-- benchmark result tables are not yet curated in the README
-- the repository does not currently include a standalone `LICENSE` file
-
-If you are adopting the code in a downstream project, it is worth checking the configs and output conventions directly rather than assuming a fully stabilized release contract.
+No pre-trained or fine-tuned checkpoints are currently published from this
+repository.
